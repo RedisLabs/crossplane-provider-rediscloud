@@ -37,6 +37,7 @@ import (
 	"github.com/RedisLabs/provider-rediscloud/config"
 	"github.com/RedisLabs/provider-rediscloud/internal/clients"
 	"github.com/RedisLabs/provider-rediscloud/internal/controller"
+	lookupcontroller "github.com/RedisLabs/provider-rediscloud/internal/controller/lookup"
 	"github.com/RedisLabs/provider-rediscloud/internal/features"
 )
 
@@ -150,5 +151,8 @@ func main() {
 	}
 
 	kingpin.FatalIfError(controller.Setup(mgr, o), "Cannot setup RedisCloud controllers")
+	kingpin.FatalIfError(lookupcontroller.SetupPaymentMethod(mgr), "Cannot setup payment method lookup")
+	kingpin.FatalIfError(lookupcontroller.SetupEssentialsPlan(mgr), "Cannot setup Essentials plan lookup")
+	kingpin.FatalIfError(lookupcontroller.SetupRegions(mgr), "Cannot setup region lookup")
 	kingpin.FatalIfError(mgr.Start(ctrl.SetupSignalHandler()), "Cannot start controller manager")
 }

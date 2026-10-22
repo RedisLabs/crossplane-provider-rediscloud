@@ -1,0 +1,10 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: PaymentMethod
+metadata:
+  name: example-payment-method
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    # Add cardType and lastFourNumbers when the account has more than one card.
+    excludeExpired: true
