@@ -14,7 +14,9 @@ spec:
     gcpVpcSubnetName: ${var.gcp_subnet_name}
     privateServiceConnectServiceId: ${rediscloud_active_active_private_service_connect.service.private_service_connect_service_id}
     regionId: ${local.region_id}
-    subscriptionId: ${rediscloud_active_active_subscription.subscription.id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription
 
 ---
 
@@ -92,4 +94,6 @@ spec:
         localWriteOperationsPerSecond: 1000
       networkingDeploymentCidr: 10.0.1.0/24
       region: europe-west1
-    subscriptionId: ${rediscloud_active_active_subscription.subscription.id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription

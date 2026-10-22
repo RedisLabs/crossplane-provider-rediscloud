@@ -7,6 +7,9 @@
 package v1alpha1
 
 // Hub marks this type as a conversion hub.
+func (tr *ActivePrivateLink) Hub() {}
+
+// Hub marks this type as a conversion hub.
 func (tr *ActivePrivateServiceConnect) Hub() {}
 
 // Hub marks this type as a conversion hub.
@@ -29,3 +32,9 @@ func (tr *ActiveSubscriptionRegions) Hub() {}
 
 // Hub marks this type as a conversion hub.
 func (tr *ActiveTransitGatewayAttachment) Hub() {}
+
+// Hub marks this type as a conversion hub.
+func (tr *ActiveTransitGatewayInvitationAcceptor) Hub() {}
+
+// Hub marks this type as a conversion hub.
+func (tr *ActiveTransitGatewayRoute) Hub() {}

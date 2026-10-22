@@ -89,8 +89,8 @@ type DatabaseInitParameters struct {
 	// Maximum memory usage for this specific database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-	// Modules to be provisioned in the database
+	// A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+	// Modules to be provisioned in the database. Note: Not supported for Redis 8.0 and higher as modules are bundled by default.
 	Modules []ModulesInitParameters `json:"modules,omitempty" tf:"modules,omitempty"`
 
 	// A meaningful name to identify the database.
@@ -109,6 +109,10 @@ type DatabaseInitParameters struct {
 	// The protocol that will be used to access the database, (either 'redis', 'memcached' or 'stack')
 	Protocol *string `json:"protocol,omitempty" tf:"protocol,omitempty"`
 
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the Redis database version. If omitted, the Redis version will be set to the default version
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
+
 	// Only used with Pay-As-You-Go databases. Shard regex rules. Relevant only for a sharded database.
 	// Shard regex rules. Relevant only for a sharded database. Supported only for 'Pay-As-You-Go' subscriptions
 	RegexRules []*string `json:"regexRules,omitempty" tf:"regex_rules,omitempty"`
@@ -126,7 +130,7 @@ type DatabaseInitParameters struct {
 	RespVersion *string `json:"respVersion,omitempty" tf:"resp_version,omitempty"`
 
 	// List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP address ranges. Example value: ['192.168.10.0/32', '192.168.12.0/24'].
-	// Set of CIDR addresses to allow access to the database
+	// Set of CIDR addresses to allow access to the database.
 	SourceIps []*string `json:"sourceIps,omitempty" tf:"source_ips,omitempty"`
 
 	// The ID of the subscription to create the database in. Modifying this attribute will force creation of a new resource.
@@ -197,8 +201,8 @@ type DatabaseObservation struct {
 	// Maximum memory usage for this specific database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-	// Modules to be provisioned in the database
+	// A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+	// Modules to be provisioned in the database. Note: Not supported for Redis 8.0 and higher as modules are bundled by default.
 	Modules []ModulesObservation `json:"modules,omitempty" tf:"modules,omitempty"`
 
 	// A meaningful name to identify the database.
@@ -220,6 +224,14 @@ type DatabaseObservation struct {
 	// Public endpoint to access the database.
 	// Public endpoint to access the database
 	PublicEndpoint *string `json:"publicEndpoint,omitempty" tf:"public_endpoint,omitempty"`
+
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the Redis database version. If omitted, the Redis version will be set to the default version
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
+
+	// The Redis version of the database. Can differ from redis_version if a minor version upgrade has been automatically applied.
+	// The actual Redis database version
+	RedisVersionActual *string `json:"redisVersionActual,omitempty" tf:"redis_version_actual,omitempty"`
 
 	// The compliance Redis version of the database.
 	// The compliance level (redis version) of this database
@@ -246,7 +258,7 @@ type DatabaseObservation struct {
 	RespVersion *string `json:"respVersion,omitempty" tf:"resp_version,omitempty"`
 
 	// List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP address ranges. Example value: ['192.168.10.0/32', '192.168.12.0/24'].
-	// Set of CIDR addresses to allow access to the database
+	// Set of CIDR addresses to allow access to the database.
 	SourceIps []*string `json:"sourceIps,omitempty" tf:"source_ips,omitempty"`
 
 	// The ID of the subscription to create the database in. Modifying this attribute will force creation of a new resource.
@@ -314,8 +326,8 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-	// Modules to be provisioned in the database
+	// A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+	// Modules to be provisioned in the database. Note: Not supported for Redis 8.0 and higher as modules are bundled by default.
 	// +kubebuilder:validation:Optional
 	Modules []ModulesParameters `json:"modules,omitempty" tf:"modules,omitempty"`
 
@@ -339,6 +351,11 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	Protocol *string `json:"protocol,omitempty" tf:"protocol,omitempty"`
 
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the Redis database version. If omitted, the Redis version will be set to the default version
+	// +kubebuilder:validation:Optional
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
+
 	// Only used with Pay-As-You-Go databases. Shard regex rules. Relevant only for a sharded database.
 	// Shard regex rules. Relevant only for a sharded database. Supported only for 'Pay-As-You-Go' subscriptions
 	// +kubebuilder:validation:Optional
@@ -360,7 +377,7 @@ type DatabaseParameters struct {
 	RespVersion *string `json:"respVersion,omitempty" tf:"resp_version,omitempty"`
 
 	// List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP address ranges. Example value: ['192.168.10.0/32', '192.168.12.0/24'].
-	// Set of CIDR addresses to allow access to the database
+	// Set of CIDR addresses to allow access to the database.
 	// +kubebuilder:validation:Optional
 	SourceIps []*string `json:"sourceIps,omitempty" tf:"source_ips,omitempty"`
 

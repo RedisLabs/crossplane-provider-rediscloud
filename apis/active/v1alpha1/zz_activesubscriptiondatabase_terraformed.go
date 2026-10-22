@@ -21,7 +21,7 @@ func (mg *ActiveSubscriptionDatabase) GetTerraformResourceType() string {
 
 // GetConnectionDetailsMapping for this ActiveSubscriptionDatabase
 func (tr *ActiveSubscriptionDatabase) GetConnectionDetailsMapping() map[string]string {
-	return map[string]string{"global_password": "globalPasswordSecretRef", "override_region[*].override_global_password": "overrideRegion[*].overrideGlobalPasswordSecretRef"}
+	return map[string]string{"client_ssl_certificate": "clientSslCertificateSecretRef", "client_tls_certificates[*]": "clientTlsCertificatesSecretRef[*]", "global_password": "globalPasswordSecretRef", "override_region[*].override_global_password": "overrideRegion[*].overrideGlobalPasswordSecretRef"}
 }
 
 // GetObservation of this ActiveSubscriptionDatabase

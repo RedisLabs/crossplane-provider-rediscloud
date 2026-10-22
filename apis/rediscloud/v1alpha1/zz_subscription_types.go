@@ -69,9 +69,18 @@ type CloudProviderInitParameters struct {
 	// A region object, documented below. Modifying this attribute will force creation of a new resource.
 	// Cloud networking details, per region (single region or multiple regions for Active-Active cluster only)
 	Region []RegionInitParameters `json:"region,omitempty" tf:"region,omitempty"`
+
+	// A string/string map of tags to associate with this subscription's cloud resources.
+	// A map of tags to associate with this subscription.
+	// +mapType=granular
+	ResourceTags map[string]*string `json:"resourceTags,omitempty" tf:"resource_tags,omitempty"`
 }
 
 type CloudProviderObservation struct {
+
+	// AWS account ID that the subscription is deployed in (AWS subscriptions only).
+	// AWS account ID associated with the subscription (only applicable for AWS subscriptions)
+	AwsAccountID *string `json:"awsAccountId,omitempty" tf:"aws_account_id,omitempty"`
 
 	// Cloud account identifier. Default: Redis Labs internal cloud account. Modifying this attribute will force creation of a new resource.
 	// (using Cloud Account ID = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created
@@ -86,6 +95,11 @@ type CloudProviderObservation struct {
 	// A region object, documented below. Modifying this attribute will force creation of a new resource.
 	// Cloud networking details, per region (single region or multiple regions for Active-Active cluster only)
 	Region []RegionObservation `json:"region,omitempty" tf:"region,omitempty"`
+
+	// A string/string map of tags to associate with this subscription's cloud resources.
+	// A map of tags to associate with this subscription.
+	// +mapType=granular
+	ResourceTags map[string]*string `json:"resourceTags,omitempty" tf:"resource_tags,omitempty"`
 }
 
 type CloudProviderParameters struct {
@@ -106,14 +120,21 @@ type CloudProviderParameters struct {
 	// Cloud networking details, per region (single region or multiple regions for Active-Active cluster only)
 	// +kubebuilder:validation:Optional
 	Region []RegionParameters `json:"region" tf:"region,omitempty"`
+
+	// A string/string map of tags to associate with this subscription's cloud resources.
+	// A map of tags to associate with this subscription.
+	// +kubebuilder:validation:Optional
+	// +mapType=granular
+	ResourceTags map[string]*string `json:"resourceTags,omitempty" tf:"resource_tags,omitempty"`
 }
 
 type CreationPlanInitParameters struct {
 
 	// Relevant only to ram-and-flash clusters
 	// Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-	// be the maximum average item size defined in one of your databases.  Default: 1000
-	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+	// be the maximum average item size defined in one of your databases.  Default: 1000.
+	// Deprecated: This attribute is deprecated. Configure
+	// (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
 	AverageItemSizeInBytes *float64 `json:"averageItemSizeInBytes,omitempty" tf:"average_item_size_in_bytes,omitempty"`
 
 	// instead
@@ -124,8 +145,7 @@ type CreationPlanInitParameters struct {
 	// (Deprecated) Maximum memory usage for each database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-	// Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+	// a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
 	// Modules that will be used by the databases in this subscription.
 	Modules []*string `json:"modules,omitempty" tf:"modules,omitempty"`
 
@@ -133,8 +153,13 @@ type CreationPlanInitParameters struct {
 	// The planned number of databases
 	Quantity *float64 `json:"quantity,omitempty" tf:"quantity,omitempty"`
 
+	// The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
 	// Query performance factor for this specific database
 	QueryPerformanceFactor *string `json:"queryPerformanceFactor,omitempty" tf:"query_performance_factor,omitempty"`
+
+	// instead. This attribute will be removed in the next major version of the provider.
+	// Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+	RAMPercentage *float64 `json:"ramPercentage,omitempty" tf:"ram_percentage,omitempty"`
 
 	// Databases replication. Default: ‘true’
 	// Databases replication
@@ -157,8 +182,9 @@ type CreationPlanObservation struct {
 
 	// Relevant only to ram-and-flash clusters
 	// Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-	// be the maximum average item size defined in one of your databases.  Default: 1000
-	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+	// be the maximum average item size defined in one of your databases.  Default: 1000.
+	// Deprecated: This attribute is deprecated. Configure
+	// (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
 	AverageItemSizeInBytes *float64 `json:"averageItemSizeInBytes,omitempty" tf:"average_item_size_in_bytes,omitempty"`
 
 	// instead
@@ -169,8 +195,7 @@ type CreationPlanObservation struct {
 	// (Deprecated) Maximum memory usage for each database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-	// Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+	// a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
 	// Modules that will be used by the databases in this subscription.
 	Modules []*string `json:"modules,omitempty" tf:"modules,omitempty"`
 
@@ -178,8 +203,13 @@ type CreationPlanObservation struct {
 	// The planned number of databases
 	Quantity *float64 `json:"quantity,omitempty" tf:"quantity,omitempty"`
 
+	// The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
 	// Query performance factor for this specific database
 	QueryPerformanceFactor *string `json:"queryPerformanceFactor,omitempty" tf:"query_performance_factor,omitempty"`
+
+	// instead. This attribute will be removed in the next major version of the provider.
+	// Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+	RAMPercentage *float64 `json:"ramPercentage,omitempty" tf:"ram_percentage,omitempty"`
 
 	// Databases replication. Default: ‘true’
 	// Databases replication
@@ -202,8 +232,9 @@ type CreationPlanParameters struct {
 
 	// Relevant only to ram-and-flash clusters
 	// Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-	// be the maximum average item size defined in one of your databases.  Default: 1000
-	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+	// be the maximum average item size defined in one of your databases.  Default: 1000.
+	// Deprecated: This attribute is deprecated. Configure
+	// (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
 	// +kubebuilder:validation:Optional
 	AverageItemSizeInBytes *float64 `json:"averageItemSizeInBytes,omitempty" tf:"average_item_size_in_bytes,omitempty"`
 
@@ -217,8 +248,7 @@ type CreationPlanParameters struct {
 	// +kubebuilder:validation:Optional
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-	// Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+	// a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
 	// Modules that will be used by the databases in this subscription.
 	// +kubebuilder:validation:Optional
 	Modules []*string `json:"modules,omitempty" tf:"modules,omitempty"`
@@ -228,9 +258,15 @@ type CreationPlanParameters struct {
 	// +kubebuilder:validation:Optional
 	Quantity *float64 `json:"quantity" tf:"quantity,omitempty"`
 
+	// The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
 	// Query performance factor for this specific database
 	// +kubebuilder:validation:Optional
 	QueryPerformanceFactor *string `json:"queryPerformanceFactor,omitempty" tf:"query_performance_factor,omitempty"`
+
+	// instead. This attribute will be removed in the next major version of the provider.
+	// Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+	// +kubebuilder:validation:Optional
+	RAMPercentage *float64 `json:"ramPercentage,omitempty" tf:"ram_percentage,omitempty"`
 
 	// Databases replication. Default: ‘true’
 	// Databases replication
@@ -251,6 +287,28 @@ type CreationPlanParameters struct {
 	// Throughput value (as applies to selected measurement method)
 	// +kubebuilder:validation:Optional
 	ThroughputMeasurementValue *float64 `json:"throughputMeasurementValue" tf:"throughput_measurement_value,omitempty"`
+}
+
+type CustomerManagedKeyInitParameters struct {
+
+	// The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+	// Resource name of the customer managed key as defined by the cloud provider.
+	ResourceName *string `json:"resourceName,omitempty" tf:"resource_name,omitempty"`
+}
+
+type CustomerManagedKeyObservation struct {
+
+	// The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+	// Resource name of the customer managed key as defined by the cloud provider.
+	ResourceName *string `json:"resourceName,omitempty" tf:"resource_name,omitempty"`
+}
+
+type CustomerManagedKeyParameters struct {
+
+	// The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+	// Resource name of the customer managed key as defined by the cloud provider.
+	// +kubebuilder:validation:Optional
+	ResourceName *string `json:"resourceName" tf:"resource_name,omitempty"`
 }
 
 type MaintenanceWindowsInitParameters struct {
@@ -429,6 +487,18 @@ type SubscriptionInitParameters struct {
 	// Information about the planned databases used to optimise the database infrastructure. This information is only used when creating a new subscription and any changes will be ignored after this.
 	CreationPlan []CreationPlanInitParameters `json:"creationPlan,omitempty" tf:"creation_plan,omitempty"`
 
+	// The customer managed keys (CMK) to use for this subscription.
+	// CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+	CustomerManagedKey []CustomerManagedKeyInitParameters `json:"customerManagedKey,omitempty" tf:"customer_managed_key,omitempty"`
+
+	// The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+	// The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+	CustomerManagedKeyDeletionGracePeriod *string `json:"customerManagedKeyDeletionGracePeriod,omitempty" tf:"customer_managed_key_deletion_grace_period,omitempty"`
+
+	// Whether to enable the customer managed encryption key flow.
+	// Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+	CustomerManagedKeyEnabled *bool `json:"customerManagedKeyEnabled,omitempty" tf:"customer_managed_key_enabled,omitempty"`
+
 	// The subscription's maintenance window specification, documented below.
 	// Specify the subscription's maintenance windows
 	MaintenanceWindows []MaintenanceWindowsInitParameters `json:"maintenanceWindows,omitempty" tf:"maintenance_windows,omitempty"`
@@ -441,7 +511,7 @@ type SubscriptionInitParameters struct {
 	// A meaningful name to identify the subscription
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
-	// card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+	// card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
 	// Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
 	PaymentMethod *string `json:"paymentMethod,omitempty" tf:"payment_method,omitempty"`
 
@@ -449,7 +519,11 @@ type SubscriptionInitParameters struct {
 	// A valid payment method pre-defined in the current account
 	PaymentMethodID *string `json:"paymentMethodId,omitempty" tf:"payment_method_id,omitempty"`
 
-	// The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.
+	// Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+	// Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+	PublicEndpointAccess *bool `json:"publicEndpointAccess,omitempty" tf:"public_endpoint_access,omitempty"`
+
+	// The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
 	// Version of Redis to create
 	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
 }
@@ -468,6 +542,26 @@ type SubscriptionObservation struct {
 	// Information about the planned databases used to optimise the database infrastructure. This information is only used when creating a new subscription and any changes will be ignored after this.
 	CreationPlan []CreationPlanObservation `json:"creationPlan,omitempty" tf:"creation_plan,omitempty"`
 
+	// The customer managed keys (CMK) to use for this subscription.
+	// CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+	CustomerManagedKey []CustomerManagedKeyObservation `json:"customerManagedKey,omitempty" tf:"customer_managed_key,omitempty"`
+
+	// The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy. Only set for AWS subscriptions with CMK enabled.
+	// The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy
+	CustomerManagedKeyAwsRoleArn *string `json:"customerManagedKeyAwsRoleArn,omitempty" tf:"customer_managed_key_aws_role_arn,omitempty"`
+
+	// The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+	// The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+	CustomerManagedKeyDeletionGracePeriod *string `json:"customerManagedKeyDeletionGracePeriod,omitempty" tf:"customer_managed_key_deletion_grace_period,omitempty"`
+
+	// Whether to enable the customer managed encryption key flow.
+	// Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+	CustomerManagedKeyEnabled *bool `json:"customerManagedKeyEnabled,omitempty" tf:"customer_managed_key_enabled,omitempty"`
+
+	// Outputs the ID of the GCP service account associated with the subscription. Useful as part of the CMK flow for GCP subscriptions.
+	// The principal of the Redis service account that the subscription is created in. This is used by the user to give access to their customer managed key
+	CustomerManagedKeyRedisServiceAccount *string `json:"customerManagedKeyRedisServiceAccount,omitempty" tf:"customer_managed_key_redis_service_account,omitempty"`
+
 	ID *string `json:"id,omitempty" tf:"id,omitempty"`
 
 	// The subscription's maintenance window specification, documented below.
@@ -482,7 +576,7 @@ type SubscriptionObservation struct {
 	// A meaningful name to identify the subscription
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
-	// card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+	// card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
 	// Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
 	PaymentMethod *string `json:"paymentMethod,omitempty" tf:"payment_method,omitempty"`
 
@@ -493,7 +587,15 @@ type SubscriptionObservation struct {
 	// Pricing details totalled over this Subscription
 	Pricing []PricingObservation `json:"pricing,omitempty" tf:"pricing,omitempty"`
 
-	// The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.
+	// The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.
+	// The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.
+	PrometheusEndpoint *string `json:"prometheusEndpoint,omitempty" tf:"prometheus_endpoint,omitempty"`
+
+	// Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+	// Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+	PublicEndpointAccess *bool `json:"publicEndpointAccess,omitempty" tf:"public_endpoint_access,omitempty"`
+
+	// The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
 	// Version of Redis to create
 	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
 }
@@ -515,6 +617,21 @@ type SubscriptionParameters struct {
 	// +kubebuilder:validation:Optional
 	CreationPlan []CreationPlanParameters `json:"creationPlan,omitempty" tf:"creation_plan,omitempty"`
 
+	// The customer managed keys (CMK) to use for this subscription.
+	// CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+	// +kubebuilder:validation:Optional
+	CustomerManagedKey []CustomerManagedKeyParameters `json:"customerManagedKey,omitempty" tf:"customer_managed_key,omitempty"`
+
+	// The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+	// The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+	// +kubebuilder:validation:Optional
+	CustomerManagedKeyDeletionGracePeriod *string `json:"customerManagedKeyDeletionGracePeriod,omitempty" tf:"customer_managed_key_deletion_grace_period,omitempty"`
+
+	// Whether to enable the customer managed encryption key flow.
+	// Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+	// +kubebuilder:validation:Optional
+	CustomerManagedKeyEnabled *bool `json:"customerManagedKeyEnabled,omitempty" tf:"customer_managed_key_enabled,omitempty"`
+
 	// The subscription's maintenance window specification, documented below.
 	// Specify the subscription's maintenance windows
 	// +kubebuilder:validation:Optional
@@ -530,7 +647,7 @@ type SubscriptionParameters struct {
 	// +kubebuilder:validation:Optional
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
-	// card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+	// card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
 	// Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
 	// +kubebuilder:validation:Optional
 	PaymentMethod *string `json:"paymentMethod,omitempty" tf:"payment_method,omitempty"`
@@ -540,7 +657,12 @@ type SubscriptionParameters struct {
 	// +kubebuilder:validation:Optional
 	PaymentMethodID *string `json:"paymentMethodId,omitempty" tf:"payment_method_id,omitempty"`
 
-	// The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.
+	// Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+	// Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+	// +kubebuilder:validation:Optional
+	PublicEndpointAccess *bool `json:"publicEndpointAccess,omitempty" tf:"public_endpoint_access,omitempty"`
+
+	// The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
 	// Version of Redis to create
 	// +kubebuilder:validation:Optional
 	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`

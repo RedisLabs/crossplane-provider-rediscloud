@@ -1,0 +1,58 @@
+package config
+
+import "testing"
+
+func TestSubscriptionReferences(t *testing.T) {
+	t.Parallel()
+	provider := GetProvider()
+	for name, parent := range subscriptionReferenceParents {
+		resource, ok := provider.Resources[name]
+		if !ok {
+			t.Fatalf("resource %s was not configured", name)
+		}
+		ref, ok := resource.References["subscription_id"]
+		if !ok {
+			t.Fatalf("resource %s has no subscription_id reference", name)
+		}
+		if ref.TerraformName != parent {
+			t.Fatalf("resource %s references %s, want %s", name, ref.TerraformName, parent)
+		}
+	}
+	for _, name := range []string{
+		"rediscloud_subscription_database",
+		"rediscloud_essentials_database",
+		"rediscloud_active_active_subscription_database",
+	} {
+		if _, ok := provider.Resources[name].References["subscription_id"]; ok {
+			t.Fatalf("numeric subscription_id on %s must not use a string reference", name)
+		}
+		if provider.Resources[name].Sensitive.AdditionalConnectionDetailsFn == nil {
+			t.Fatalf("database %s does not publish connection details", name)
+		}
+	}
+}
+
+func TestDatabaseConnectionDetails(t *testing.T) {
+	t.Parallel()
+	got, err := databaseConnectionDetails(map[string]any{
+		"public_endpoint":  "redis.example:12345",
+		"private_endpoint": "",
+		"port":             float64(12345),
+		"password":         "do-not-copy",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got["public_endpoint"]) != "redis.example:12345" {
+		t.Fatalf("public endpoint: %s", got["public_endpoint"])
+	}
+	if string(got["port"]) != "12345" {
+		t.Fatalf("port: %s", got["port"])
+	}
+	if _, ok := got["password"]; ok {
+		t.Fatal("password must stay out of the additional connection details")
+	}
+	if _, ok := got["private_endpoint"]; ok {
+		t.Fatal("empty private endpoint should be omitted")
+	}
+}

@@ -54,8 +54,13 @@ type DatabaseInitParameters struct {
 	// Set of alerts to enable on the database
 	Alert []AlertInitParameters `json:"alert,omitempty" tf:"alert,omitempty"`
 
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+	AutoMinorVersionUpgrade *bool `json:"autoMinorVersionUpgrade,omitempty" tf:"auto_minor_version_upgrade,omitempty"`
+
 	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-	// of the items stored in the database. Default: 1000
+	// of the items stored in the database. Default: 1000.
+	// Deprecated: This attribute is deprecated. Configure
 	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
 	AverageItemSizeInBytes *float64 `json:"averageItemSizeInBytes,omitempty" tf:"average_item_size_in_bytes,omitempty"`
 
@@ -83,6 +88,10 @@ type DatabaseInitParameters struct {
 	// When 'true', enables connecting to the database with the 'default' user. Default: 'true'
 	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
 
+	// When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false
+	// When 'true', the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be used together with password. Default: 'false'
+	EnablePasswordless *bool `json:"enablePasswordless,omitempty" tf:"enable_passwordless,omitempty"`
+
 	// Use TLS for authentication. Default: ‘false’
 	// Use TLS for authentication
 	EnableTLS *bool `json:"enableTls,omitempty" tf:"enable_tls,omitempty"`
@@ -102,16 +111,16 @@ type DatabaseInitParameters struct {
 	// (Deprecated) Maximum memory usage for this specific database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-	// Modules to be provisioned in the database
+	// A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+	// Modules to be provisioned in the database. Note: NOT supported for Redis 8.0 and higher as modules are bundled by default.
 	Modules []ModulesInitParameters `json:"modules,omitempty" tf:"modules,omitempty"`
 
 	// A meaningful name to identify the database
 	// A meaningful name to identify the database
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
-	// Password to access the database. If omitted, a random 32 character long alphanumeric password will be automatically generated
-	// Password used to access the database. If left empty, the password will be generated automatically
+	// Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true
+	// Password used to access the database. If omitted (and enable_passwordless is false), a random password will be generated automatically. Cannot be used together with enable_passwordless
 	PasswordSecretRef *v1.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
 
 	// Path that will be used to store database backup files. Deprecated: Use
@@ -123,19 +132,27 @@ type DatabaseInitParameters struct {
 	Port *float64 `json:"port,omitempty" tf:"port,omitempty"`
 
 	// The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.
-	// The protocol that will be used to access the database, (either ‘redis’ or 'memcached’)
+	// The protocol that will be used to access the database (either ‘redis’ or 'memcached’)
 	Protocol *string `json:"protocol,omitempty" tf:"protocol,omitempty"`
 
+	// The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
 	// Query performance factor for this specific database
 	QueryPerformanceFactor *string `json:"queryPerformanceFactor,omitempty" tf:"query_performance_factor,omitempty"`
+
+	// instead. This attribute will be removed in the next major version of the provider.
+	// Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+	RAMPercentage *float64 `json:"ramPercentage,omitempty" tf:"ram_percentage,omitempty"`
+
+	// The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
 
 	// block instead
 	// An object that specifies the backup options for the database
 	RemoteBackup []RemoteBackupInitParameters `json:"remoteBackup,omitempty" tf:"remote_backup,omitempty"`
 
 	// Set of Redis database URIs, in the format redis://user:password@host:port, that this
-	// database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-	// Cannot be enabled when support_oss_cluster_api is enabled.
+	// database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
 	// Set of Redis database URIs, in the format `redis://user:password@host:port`, that this database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided
 	// +listType=set
 	ReplicaOf []*string `json:"replicaOf,omitempty" tf:"replica_of,omitempty"`
@@ -148,7 +165,7 @@ type DatabaseInitParameters struct {
 	// The database's RESP version
 	RespVersion *string `json:"respVersion,omitempty" tf:"resp_version,omitempty"`
 
-	// List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])
+	// List of source IP addresses or subnet masks that are allowed to connect to the database (example: ['192.168.10.0/32', '192.168.12.0/24']). When not specified, the default behavior depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
 	// Set of CIDR addresses to allow access to the database
 	// +listType=set
 	SourceIps []*string `json:"sourceIps,omitempty" tf:"source_ips,omitempty"`
@@ -181,8 +198,13 @@ type DatabaseObservation struct {
 	// Set of alerts to enable on the database
 	Alert []AlertObservation `json:"alert,omitempty" tf:"alert,omitempty"`
 
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+	AutoMinorVersionUpgrade *bool `json:"autoMinorVersionUpgrade,omitempty" tf:"auto_minor_version_upgrade,omitempty"`
+
 	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-	// of the items stored in the database. Default: 1000
+	// of the items stored in the database. Default: 1000.
+	// Deprecated: This attribute is deprecated. Configure
 	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
 	AverageItemSizeInBytes *float64 `json:"averageItemSizeInBytes,omitempty" tf:"average_item_size_in_bytes,omitempty"`
 
@@ -214,6 +236,10 @@ type DatabaseObservation struct {
 	// When 'true', enables connecting to the database with the 'default' user. Default: 'true'
 	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
 
+	// When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false
+	// When 'true', the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be used together with password. Default: 'false'
+	EnablePasswordless *bool `json:"enablePasswordless,omitempty" tf:"enable_passwordless,omitempty"`
+
 	// Use TLS for authentication. Default: ‘false’
 	// Use TLS for authentication
 	EnableTLS *bool `json:"enableTls,omitempty" tf:"enable_tls,omitempty"`
@@ -235,8 +261,8 @@ type DatabaseObservation struct {
 	// (Deprecated) Maximum memory usage for this specific database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-	// Modules to be provisioned in the database
+	// A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+	// Modules to be provisioned in the database. Note: NOT supported for Redis 8.0 and higher as modules are bundled by default.
 	Modules []ModulesObservation `json:"modules,omitempty" tf:"modules,omitempty"`
 
 	// A meaningful name to identify the database
@@ -256,23 +282,35 @@ type DatabaseObservation struct {
 	PrivateEndpoint *string `json:"privateEndpoint,omitempty" tf:"private_endpoint,omitempty"`
 
 	// The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.
-	// The protocol that will be used to access the database, (either ‘redis’ or 'memcached’)
+	// The protocol that will be used to access the database (either ‘redis’ or 'memcached’)
 	Protocol *string `json:"protocol,omitempty" tf:"protocol,omitempty"`
 
 	// Public endpoint to access the database
 	// Public endpoint to access the database
 	PublicEndpoint *string `json:"publicEndpoint,omitempty" tf:"public_endpoint,omitempty"`
 
+	// The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
 	// Query performance factor for this specific database
 	QueryPerformanceFactor *string `json:"queryPerformanceFactor,omitempty" tf:"query_performance_factor,omitempty"`
+
+	// instead. This attribute will be removed in the next major version of the provider.
+	// Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+	RAMPercentage *float64 `json:"ramPercentage,omitempty" tf:"ram_percentage,omitempty"`
+
+	// The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
+
+	// The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true
+	// The actual Redis database version
+	RedisVersionActual *string `json:"redisVersionActual,omitempty" tf:"redis_version_actual,omitempty"`
 
 	// block instead
 	// An object that specifies the backup options for the database
 	RemoteBackup []RemoteBackupObservation `json:"remoteBackup,omitempty" tf:"remote_backup,omitempty"`
 
 	// Set of Redis database URIs, in the format redis://user:password@host:port, that this
-	// database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-	// Cannot be enabled when support_oss_cluster_api is enabled.
+	// database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
 	// Set of Redis database URIs, in the format `redis://user:password@host:port`, that this database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided
 	// +listType=set
 	ReplicaOf []*string `json:"replicaOf,omitempty" tf:"replica_of,omitempty"`
@@ -285,7 +323,7 @@ type DatabaseObservation struct {
 	// The database's RESP version
 	RespVersion *string `json:"respVersion,omitempty" tf:"resp_version,omitempty"`
 
-	// List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])
+	// List of source IP addresses or subnet masks that are allowed to connect to the database (example: ['192.168.10.0/32', '192.168.12.0/24']). When not specified, the default behavior depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
 	// Set of CIDR addresses to allow access to the database
 	// +listType=set
 	SourceIps []*string `json:"sourceIps,omitempty" tf:"source_ips,omitempty"`
@@ -319,8 +357,14 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	Alert []AlertParameters `json:"alert,omitempty" tf:"alert,omitempty"`
 
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+	// +kubebuilder:validation:Optional
+	AutoMinorVersionUpgrade *bool `json:"autoMinorVersionUpgrade,omitempty" tf:"auto_minor_version_upgrade,omitempty"`
+
 	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-	// of the items stored in the database. Default: 1000
+	// of the items stored in the database. Default: 1000.
+	// Deprecated: This attribute is deprecated. Configure
 	// Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
 	// +kubebuilder:validation:Optional
 	AverageItemSizeInBytes *float64 `json:"averageItemSizeInBytes,omitempty" tf:"average_item_size_in_bytes,omitempty"`
@@ -355,6 +399,11 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
 
+	// When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false
+	// When 'true', the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be used together with password. Default: 'false'
+	// +kubebuilder:validation:Optional
+	EnablePasswordless *bool `json:"enablePasswordless,omitempty" tf:"enable_passwordless,omitempty"`
+
 	// Use TLS for authentication. Default: ‘false’
 	// Use TLS for authentication
 	// +kubebuilder:validation:Optional
@@ -378,8 +427,8 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-	// Modules to be provisioned in the database
+	// A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+	// Modules to be provisioned in the database. Note: NOT supported for Redis 8.0 and higher as modules are bundled by default.
 	// +kubebuilder:validation:Optional
 	Modules []ModulesParameters `json:"modules,omitempty" tf:"modules,omitempty"`
 
@@ -388,8 +437,8 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
-	// Password to access the database. If omitted, a random 32 character long alphanumeric password will be automatically generated
-	// Password used to access the database. If left empty, the password will be generated automatically
+	// Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true
+	// Password used to access the database. If omitted (and enable_passwordless is false), a random password will be generated automatically. Cannot be used together with enable_passwordless
 	// +kubebuilder:validation:Optional
 	PasswordSecretRef *v1.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
 
@@ -404,13 +453,24 @@ type DatabaseParameters struct {
 	Port *float64 `json:"port,omitempty" tf:"port,omitempty"`
 
 	// The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.
-	// The protocol that will be used to access the database, (either ‘redis’ or 'memcached’)
+	// The protocol that will be used to access the database (either ‘redis’ or 'memcached’)
 	// +kubebuilder:validation:Optional
 	Protocol *string `json:"protocol,omitempty" tf:"protocol,omitempty"`
 
+	// The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
 	// Query performance factor for this specific database
 	// +kubebuilder:validation:Optional
 	QueryPerformanceFactor *string `json:"queryPerformanceFactor,omitempty" tf:"query_performance_factor,omitempty"`
+
+	// instead. This attribute will be removed in the next major version of the provider.
+	// Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+	// +kubebuilder:validation:Optional
+	RAMPercentage *float64 `json:"ramPercentage,omitempty" tf:"ram_percentage,omitempty"`
+
+	// The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+	// +kubebuilder:validation:Optional
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
 
 	// block instead
 	// An object that specifies the backup options for the database
@@ -418,8 +478,7 @@ type DatabaseParameters struct {
 	RemoteBackup []RemoteBackupParameters `json:"remoteBackup,omitempty" tf:"remote_backup,omitempty"`
 
 	// Set of Redis database URIs, in the format redis://user:password@host:port, that this
-	// database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-	// Cannot be enabled when support_oss_cluster_api is enabled.
+	// database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
 	// Set of Redis database URIs, in the format `redis://user:password@host:port`, that this database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided
 	// +kubebuilder:validation:Optional
 	// +listType=set
@@ -435,7 +494,7 @@ type DatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	RespVersion *string `json:"respVersion,omitempty" tf:"resp_version,omitempty"`
 
-	// List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])
+	// List of source IP addresses or subnet masks that are allowed to connect to the database (example: ['192.168.10.0/32', '192.168.12.0/24']). When not specified, the default behavior depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
 	// Set of CIDR addresses to allow access to the database
 	// +kubebuilder:validation:Optional
 	// +listType=set

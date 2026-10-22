@@ -94,6 +94,93 @@ resources:
             timeouts.delete: '- (Defaults to 5 mins) Used when destroying the User.'
             timeouts.update: '- (Defaults to 5 mins) Used when updating the User.'
         importStatements: []
+    rediscloud_active_active_private_link:
+        subCategory: ""
+        description: PrivateLink resource for an Active-Active Subscription in the Redis Cloud Terraform provider.
+        name: rediscloud_active_active_private_link
+        title: rediscloud_active_active_private_link
+        examples:
+            - name: private_link
+              manifest: |-
+                {
+                  "principal": [
+                    {
+                      "principal": "123456789012",
+                      "principal_alias": "principal 1",
+                      "principal_type": "aws_account"
+                    },
+                    {
+                      "principal": "234567890123",
+                      "principal_alias": "principal 2",
+                      "principal_type": "aws_account"
+                    }
+                  ],
+                  "region_id": "${data.rediscloud_active_active_subscription_regions.aa_regions_info.regions[0].region_id}",
+                  "share_name": "${local.rediscloud_private_link_share_name}",
+                  "subscription_id": "${rediscloud_active_active_subscription.aa_subscription.id}"
+                }
+              references:
+                region_id: data.rediscloud_active_active_subscription_regions.aa_regions_info.regions[0].region_id
+                share_name: local.rediscloud_private_link_share_name
+                subscription_id: rediscloud_active_active_subscription.aa_subscription.id
+              dependencies:
+                rediscloud_active_active_subscription.aa_subscription: |-
+                    {
+                      "cloud_provider": "AWS",
+                      "creation_plan": [
+                        {
+                          "memory_limit_in_gb": 1,
+                          "quantity": 1,
+                          "region": [
+                            {
+                              "networking_deployment_cidr": "192.168.0.0/24",
+                              "read_operations_per_second": 1000,
+                              "region": "eu-west-1",
+                              "write_operations_per_second": 1000
+                            },
+                            {
+                              "networking_deployment_cidr": "10.0.1.0/24",
+                              "read_operations_per_second": 1000,
+                              "region": "eu-west-2",
+                              "write_operations_per_second": 1000
+                            }
+                          ]
+                        }
+                      ],
+                      "name": "${local.rediscloud_subscription_name}",
+                      "payment_method": "credit-card",
+                      "payment_method_id": "${data.rediscloud_payment_method.card.id}"
+                    }
+                rediscloud_active_active_subscription_database.aa_database: |-
+                    {
+                      "global_data_persistence": "aof-every-1-second",
+                      "global_password": "${local.rediscloud_database_password}",
+                      "memory_limit_in_gb": 1,
+                      "name": "db",
+                      "subscription_id": "${rediscloud_active_active_subscription.aa_subscription.id}"
+                    }
+        argumentDocs:
+            association_date: '- Date the connection was associated.'
+            association_id: '- Association ID of the PrivateLink connection.'
+            connection_id: '- Connection ID of the PrivateLink connection.'
+            connection_type: '- Type of the PrivateLink connection.'
+            connections: '- List of connections associated with the PrivateLink.'
+            database_id: '- ID of the database.'
+            databases: '- List of databases associated with the PrivateLink.'
+            owner_id: '- Owner ID of the connection.'
+            port: '- The port which the database is available on.'
+            principal: '- (Required) The principal(s) attached to the PrivateLink.'
+            principal.principal: '- (Required) The principal to be added to this PrivateLink. The format depends upon the type of principal you wish to attach.'
+            principal.principal_alias: '- The friendly name to refer to the principal.'
+            principal.principal_type: '- (Required) The principal type. Can be one of: aws_account, organization, organization_unit, iam_role, iam_user, service_principal.'
+            region_id: '- (Required) The region ID within the Active-Active subscription that the PrivateLink is attached to. Modifying this attribute will force creation of a new resource.'
+            resource_configuration_arn: '- ARN of the resource configuration to attach to this PrivateLink'
+            resource_configuration_id: '- ID of the resource configuration to attach to this PrivateLink'
+            resource_link_endpoint: '- The resource link endpoint for the database.'
+            share_arn: '- Share ARN of this PrivateLink.'
+            share_name: '- (Required) The share name of the PrivateLink.'
+            subscription_id: '- (Required) The ID of the Active-Active Subscription to link to.  Modifying this attribute will force creation of a new resource.'
+        importStatements: []
     rediscloud_active_active_private_service_connect:
         subCategory: ""
         description: Private Service Connect resource for Active-Active Subscription in the Redis Cloud Terraform provider.
@@ -301,9 +388,6 @@ resources:
                   "creation_plan": [
                     {
                       "dataset_size_in_gb": 1,
-                      "modules": [
-                        "RedisJSON"
-                      ],
                       "quantity": 1,
                       "region": [
                         {
@@ -327,34 +411,44 @@ resources:
               references:
                 payment_method_id: data.rediscloud_payment_method.card.id
         argumentDocs:
+            aws_account_id: '- AWS account ID that the subscription is deployed in (AWS subscriptions only).'
             cloud_provider: '- (Optional) The cloud provider to use with the subscription, (either AWS or GCP). Default: ‘AWS’. Modifying this attribute will force creation of a new resource.'
             creation_plan: '- (Required) A creation plan object, documented below. Ignored after creation.'
             creation_plan.dataset_size_in_gb: is unset
             creation_plan.memory_limit_in_gb: '- (Optional -  Required if ) Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of'
-            creation_plan.modules: '- (Optional) A list of modules to be enabled on all deployments of this database. Either: RedisJSON or RediSearch.'
+            creation_plan.modules: '- (Optional) A list of modules to be enabled on all deployments of this database. Either: RedisJSON or RediSearch. Don''t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.'
             creation_plan.quantity: '- (Required) The planned number of databases in the subscription.'
             creation_plan.region: '- (Required) Deployment region block, documented below'
-            creation_plan.region.days: '- A list of weekdays on which the window is open (''Monday'', ''Tuesday'' etc)'
-            creation_plan.region.duration_in_hours: '- How long the window is open (4-24 hours)'
-            creation_plan.region.mode: '- Either automatic (Redis specified) or manual (User specified)'
             creation_plan.region.networking_deployment_cidr: '- (Required) Deployment CIDR mask. The total number of bits must be 24 (x.x.x.x/24)'
             creation_plan.region.read_operations_per_second: '- (Required) Throughput measurement for an active-active subscription'
             creation_plan.region.region: '- (Required) Deployment region as defined by the cloud provider'
-            creation_plan.region.start_hour: '- What hour in the day (0-23) the window opens'
-            creation_plan.region.window: '- A list of windows (if manual mode)'
             creation_plan.region.write_operations_per_second: '- (Required) Throughput measurement for an active-active subscription'
+            customer_managed_key: '- (Optional) The customer managed keys (CMK) to use for this subscription. In an active-active subscription, you must set a key for each region.'
+            customer_managed_key.days: '- A list of weekdays on which the window is open (''Monday'', ''Tuesday'' etc)'
+            customer_managed_key.duration_in_hours: '- How long the window is open (4-24 hours)'
+            customer_managed_key.mode: '- Either automatic (Redis specified) or manual (User specified)'
+            customer_managed_key.region: '- Name of the region for the customer managed key as defined by the cloud provider.'
+            customer_managed_key.resource_name: '- Resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME'
+            customer_managed_key.start_hour: '- What hour in the day (0-23) the window opens'
+            customer_managed_key.window: '- A list of windows (if manual mode)'
+            customer_managed_key_aws_role_arn: '- The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy. Only set for AWS subscriptions with CMK enabled.'
+            customer_managed_key_deletion_grace_period: '- (Optional) The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.'
+            customer_managed_key_enabled: '- (Optional) Whether to enable the CMK flow.'
+            customer_managed_key_redis_service_account: '- Outputs the ID of the GCP service account associated with the subscription. Useful as part of the CMK flow for GCP subscriptions.'
             maintenance_windows: '- (Optional) The subscription''s maintenance window specification, documented below.'
             name: '- (Required) A meaningful name to identify the subscription'
-            payment_method: '(Optional) The payment method for the requested subscription, (either credit-card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: ''credit-card''. (Changes to) this attribute are ignored after creation.'
+            payment_method: '- (Optional) The payment method for the requested subscription, (either credit-card or marketplace).  Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: ''credit-card''. (Changes to) this attribute are ignored after creation.'
             payment_method_id: '- (Optional) A valid payment method pre-defined in the current account. This value is Optional for AWS/GCP Marketplace accounts, but Required for all other account types'
             priceCurrency: '- The price currency'
             pricePerUnit: '- Price per Unit.'
             pricePeriod: '- Price period. E.g. ''hour''.'
             pricing: '- A list of pricing objects, documented below'
+            public_endpoint_access: '- (Optional) Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.'
             quantity: '- Self-explanatory.'
             quantityMeasurement: '- Self-explanatory.'
-            redis_version: '- (Optional) The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.'
+            redis_version: '- (Optional) The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Deprecated: This attribute is deprecated on the subscription level. Please specify'
             region: '- Specify if the cost is associated with a particular region.'
+            resource_tags: '- (Optional) A string/string map of tags to assign to the cloud resources created by this subscription.'
             timeouts.create: '- (Defaults to 30 mins) Used when creating the subscription'
             timeouts.delete: '- (Defaults to 10 mins) Used when destroying the subscription'
             timeouts.update: '- (Defaults to 30 mins) Used when updating the subscription'
@@ -378,9 +472,6 @@ resources:
                     }
                   ],
                   "global_data_persistence": "aof-every-1-second",
-                  "global_modules": [
-                    "RedisJSON"
-                  ],
                   "global_password": "some-random-pass-2",
                   "global_source_ips": [
                     "192.168.0.0/16"
@@ -441,45 +532,53 @@ resources:
                       "payment_method_id": "${data.rediscloud_payment_method.card.id}"
                     }
         argumentDocs:
+            auto_minor_version_upgrade: '- (Optional) Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.'
+            client_ssl_certificate: '- (Optional) SSL certificate to authenticate user connections, conflicts with client_tls_certificates'
             client_tls_certificates: '- (Optional) A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate'
             data_eviction: '- (Optional) The data items eviction policy (either: ''allkeys-lru'', ''allkeys-lfu'', ''allkeys-random'', ''volatile-lru'', ''volatile-lfu'', ''volatile-random'', ''volatile-ttl'' or ''noeviction''. Default: ''volatile-lru'')'
             dataset_size_in_gb: is unset
             db_id: '- Identifier of the database created'
-            enable_tls: |-
-                - (Optional) Use TLS for authentication. Default: ‘false’
-                client_ssl_certificate - (Optional) SSL certificate to authenticate user connections, conflicts with client_tls_certificates
+            enable_tls: '- (Optional) Use TLS for authentication. Default: ‘false’'
             external_endpoint_for_oss_cluster_api: |-
                 - (Optional) Should use the external endpoint for open-source (OSS) Cluster API.
                 Can only be enabled if OSS Cluster API support is enabled. Default: 'false'
             global_alert: '- (Optional) A block defining Redis database alert of regions that don''t override global settings, documented below, can be specified multiple times. (either: ''dataset-size'', ''datasets-size'', ''throughput-higher-than'', ''throughput-lower-than'', ''latency'', ''syncsource-error'', ''syncsource-lag'' or ''connections-limit'')'
             global_data_persistence: '- (Optional) Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: ''none'''
-            global_modules: '- (Optional) A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.'
-            global_password: '- (Optional) Password to access the database of regions that don''t override global settings. If left empty, the password will be generated automatically'
-            global_resp_version: '- (Optional) Either ''resp2'' or ''resp3''. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.'
-            global_source_ips: '- (Optional) List of source IP addresses or subnet masks of regions that don''t override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [''192.168.10.0/32'', ''192.168.12.0/24''])'
-            memory_limit_in_gb: '- (Optional -  Required if ) Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of'
-            name: '- (Required) A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.'
+            global_enable_default_user: '- (Optional) When ''true'', enables connecting to the database with the ''default'' user across all regions. Default: ''true''. To disable, explicitly set to ''false'''
+            global_enable_passwordless: '- (Optional) When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false'
+            global_modules: '- (Optional) A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don''t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.'
+            global_password: '- (Optional) Password to access the database of regions that don''t override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true'
+            global_resp_version: '- (Optional) Either ''resp2'' or ''resp3''. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.'
+            global_source_ips: '- (Optional) List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don''t override this setting (example: [''192.168.10.0/32'', ''192.168.12.0/24'']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription''s public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)'
+            id: '- The ID of the subscription and database in the format {subscription_id}/{db_id}'
+            memory_limit_in_gb: '- (Optional - Required if ) Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of'
+            name: '- (Required) A meaningful name to identify the database (maximum 40 characters).'
             override_region: '- (Optional) Override region specific configuration, documented below'
+            override_region.enable_default_user: '- (Optional) Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting'
             override_region.name: '- (Required) Region name.'
             override_region.override_global_alert: '- (Optional) A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times'
             override_region.override_global_alert.name: '- (Required) Alert name'
             override_region.override_global_alert.value: '- (Required) Alert value'
             override_region.override_global_data_persistence: '- (Optional) Regional instance of an Active-Active database data persistence rate (in persistent storage)'
-            override_region.override_global_password: '- (Optional) If specified, this regional instance of an Active-Active database password will be used to access the database'
-            override_region.override_global_source_ips: '- (Optional)  List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [''192.168.10.0/32'', ''192.168.12.0/24''] )'
+            override_region.override_global_enable_passwordless: '- (Optional) When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set'
+            override_region.override_global_password: '- (Optional) If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true'
+            override_region.override_global_source_ips: '- (Optional) List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: [''192.168.10.0/32'', ''192.168.12.0/24'']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region'
             override_region.remote_backup: '- (Optional) Specifies the backup options for the database in this region, documented below'
             port: '- (Optional) TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.'
             private_endpoint: '- A map of which private endpoints can to access the database per region, uses region name as key.'
             public_endpoint: '- A map of which public endpoints can to access the database per region, uses region name as key.'
+            redis_version: '- (Optional) The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.'
+            redis_version_actual: '- The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true.'
             remote_backup.interval: '(Required) - Defines the interval between backups. Should be in the following format ''every-x-hours''. x is one of [24,12,6,4,2,1]. For example: ''every-4-hours'''
             remote_backup.storage_path: (Required) - Defines a URI representing the backup storage location
-            remote_backup.storage_type: (Required) - Defines the provider of the storage location
+            remote_backup.storage_type: '(Required) - Defines the provider of the storage location. Valid values: ''ftp'', ''aws-s3'', ''azure-blob-storage'', ''google-blob-storage'''
             remote_backup.time_utc: '(Optional) - Defines the hour automatic backups are made - only applicable when the interval is every-12-hours or every-24-hours. For example: ''14:00'''
             subscription_id: ': (Required) The ID of the Active-Active subscription to create the database in. Modifying this attribute will force creation of a new resource.'
             support_oss_cluster_api: '- (Optional) Support Redis open-source (OSS) Cluster API. Default: ‘false’'
             tags: '- (Optional) A string/string map of tags to associate with this database. Note that all keys and values must be lowercase.'
             timeouts.create: '- (Defaults to 30 mins) Used when creating the database'
             timeouts.delete: '- (Defaults to 10 mins) Used when destroying the database'
+            timeouts.read: '- (Defaults to 10 mins) Used when reading the database'
             timeouts.update: '- (Defaults to 30 mins) Used when updating the database'
         importStatements: []
     rediscloud_active_active_subscription_peering:
@@ -579,7 +678,6 @@ resources:
                           "local_write_operations_per_second": 2000
                         }
                       ],
-                      "local_resp_version": "resp2",
                       "networking_deployment_cidr": "10.0.1.0/24",
                       "region": "us-east-2"
                     }
@@ -611,29 +709,117 @@ resources:
         importStatements: []
     rediscloud_active_active_transit_gateway_attachment:
         subCategory: ""
-        description: Transit Gateway Attachment resource in the Redis Cloud Terraform provider.
+        description: Active-Active Transit Gateway Attachment resource in the Redis Cloud Terraform provider.
         name: rediscloud_active_active_transit_gateway_attachment
-        title: rediscloud_transit_gateway_attachment
+        title: rediscloud_active_active_transit_gateway_attachment
         examples:
             - name: attachment
               manifest: |-
                 {
                   "region_id": 1,
                   "subscription_id": "113492",
-                  "tgw_id": "${data.rediscloud_transit_gateway.gateway.tgw_id}"
+                  "tgw_id": "${data.rediscloud_active_active_transit_gateway.gateway.tgw_id}"
                 }
               references:
-                tgw_id: data.rediscloud_transit_gateway.gateway.tgw_id
+                tgw_id: data.rediscloud_active_active_transit_gateway.gateway.tgw_id
+              dependencies:
+                rediscloud_active_active_transit_gateway_route.route: |-
+                    {
+                      "cidrs": [
+                        "10.10.20.0/24"
+                      ],
+                      "depends_on": [
+                        "${aws_ec2_transit_gateway_vpc_attachment_accepter.example}"
+                      ],
+                      "region_id": 1,
+                      "subscription_id": "113492",
+                      "tgw_id": "${data.rediscloud_active_active_transit_gateway.gateway.tgw_id}"
+                    }
         argumentDocs:
             attachment_status: '- The status of the Subscription/Transit Gateway attachment, if established'
             attachment_uid: '- A unique identifier for the Subscription/Transit Gateway attachment, if established'
-            aws_account_id: '- The Transit Gateway''s AWS account id'
-            aws_tgw_uid: '- The id of the Transit Gateway as known to AWS'
-            cidrs: '- (Optional) A list of consumer Cidr blocks. May only be added once the Attachment has been accepted'
-            region_id: '- (Required) The id of the AWS region'
+            aws_account_id: '- The Transit Gateway''s AWS account ID'
+            aws_tgw_uid: '- The ID of the Transit Gateway as known to AWS'
+            cidrs: '- (Optional) A list of consumer CIDR blocks. It is recommended to use the rediscloud_active_active_transit_gateway_route resource instead for managing CIDRs.'
+            region_id: '- (Required) The ID of the AWS region'
             status: '- The status of the Transit Gateway'
-            subscription_id: '- (Required) The id of the Pro/Flexible subscription to attach'
-            tgw_id: '- (Required) The id of the Transit Gateway to attach to'
+            subscription_id: '- (Required) The ID of the Active-Active subscription to attach'
+            tgw_id: '- (Required) The ID of the Transit Gateway to attach to'
+        importStatements: []
+    rediscloud_active_active_transit_gateway_invitation_acceptor:
+        subCategory: ""
+        description: Active-Active Transit Gateway Invitation Acceptor resource in the Redis Cloud Terraform provider.
+        name: rediscloud_active_active_transit_gateway_invitation_acceptor
+        title: rediscloud_active_active_transit_gateway_invitation_acceptor
+        examples:
+            - name: example
+              manifest: |-
+                {
+                  "action": "accept",
+                  "region_id": 1,
+                  "subscription_id": "${rediscloud_active_active_subscription.example.id}",
+                  "tgw_invitation_id": "${data.rediscloud_active_active_transit_gateway_invitations.example.invitations[0].id}"
+                }
+              references:
+                subscription_id: rediscloud_active_active_subscription.example.id
+                tgw_invitation_id: data.rediscloud_active_active_transit_gateway_invitations.example.invitations[0].id
+        argumentDocs:
+            action: '- (Required) Accept or reject the invitation. Accepted values are accept and reject.'
+            aws_account_id: '- The AWS account ID that shared the Transit Gateway'
+            name: '- The name of the resource share'
+            region_id: '- (Required) The ID of the region within the Active-Active subscription. Modifying this attribute will force creation of a new resource.'
+            resource_share_uid: '- The AWS Resource Share ARN'
+            shared_date: '- The date the resource was shared'
+            status: '- The status of the invitation'
+            subscription_id: '- (Required) The ID of the Active-Active subscription. Modifying this attribute will force creation of a new resource.'
+            tgw_invitation_id: '- (Required) The ID of the Transit Gateway invitation to accept or reject. Modifying this attribute will force creation of a new resource.'
+        importStatements: []
+    rediscloud_active_active_transit_gateway_route:
+        subCategory: ""
+        description: Active-Active Transit Gateway Route resource in the Redis Cloud Terraform provider.
+        name: rediscloud_active_active_transit_gateway_route
+        title: rediscloud_active_active_transit_gateway_route
+        examples:
+            - name: example
+              manifest: |-
+                {
+                  "cidrs": [
+                    "10.10.20.0/24",
+                    "10.10.30.0/24"
+                  ],
+                  "depends_on": [
+                    "${aws_ec2_transit_gateway_vpc_attachment_accepter.example}"
+                  ],
+                  "region_id": 1,
+                  "subscription_id": "${rediscloud_active_active_subscription.example.id}",
+                  "tgw_id": "${data.rediscloud_active_active_transit_gateway.example.tgw_id}"
+                }
+              references:
+                subscription_id: rediscloud_active_active_subscription.example.id
+                tgw_id: data.rediscloud_active_active_transit_gateway.example.tgw_id
+              dependencies:
+                aws_ec2_transit_gateway_vpc_attachment_accepter.example: |-
+                    {
+                      "transit_gateway_attachment_id": "${rediscloud_active_active_transit_gateway_attachment.example.attachment_uid}"
+                    }
+                rediscloud_active_active_transit_gateway_attachment.example: |-
+                    {
+                      "region_id": 1,
+                      "subscription_id": "${rediscloud_active_active_subscription.example.id}",
+                      "tgw_id": "${data.rediscloud_active_active_transit_gateway.example.tgw_id}"
+                    }
+                rediscloud_active_active_transit_gateway_invitation_acceptor.example: |-
+                    {
+                      "action": "accept",
+                      "region_id": 1,
+                      "subscription_id": "${rediscloud_active_active_subscription.example.id}",
+                      "tgw_invitation_id": "${data.rediscloud_active_active_transit_gateway_invitations.example.invitations[0].id}"
+                    }
+        argumentDocs:
+            cidrs: '- (Required) A list of consumer CIDR blocks'
+            region_id: '- (Required) The ID of the AWS region'
+            subscription_id: '- (Required) The ID of the Active-Active subscription'
+            tgw_id: '- (Required) The ID of the Transit Gateway'
         importStatements: []
     rediscloud_cloud_account:
         subCategory: ""
@@ -712,13 +898,15 @@ resources:
             enable_tls: '- (Optional) Only used with Pay-As-You-Go databases. Use TLS for authentication. Default false.'
             external_endpoint_for_oss_cluster_api: '- (Optional) Only used with Pay-As-You-Go databases. Should use the external endpoint for open-source (OSS) Cluster API. Default false.'
             memory_limit_in_gb: '- (Optional) Only used with Pay-As-You-Go databases. Maximum memory usage for the database.'
-            modules: '- (Optional) A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.'
+            modules: '- (Optional) A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.'
             name: '- (Required) A meaningful name to identify the database.'
             password: '- (Optional) Password to access the database. If not specified, a random 32 character long alphanumeric password will be automatically generated.'
             periodic_backup_path: '- (Optional) If specified, automatic backups will be every 24 hours and immediate backups to this path will be allowed upon request.'
             private_endpoint: '- Private endpoint to access the database.'
             protocol: '- (Optional) Database protocol. ''stack'' is a suite of all Redis'' data modules. Default: ''stack''. Either: ''redis'', ''memcached'' or ''stack''. ''redis'' is only used with Pay-As-You-Go databases.'
             public_endpoint: '- Public endpoint to access the database.'
+            redis_version: '- (Optional) Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.'
+            redis_version_actual: '- The Redis version of the database. Can differ from redis_version if a minor version upgrade has been automatically applied.'
             redis_version_compliance: '- The compliance Redis version of the database.'
             regex_rules: '- (Optional) Only used with Pay-As-You-Go databases. Shard regex rules. Relevant only for a sharded database.'
             region: '- The region within the Cloud Provider where this database is hosted.'
@@ -759,6 +947,94 @@ resources:
             timeouts.create: '- (Defaults to 30 mins) Used when creating the subscription'
             timeouts.delete: '- (Defaults to 10 mins) Used when destroying the subscription'
             timeouts.update: '- (Defaults to 30 mins) Used when updating the subscription'
+        importStatements: []
+    rediscloud_private_link:
+        subCategory: ""
+        description: PrivateLink resource for Pro Subscription in the Redis Cloud Terraform provider.
+        name: rediscloud_private_link
+        title: rediscloud_private_link
+        examples:
+            - name: private_link
+              manifest: |-
+                {
+                  "principal": [
+                    {
+                      "principal": "123456789012",
+                      "principal_alias": "principal 1",
+                      "principal_type": "aws_account"
+                    },
+                    {
+                      "principal": "123456789013",
+                      "principal_alias": "principal 2",
+                      "principal_type": "aws_account"
+                    }
+                  ],
+                  "share_name": "${local.rediscloud_private_link_share_name}",
+                  "subscription_id": "${rediscloud_subscription.subscription.id}"
+                }
+              references:
+                share_name: local.rediscloud_private_link_share_name
+                subscription_id: rediscloud_subscription.subscription.id
+              dependencies:
+                rediscloud_subscription.subscription: |-
+                    {
+                      "cloud_provider": [
+                        {
+                          "cloud_account_id": "${data.rediscloud_cloud_account.account.id}",
+                          "provider": "${data.rediscloud_cloud_account.account.provider_type}",
+                          "region": [
+                            {
+                              "networking_deployment_cidr": "10.0.0.0/24",
+                              "preferred_availability_zones": [
+                                "euw1-az1"
+                              ],
+                              "region": "eu-west-1"
+                            }
+                          ]
+                        }
+                      ],
+                      "creation_plan": [
+                        {
+                          "dataset_size_in_gb": 15,
+                          "quantity": 1,
+                          "replication": true,
+                          "throughput_measurement_by": "operations-per-second",
+                          "throughput_measurement_value": 20000
+                        }
+                      ],
+                      "name": "${local.rediscloud_subscription_name}",
+                      "payment_method_id": "${data.rediscloud_payment_method.card.id}"
+                    }
+                rediscloud_subscription_database.database: |-
+                    {
+                      "data_persistence": "aof-every-1-second",
+                      "dataset_size_in_gb": 15,
+                      "name": "my-database",
+                      "replication": true,
+                      "subscription_id": "${rediscloud_subscription.subscription.id}",
+                      "throughput_measurement_by": "operations-per-second",
+                      "throughput_measurement_value": 20000
+                    }
+        argumentDocs:
+            association_date: '- Date the connection was associated.'
+            association_id: '- Association ID of the PrivateLink connection.'
+            connection_id: '- Connection ID of the PrivateLink connection'
+            connection_type: '- Type of the PrivateLink connection.'
+            connections: '- List of connections associated with the PrivateLink.'
+            database_id: '- ID of the database.'
+            databases: '- List of databases associated with the PrivateLink.'
+            owner_id: '- Owner ID of the connection.'
+            port: '- The port which the database is available on.'
+            principal: '- (Required) The principal(s) attached to the PrivateLink.'
+            principal.principal: '- (Required) The principal to be added to this PrivateLink. The format depends upon the type of principal you wish to attach.'
+            principal.principal_alias: '- The friendly name to refer to the principal.'
+            principal.principal_type: '- (Required) The principal type. Can be one of: aws_account, organization, organization_unit, iam_role, iam_user, service_principal.'
+            resource_configuration_arn: '- ARN of the resource configuration to attach to this PrivateLink'
+            resource_configuration_id: '- ID of the resource configuration to attach to this PrivateLink'
+            resource_link_endpoint: '- The resource link endpoint for the database.'
+            share_arn: '- Share ARN of this PrivateLink.'
+            share_name: '- (Required) The share name of the PrivateLink.'
+            subscription_id: '- (Required) The ID of the Pro Subscription to attach the PrivateLink to. Modifying this attribute will force creation of a new resource.'
         importStatements: []
     rediscloud_private_service_connect:
         subCategory: ""
@@ -918,15 +1194,16 @@ resources:
                           ],
                           "region": "eu-west-1"
                         }
-                      ]
+                      ],
+                      "resource_tags": {
+                        "environment": "production",
+                        "team": "platform"
+                      }
                     }
                   ],
                   "creation_plan": [
                     {
                       "dataset_size_in_gb": 15,
-                      "modules": [
-                        "RedisJSON"
-                      ],
                       "quantity": 1,
                       "replication": true,
                       "throughput_measurement_by": "operations-per-second",
@@ -948,11 +1225,9 @@ resources:
                       ]
                     }
                   ],
-                  "memory_storage": "ram",
                   "name": "subscription-name",
                   "payment_method": "credit-card",
-                  "payment_method_id": "${data.rediscloud_payment_method.card.id}",
-                  "redis_version": "7.2"
+                  "payment_method_id": "${data.rediscloud_payment_method.card.id}"
                 }
               references:
                 cloud_provider.provider: data.rediscloud_cloud_account.account.provider_type
@@ -962,36 +1237,49 @@ resources:
             allowlist.cidrs: '- (Optional) Set of CIDR ranges that are allowed to access the databases associated with this subscription'
             allowlist.security_group_ids: '- (Required) Set of security groups that are allowed to access the databases associated with this subscription'
             cloud_provider: '- (Required) A cloud provider object, documented below. Modifying this attribute will force creation of a new resource.'
+            cloud_provider.aws_account_id: '- AWS account ID that the subscription is deployed in (AWS subscriptions only).'
             cloud_provider.cloud_account_id: |-
                 - (Optional) Cloud account identifier. Default: Redis Labs internal cloud account. Modifying this attribute will force creation of a new resource.
                 (using Cloud Account ID = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created
                 only with Redis Labs internal cloud account
             cloud_provider.provider: '- (Optional) The cloud provider to use with the subscription, (either AWS or GCP). Default: ‘AWS’. Modifying this attribute will force creation of a new resource.'
             cloud_provider.region: '- (Required) A region object, documented below. Modifying this attribute will force creation of a new resource.'
+            cloud_provider.resource_tags: '- (Optional) A string/string map of tags to associate with this subscription''s cloud resources.'
             creation_plan: '- (Required) A creation plan object, documented below.'
             creation_plan.average_item_size_in_bytes: |-
                 - (Optional) Relevant only to ram-and-flash clusters
                 Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-                be the maximum average item size defined in one of your databases.  Default: 1000
+                be the maximum average item size defined in one of your databases.  Default: 1000.
+                Deprecated: This attribute is deprecated. Configure
             creation_plan.dataset_size_in_gb: instead
             creation_plan.memory_limit_in_gb: '- (Required) Maximum memory usage that will be used for your largest planned database. You can not set both dataset_size_in_gb and memory_limit_in_gb. Deprecated: Use'
-            creation_plan.modules: |-
-                - (Optional) a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-                Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+            creation_plan.modules: '- (Optional) a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.'
             creation_plan.quantity: '- (Required) The planned number of databases in the subscription'
+            creation_plan.query_performance_factor: '- (Optional) The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.'
+            creation_plan.ram_percentage: instead. This attribute will be removed in the next major version of the provider.
             creation_plan.replication: '- (Optional) Databases replication. Default: ‘true’'
             creation_plan.support_oss_cluster_api: '- (Optional) Support Redis open-source (OSS) Cluster API. Default: ‘false’'
             creation_plan.throughput_measurement_by: '- (Required) Throughput measurement method that will be used by your databases. Either number-of-shards or operations-per-second. number-of-shards is deprecated and only supported for legacy deployments.'
             creation_plan.throughput_measurement_value: '- (Required) Throughput value that will be used by your databases (as applies to selected measurement method). The value needs to be the maximum throughput measurement value defined in one of your databases'
+            customer_managed_key: '- (Optional) The customer managed keys (CMK) to use for this subscription.'
+            customer_managed_key.days: '- A list of weekdays on which the window is open (''Monday'', ''Tuesday'' etc)'
+            customer_managed_key.duration_in_hours: '- How long the window is open (4-24 hours)'
+            customer_managed_key.mode: '- Either automatic (Redis specified) or manual (User specified)'
+            customer_managed_key.resource_name: '- The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME'
+            customer_managed_key.start_hour: '- What hour in the day (0-23) the window opens'
+            customer_managed_key.window: '- A list of windows (if manual mode)'
+            customer_managed_key_aws_role_arn: '- The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy. Only set for AWS subscriptions with CMK enabled.'
+            customer_managed_key_deletion_grace_period: '- (Optional) The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.'
+            customer_managed_key_enabled: '- (Optional) Whether to enable the customer managed encryption key flow.'
+            customer_managed_key_redis_service_account: '- Outputs the ID of the GCP service account associated with the subscription. Useful as part of the CMK flow for GCP subscriptions.'
             maintenance_windows: '- (Optional) The subscription''s maintenance window specification, documented below.'
             memory_storage: '- (Optional) Memory storage preference: either ‘ram’ or a combination of ‘ram-and-flash’. Default: ‘ram’. Modifying this attribute will force creation of a new resource.'
             name: '- (Required) A meaningful name to identify the subscription'
-            payment_method: '(Optional) The payment method for the requested subscription, (either credit-card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: ''credit-card''. (Changes to) this attribute are ignored after creation.'
+            payment_method: '(Optional) The payment method for the requested subscription, (either credit-card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: ''credit-card''. (Changes to) this attribute are ignored after creation.'
             payment_method_id: '- (Optional) A valid payment method pre-defined in the current account. Only Required when payment_method is credit-card.'
-            redis_version: '- (Optional) The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.'
-            region.days: '- A list of weekdays on which the window is open (''Monday'', ''Tuesday'' etc)'
-            region.duration_in_hours: '- How long the window is open (4-24 hours)'
-            region.mode: '- Either automatic (Redis specified) or manual (User specified)'
+            prometheus_endpoint: '- The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.'
+            public_endpoint_access: '- (Optional) Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.'
+            redis_version: '- (Optional) The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify'
             region.multiple_availability_zones: '- (Optional) Support deployment on multiple availability zones within the selected region. Default: ‘false’. Modifying this attribute will force creation of a new resource.'
             region.networking_deployment_cidr: '- (Required) Deployment CIDR mask. The total number of bits must be 24 (x.x.x.x/24). Modifying this attribute will force creation of a new resource.'
             region.networking_vpc_id: |-
@@ -1011,8 +1299,6 @@ resources:
             region.networks.typeDetails: '- Further detail E.g. ''micro''.'
             region.preferred_availability_zones: '- (Optional) Availability zones deployment preferences (for the selected provider & region). If multiple_availability_zones is set to ''true'', select three availability zones from the list. If you don''t want to specify preferred availability zones, set this attribute to an empty list (''[]''). Modifying this attribute will force creation of a new resource.'
             region.region: '- (Required) Deployment region as defined by cloud provider. Modifying this attribute will force creation of a new resource.'
-            region.start_hour: '- What hour in the day (0-23) the window opens'
-            region.window: '- A list of windows (if manual mode)'
             timeouts.create: '- (Defaults to 30 mins) Used when creating the subscription'
             timeouts.delete: '- (Defaults to 10 mins) Used when destroying the subscription'
             timeouts.update: '- (Defaults to 30 mins) Used when updating the subscription'
@@ -1034,11 +1320,6 @@ resources:
                   ],
                   "data_persistence": "aof-every-write",
                   "dataset_size_in_gb": 15,
-                  "modules": [
-                    {
-                      "name": "RedisJSON"
-                    }
-                  ],
                   "name": "database-name",
                   "replication": true,
                   "subscription_id": "${rediscloud_subscription.subscription-resource.id}",
@@ -1073,16 +1354,12 @@ resources:
                       "creation_plan": [
                         {
                           "dataset_size_in_gb": 15,
-                          "modules": [
-                            "RedisJSON"
-                          ],
                           "quantity": 1,
                           "replication": true,
                           "throughput_measurement_by": "operations-per-second",
                           "throughput_measurement_value": 20000
                         }
                       ],
-                      "memory_storage": "ram",
                       "name": "subscription-name",
                       "payment_method": "credit-card",
                       "payment_method_id": "${data.rediscloud_payment_method.card.id}"
@@ -1091,9 +1368,11 @@ resources:
             alert: '- (Optional) A block defining Redis database alert, documented below, can be specified multiple times'
             alert.name: '(Required) - Alert name. (either: ''dataset-size'', ''datasets-size'', ''throughput-higher-than'', ''throughput-lower-than'', ''latency'', ''syncsource-error'', ''syncsource-lag'' or ''connections-limit'')'
             alert.value: (Required) - Alert value
+            auto_minor_version_upgrade: '- (Optional) Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.'
             average_item_size_in_bytes: |-
                 - (Optional) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-                of the items stored in the database. Default: 1000
+                of the items stored in the database. Default: 1000.
+                Deprecated: This attribute is deprecated. Configure
             client_ssl_certificate: '- (Optional) SSL certificate to authenticate user connections, conflicts with client_tls_certificates'
             client_tls_certificates: '- (Optional) A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate'
             data_eviction: '- (Optional) The data items eviction policy (either: ''allkeys-lru'', ''allkeys-lfu'', ''allkeys-random'', ''volatile-lru'', ''volatile-lfu'', ''volatile-random'', ''volatile-ttl'' or ''noeviction''). Default: ''volatile-lru'''
@@ -1101,6 +1380,7 @@ resources:
             dataset_size_in_gb: is unset
             db_id: '- Identifier of the database created'
             enable_default_user: (Optional) When true enables connecting to the database with the default user. Default true.
+            enable_passwordless: '- (Optional) When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false'
             enable_tls: '- (Optional) Use TLS for authentication. Default: ‘false’'
             external_endpoint_for_oss_cluster_api: |-
                 - (Optional) Should use the external endpoint for open-source (OSS) Cluster API.
@@ -1110,14 +1390,18 @@ resources:
                 the documentation on clustering for more information on the
                 hashing policy. This cannot be set when support_oss_cluster_api is set to true.
             memory_limit_in_gb: '- (Optional -  Required if ) Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of'
-            modules: '- (Optional) A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.'
+            modules: '- (Optional) A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.'
             name: '- (Required) A meaningful name to identify the database'
-            password: '- (Optional) Password to access the database. If omitted, a random 32 character long alphanumeric password will be automatically generated'
+            password: '- (Optional) Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true'
             periodic_backup_path: '- (Optional) Path that will be used to store database backup files. Deprecated: Use'
             port: '- (Optional) TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.'
             private_endpoint: '- Private endpoint to access the database'
             protocol: '- (Optional) The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.'
             public_endpoint: '- Public endpoint to access the database'
+            query_performance_factor: '- (Optional) The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.'
+            ram_percentage: instead. This attribute will be removed in the next major version of the provider.
+            redis_version: '- (Optional) The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.'
+            redis_version_actual: '- The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true'
             remote_backup: block instead
             remote_backup.interval: '(Required) - Defines the interval between backups. Should be in the following format ''every-x-hours''. x is one of [24,12,6,4,2,1]. For example: ''every-4-hours'''
             remote_backup.storage_path: (Required) - Defines a URI representing the backup storage location
@@ -1125,11 +1409,10 @@ resources:
             remote_backup.time_utc: '(Optional) - Defines the hour automatic backups are made - only applicable when the interval is every-12-hours or every-24-hours. For example: ''14:00'''
             replica_of: |-
                 - (Optional) Set of Redis database URIs, in the format redis://user:password@host:port, that this
-                database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-                Cannot be enabled when support_oss_cluster_api is enabled.
+                database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
             replication: '- (Optional) Databases replication. Default: ‘true’'
             resp_version: '- (Optional) Either resp2 or resp3. Database''s RESP version. Must be compatible with the Redis version.'
-            source_ips: '- (Optional) List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])'
+            source_ips: '- (Optional) List of source IP addresses or subnet masks that are allowed to connect to the database (example: [''192.168.10.0/32'', ''192.168.12.0/24'']). When not specified, the default behavior depends on the subscription''s public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)'
             subscription_id: '- (Required) The ID of the subscription to create the database in. Modifying this attribute will force creation of a new resource.'
             support_oss_cluster_api: '- (Optional) Support Redis open-source (OSS) Cluster API. Default: ‘false’'
             tags: '- (Optional) A string/string map of Tags to associate with this database. Note that all keys and values must be lowercase.'
@@ -1215,13 +1498,94 @@ resources:
                 }
               references:
                 tgw_id: data.rediscloud_transit_gateway.gateway.tgw_id
+              dependencies:
+                rediscloud_transit_gateway_route.route: |-
+                    {
+                      "cidrs": [
+                        "10.10.20.0/24"
+                      ],
+                      "depends_on": [
+                        "${aws_ec2_transit_gateway_vpc_attachment_accepter.example}"
+                      ],
+                      "subscription_id": "113491",
+                      "tgw_id": "${data.rediscloud_transit_gateway.gateway.tgw_id}"
+                    }
         argumentDocs:
             attachment_status: '- The status of the Subscription/Transit Gateway attachment, if established'
             attachment_uid: '- A unique identifier for the Subscription/Transit Gateway attachment, if established'
-            aws_account_id: '- The Transit Gateway''s AWS account id'
-            aws_tgw_uid: '- The id of the Transit Gateway as known to AWS'
-            cidrs: '- (Optional) A list of consumer Cidr blocks. May only be added once the Attachment has been accepted'
+            aws_account_id: '- The Transit Gateway''s AWS account ID'
+            aws_tgw_uid: '- The ID of the Transit Gateway as known to AWS'
+            cidrs: '- (Optional) A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.'
             status: '- The status of the Transit Gateway'
-            subscription_id: '- (Required) The id of the Pro/Flexible subscription to attach'
-            tgw_id: '- (Required) The id of the Transit Gateway to attach to'
+            subscription_id: '- (Required) The ID of the Pro subscription to attach'
+            tgw_id: '- (Required) The ID of the Transit Gateway to attach to'
+        importStatements: []
+    rediscloud_transit_gateway_invitation_acceptor:
+        subCategory: ""
+        description: Transit Gateway Invitation Acceptor resource for a Pro Subscription in the Redis Cloud Terraform provider.
+        name: rediscloud_transit_gateway_invitation_acceptor
+        title: rediscloud_transit_gateway_invitation_acceptor
+        examples:
+            - name: example
+              manifest: |-
+                {
+                  "action": "accept",
+                  "subscription_id": "${rediscloud_subscription.example.id}",
+                  "tgw_invitation_id": "${data.rediscloud_transit_gateway_invitations.example.invitations[0].id}"
+                }
+              references:
+                subscription_id: rediscloud_subscription.example.id
+                tgw_invitation_id: data.rediscloud_transit_gateway_invitations.example.invitations[0].id
+        argumentDocs:
+            action: '- (Required) Accept or reject the invitation. Accepted values are accept and reject.'
+            aws_account_id: '- The AWS account ID that shared the Transit Gateway'
+            name: '- The name of the resource share'
+            resource_share_uid: '- The AWS Resource Share ARN'
+            shared_date: '- The date the resource was shared'
+            status: '- The status of the invitation'
+            subscription_id: '- (Required) The ID of the Pro subscription. Modifying this attribute will force creation of a new resource.'
+            tgw_invitation_id: '- (Required) The ID of the Transit Gateway invitation to accept or reject. Modifying this attribute will force creation of a new resource.'
+        importStatements: []
+    rediscloud_transit_gateway_route:
+        subCategory: ""
+        description: Transit Gateway Route resource in the Redis Cloud Terraform provider.
+        name: rediscloud_transit_gateway_route
+        title: rediscloud_transit_gateway_route
+        examples:
+            - name: example
+              manifest: |-
+                {
+                  "cidrs": [
+                    "10.10.20.0/24",
+                    "10.10.30.0/24"
+                  ],
+                  "depends_on": [
+                    "${aws_ec2_transit_gateway_vpc_attachment_accepter.example}"
+                  ],
+                  "subscription_id": "${rediscloud_subscription.example.id}",
+                  "tgw_id": "${data.rediscloud_transit_gateway.example.tgw_id}"
+                }
+              references:
+                subscription_id: rediscloud_subscription.example.id
+                tgw_id: data.rediscloud_transit_gateway.example.tgw_id
+              dependencies:
+                aws_ec2_transit_gateway_vpc_attachment_accepter.example: |-
+                    {
+                      "transit_gateway_attachment_id": "${rediscloud_transit_gateway_attachment.example.attachment_uid}"
+                    }
+                rediscloud_transit_gateway_attachment.example: |-
+                    {
+                      "subscription_id": "${rediscloud_subscription.example.id}",
+                      "tgw_id": "${data.rediscloud_transit_gateway.example.tgw_id}"
+                    }
+                rediscloud_transit_gateway_invitation_acceptor.example: |-
+                    {
+                      "action": "accept",
+                      "subscription_id": "${rediscloud_subscription.example.id}",
+                      "tgw_invitation_id": "${data.rediscloud_transit_gateway_invitations.example.invitations[0].id}"
+                    }
+        argumentDocs:
+            cidrs: '- (Required) A list of consumer CIDR blocks'
+            subscription_id: '- (Required) The ID of the Pro subscription'
+            tgw_id: '- (Required) The ID of the Transit Gateway'
         importStatements: []

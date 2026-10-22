@@ -8,6 +8,66 @@ package v1alpha1
 
 import xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 
+// GetCondition of this ActivePrivateLink.
+func (mg *ActivePrivateLink) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+	return mg.Status.GetCondition(ct)
+}
+
+// GetDeletionPolicy of this ActivePrivateLink.
+func (mg *ActivePrivateLink) GetDeletionPolicy() xpv1.DeletionPolicy {
+	return mg.Spec.DeletionPolicy
+}
+
+// GetManagementPolicies of this ActivePrivateLink.
+func (mg *ActivePrivateLink) GetManagementPolicies() xpv1.ManagementPolicies {
+	return mg.Spec.ManagementPolicies
+}
+
+// GetProviderConfigReference of this ActivePrivateLink.
+func (mg *ActivePrivateLink) GetProviderConfigReference() *xpv1.Reference {
+	return mg.Spec.ProviderConfigReference
+}
+
+// GetPublishConnectionDetailsTo of this ActivePrivateLink.
+func (mg *ActivePrivateLink) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
+	return mg.Spec.PublishConnectionDetailsTo
+}
+
+// GetWriteConnectionSecretToReference of this ActivePrivateLink.
+func (mg *ActivePrivateLink) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+	return mg.Spec.WriteConnectionSecretToReference
+}
+
+// SetConditions of this ActivePrivateLink.
+func (mg *ActivePrivateLink) SetConditions(c ...xpv1.Condition) {
+	mg.Status.SetConditions(c...)
+}
+
+// SetDeletionPolicy of this ActivePrivateLink.
+func (mg *ActivePrivateLink) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+	mg.Spec.DeletionPolicy = r
+}
+
+// SetManagementPolicies of this ActivePrivateLink.
+func (mg *ActivePrivateLink) SetManagementPolicies(r xpv1.ManagementPolicies) {
+	mg.Spec.ManagementPolicies = r
+}
+
+// SetProviderConfigReference of this ActivePrivateLink.
+func (mg *ActivePrivateLink) SetProviderConfigReference(r *xpv1.Reference) {
+	mg.Spec.ProviderConfigReference = r
+}
+
+// SetPublishConnectionDetailsTo of this ActivePrivateLink.
+func (mg *ActivePrivateLink) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
+	mg.Spec.PublishConnectionDetailsTo = r
+}
+
+// SetWriteConnectionSecretToReference of this ActivePrivateLink.
+func (mg *ActivePrivateLink) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+	mg.Spec.WriteConnectionSecretToReference = r
+}
+
 // GetCondition of this ActivePrivateServiceConnect.
 func (mg *ActivePrivateServiceConnect) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
 	return mg.Status.GetCondition(ct)
@@ -485,5 +545,125 @@ func (mg *ActiveTransitGatewayAttachment) SetPublishConnectionDetailsTo(r *xpv1.
 
 // SetWriteConnectionSecretToReference of this ActiveTransitGatewayAttachment.
 func (mg *ActiveTransitGatewayAttachment) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+	mg.Spec.WriteConnectionSecretToReference = r
+}
+
+// GetCondition of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+	return mg.Status.GetCondition(ct)
+}
+
+// GetDeletionPolicy of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetDeletionPolicy() xpv1.DeletionPolicy {
+	return mg.Spec.DeletionPolicy
+}
+
+// GetManagementPolicies of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetManagementPolicies() xpv1.ManagementPolicies {
+	return mg.Spec.ManagementPolicies
+}
+
+// GetProviderConfigReference of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetProviderConfigReference() *xpv1.Reference {
+	return mg.Spec.ProviderConfigReference
+}
+
+// GetPublishConnectionDetailsTo of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
+	return mg.Spec.PublishConnectionDetailsTo
+}
+
+// GetWriteConnectionSecretToReference of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+	return mg.Spec.WriteConnectionSecretToReference
+}
+
+// SetConditions of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetConditions(c ...xpv1.Condition) {
+	mg.Status.SetConditions(c...)
+}
+
+// SetDeletionPolicy of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+	mg.Spec.DeletionPolicy = r
+}
+
+// SetManagementPolicies of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetManagementPolicies(r xpv1.ManagementPolicies) {
+	mg.Spec.ManagementPolicies = r
+}
+
+// SetProviderConfigReference of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetProviderConfigReference(r *xpv1.Reference) {
+	mg.Spec.ProviderConfigReference = r
+}
+
+// SetPublishConnectionDetailsTo of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
+	mg.Spec.PublishConnectionDetailsTo = r
+}
+
+// SetWriteConnectionSecretToReference of this ActiveTransitGatewayInvitationAcceptor.
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+	mg.Spec.WriteConnectionSecretToReference = r
+}
+
+// GetCondition of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+	return mg.Status.GetCondition(ct)
+}
+
+// GetDeletionPolicy of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) GetDeletionPolicy() xpv1.DeletionPolicy {
+	return mg.Spec.DeletionPolicy
+}
+
+// GetManagementPolicies of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) GetManagementPolicies() xpv1.ManagementPolicies {
+	return mg.Spec.ManagementPolicies
+}
+
+// GetProviderConfigReference of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) GetProviderConfigReference() *xpv1.Reference {
+	return mg.Spec.ProviderConfigReference
+}
+
+// GetPublishConnectionDetailsTo of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
+	return mg.Spec.PublishConnectionDetailsTo
+}
+
+// GetWriteConnectionSecretToReference of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+	return mg.Spec.WriteConnectionSecretToReference
+}
+
+// SetConditions of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) SetConditions(c ...xpv1.Condition) {
+	mg.Status.SetConditions(c...)
+}
+
+// SetDeletionPolicy of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+	mg.Spec.DeletionPolicy = r
+}
+
+// SetManagementPolicies of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) SetManagementPolicies(r xpv1.ManagementPolicies) {
+	mg.Spec.ManagementPolicies = r
+}
+
+// SetProviderConfigReference of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) SetProviderConfigReference(r *xpv1.Reference) {
+	mg.Spec.ProviderConfigReference = r
+}
+
+// SetPublishConnectionDetailsTo of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
+	mg.Spec.PublishConnectionDetailsTo = r
+}
+
+// SetWriteConnectionSecretToReference of this ActiveTransitGatewayRoute.
+func (mg *ActiveTransitGatewayRoute) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }

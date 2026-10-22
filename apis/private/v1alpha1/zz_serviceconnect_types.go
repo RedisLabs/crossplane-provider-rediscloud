@@ -17,7 +17,16 @@ type ServiceConnectInitParameters struct {
 
 	// The ID of the Pro subscription to attach Modifying this attribute will force creation of a new resource.
 	// The ID of the Pro subscription to attach
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1.Subscription
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ServiceConnectObservation struct {
@@ -36,8 +45,17 @@ type ServiceConnectParameters struct {
 
 	// The ID of the Pro subscription to attach Modifying this attribute will force creation of a new resource.
 	// The ID of the Pro subscription to attach
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1.Subscription
 	// +kubebuilder:validation:Optional
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 // ServiceConnectSpec defines the desired state of ServiceConnect
@@ -76,9 +94,8 @@ type ServiceConnectStatus struct {
 type ServiceConnect struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.subscriptionId) || (has(self.initProvider) && has(self.initProvider.subscriptionId))",message="spec.forProvider.subscriptionId is a required parameter"
-	Spec   ServiceConnectSpec   `json:"spec"`
-	Status ServiceConnectStatus `json:"status,omitempty"`
+	Spec              ServiceConnectSpec   `json:"spec"`
+	Status            ServiceConnectStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

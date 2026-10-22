@@ -25,7 +25,16 @@ type ActiveSubscriptionRegionsInitParameters struct {
 
 	// ID of the subscription that the regions belong to. Modifying this attribute will force creation of a new resource.
 	// ID of the subscription that the regions belong to
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1.ActiveSubscription
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ActiveSubscriptionRegionsObservation struct {
@@ -59,8 +68,17 @@ type ActiveSubscriptionRegionsParameters struct {
 
 	// ID of the subscription that the regions belong to. Modifying this attribute will force creation of a new resource.
 	// ID of the subscription that the regions belong to
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1.ActiveSubscription
 	// +kubebuilder:validation:Optional
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ActiveSubscriptionRegionsRegionInitParameters struct {
@@ -243,7 +261,6 @@ type ActiveSubscriptionRegions struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.region) || (has(self.initProvider) && has(self.initProvider.region))",message="spec.forProvider.region is a required parameter"
-	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.subscriptionId) || (has(self.initProvider) && has(self.initProvider.subscriptionId))",message="spec.forProvider.subscriptionId is a required parameter"
 	Spec   ActiveSubscriptionRegionsSpec   `json:"spec"`
 	Status ActiveSubscriptionRegionsStatus `json:"status,omitempty"`
 }

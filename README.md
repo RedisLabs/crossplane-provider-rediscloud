@@ -5,6 +5,8 @@ is built using [Upjet](https://github.com/crossplane/upjet) code
 generation tools and exposes XRM-conformant managed resources for the
 RedisCloud API.
 
+Repository vocabulary is in [GLOSSARY.md](GLOSSARY.md).
+
 ## Overview
 
 This provider enables management of RedisCloud resources through Kubernetes Custom Resources. It includes support for:
@@ -27,23 +29,12 @@ This provider enables management of RedisCloud resources through Kubernetes Cust
 
 ### Installation
 
-Install the provider by using the following command after changing the image tag
-to the [latest release](https://marketplace.upbound.io/providers/RedisLabs/provider-rediscloud):
+This provider has no published package. Do not install
+`xpkg.crossplane.io/RedisLabs/provider-rediscloud:v0.1.0`. That image does not
+exist. Build from this repository with the Developing steps below, then load
+the image into the cluster you use for testing.
 
-```bash
-kubectl crossplane install provider xpkg.crossplane.io/RedisLabs/provider-rediscloud:v0.1.0
-```
-
-Alternatively, you can use declarative installation:
-
-```yaml
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: provider-rediscloud
-spec:
-  package: xpkg.crossplane.io/RedisLabs/provider-rediscloud:v0.1.0
-```
+Managed resources are `v1alpha1`. `ProviderConfig` is `v1beta1`.
 
 ### Configuration
 
@@ -53,6 +44,7 @@ spec:
 kubectl create secret generic rediscloud-creds \
   --namespace crossplane-system \
   --from-literal=credentials='{"api_key":"YOUR_API_KEY","secret_key":"YOUR_SECRET_KEY"}'
+# Optional third JSON field, only for a non-default API endpoint: "url"
 ```
 
 2. Create a ProviderConfig:

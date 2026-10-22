@@ -1,0 +1,10 @@
+apiVersion: active.redis.io/v1alpha1
+kind: ActiveTransitGatewayInvitationAcceptor
+metadata:
+  name: example-active-transit-gateway-invitation-acceptor
+spec:
+  forProvider:
+    subscriptionIdRef:
+      name: example-active-subscription
+  providerConfigRef:
+    name: default

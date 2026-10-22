@@ -37,7 +37,16 @@ type PeeringInitParameters struct {
 
 	// A valid subscription predefined in the current account. Modifying this attribute will force creation of a new resource.
 	// A valid subscription predefined in the current account
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1.Subscription
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// CIDR range of the VPC to be peered. Either this or vpc_cidrs must be specified. Modifying this attribute will force creation of a new resource.
 	// CIDR range of the VPC to be peered
@@ -144,8 +153,17 @@ type PeeringParameters struct {
 
 	// A valid subscription predefined in the current account. Modifying this attribute will force creation of a new resource.
 	// A valid subscription predefined in the current account
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1.Subscription
 	// +kubebuilder:validation:Optional
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// CIDR range of the VPC to be peered. Either this or vpc_cidrs must be specified. Modifying this attribute will force creation of a new resource.
 	// CIDR range of the VPC to be peered
@@ -200,9 +218,8 @@ type PeeringStatus struct {
 type Peering struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.subscriptionId) || (has(self.initProvider) && has(self.initProvider.subscriptionId))",message="spec.forProvider.subscriptionId is a required parameter"
-	Spec   PeeringSpec   `json:"spec"`
-	Status PeeringStatus `json:"status,omitempty"`
+	Spec              PeeringSpec   `json:"spec"`
+	Status            PeeringStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

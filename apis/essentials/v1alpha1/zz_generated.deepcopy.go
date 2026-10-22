@@ -203,6 +203,11 @@ func (in *DatabaseInitParameters) DeepCopyInto(out *DatabaseInitParameters) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.RedisVersion != nil {
+		in, out := &in.RedisVersion, &out.RedisVersion
+		*out = new(string)
+		**out = **in
+	}
 	if in.RegexRules != nil {
 		in, out := &in.RegexRules, &out.RegexRules
 		*out = make([]*string, len(*in))
@@ -425,6 +430,16 @@ func (in *DatabaseObservation) DeepCopyInto(out *DatabaseObservation) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.RedisVersion != nil {
+		in, out := &in.RedisVersion, &out.RedisVersion
+		*out = new(string)
+		**out = **in
+	}
+	if in.RedisVersionActual != nil {
+		in, out := &in.RedisVersionActual, &out.RedisVersionActual
+		*out = new(string)
+		**out = **in
+	}
 	if in.RedisVersionCompliance != nil {
 		in, out := &in.RedisVersionCompliance, &out.RedisVersionCompliance
 		*out = new(string)
@@ -597,6 +612,11 @@ func (in *DatabaseParameters) DeepCopyInto(out *DatabaseParameters) {
 	}
 	if in.Protocol != nil {
 		in, out := &in.Protocol, &out.Protocol
+		*out = new(string)
+		**out = **in
+	}
+	if in.RedisVersion != nil {
+		in, out := &in.RedisVersion, &out.RedisVersion
 		*out = new(string)
 		**out = **in
 	}

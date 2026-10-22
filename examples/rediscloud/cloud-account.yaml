@@ -4,27 +4,18 @@ metadata:
   name: example-cloud-account
 spec:
   forProvider:
-    accessKeyIdSecretRef:
-      name: aws-credentials
-      namespace: default
-      key: access-key-id
+    accessKeyId: example-access-key-id
     accessSecretKeySecretRef:
       name: aws-credentials
       namespace: default
       key: secret-access-key
-    consoleUsernameSecretRef:
-      name: aws-credentials
-      namespace: default
-      key: console-username
+    consoleUsername: example-console-user
     consolePasswordSecretRef:
       name: aws-credentials
       namespace: default
       key: console-password
     name: my-aws-account
-    provider: AWS
-    signInLoginUrlSecretRef:
-      name: aws-credentials
-      namespace: default
-      key: sign-in-login-url
+    providerType: AWS
+    signInLoginUrl: https://console.aws.amazon.com
   providerConfigRef:
     name: default

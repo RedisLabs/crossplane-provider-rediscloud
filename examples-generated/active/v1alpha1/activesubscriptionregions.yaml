@@ -22,7 +22,8 @@ spec:
         databaseName: database-name
         localReadOperationsPerSecond: 4000
         localWriteOperationsPerSecond: 2000
-      localRespVersion: resp2
       networkingDeploymentCidr: 10.0.1.0/24
       region: us-east-2
-    subscriptionId: ${rediscloud_active_active_subscription.subscription-resource.id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription-resource

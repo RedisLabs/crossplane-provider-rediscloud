@@ -8,7 +8,9 @@ metadata:
   name: service
 spec:
   forProvider:
-    subscriptionId: ${rediscloud_subscription.subscription.id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription
 
 ---
 

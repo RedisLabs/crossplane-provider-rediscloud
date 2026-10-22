@@ -34,6 +34,10 @@ RUN unzip /tmp/terraform_${TERRAFORM_VERSION}_${TARGETOS}_${TARGETARCH}.zip -d /
   && chmod +x /usr/local/bin/terraform \
   && rm /tmp/terraform_${TERRAFORM_VERSION}_${TARGETOS}_${TARGETARCH}.zip \
   && unzip /tmp/${TERRAFORM_PROVIDER_DOWNLOAD_NAME}_${TERRAFORM_PROVIDER_VERSION}_${TARGETOS}_${TARGETARCH}.zip -d ${PLUGIN_DIR} \
+  && if [ ! -e ${PLUGIN_DIR}/${TERRAFORM_NATIVE_PROVIDER_BINARY} ]; then \
+       cp ${PLUGIN_DIR}/${TERRAFORM_PROVIDER_DOWNLOAD_NAME}_v${TERRAFORM_PROVIDER_VERSION} \
+         ${PLUGIN_DIR}/${TERRAFORM_NATIVE_PROVIDER_BINARY}; \
+     fi \
   && chmod +x ${PLUGIN_DIR}/* \
   && rm /tmp/${TERRAFORM_PROVIDER_DOWNLOAD_NAME}_${TERRAFORM_PROVIDER_VERSION}_${TARGETOS}_${TARGETARCH}.zip \
   && chown -R ${USER_ID}:${USER_ID} /terraform

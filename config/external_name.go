@@ -16,11 +16,14 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 	"rediscloud_acl_user": config.IdentifierFromProvider,
 
 	// Active-Active Resources
+	"rediscloud_active_active_private_link":                              config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription":                              config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription_database":                     config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription_peering":                      config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription_regions":                      config.IdentifierFromProvider,
 	"rediscloud_active_active_transit_gateway_attachment":                config.IdentifierFromProvider,
+	"rediscloud_active_active_transit_gateway_invitation_acceptor":       config.IdentifierFromProvider,
+	"rediscloud_active_active_transit_gateway_route":                     config.IdentifierFromProvider,
 	"rediscloud_active_active_private_service_connect":                   config.IdentifierFromProvider,
 	"rediscloud_active_active_private_service_connect_endpoint":          config.IdentifierFromProvider,
 	"rediscloud_active_active_private_service_connect_endpoint_accepter": config.IdentifierFromProvider,
@@ -31,6 +34,9 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 	// Essentials Resources
 	"rediscloud_essentials_database":     config.IdentifierFromProvider,
 	"rediscloud_essentials_subscription": config.IdentifierFromProvider,
+
+	// PrivateLink Resources
+	"rediscloud_private_link": config.IdentifierFromProvider,
 
 	// Private Service Connect Resources
 	"rediscloud_private_service_connect":                   config.IdentifierFromProvider,
@@ -43,12 +49,13 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 	"rediscloud_subscription_peering":  config.IdentifierFromProvider,
 
 	// Transit Gateway Resources
-	"rediscloud_transit_gateway_attachment": config.IdentifierFromProvider,
+	"rediscloud_transit_gateway_attachment":          config.IdentifierFromProvider,
+	"rediscloud_transit_gateway_invitation_acceptor": config.IdentifierFromProvider,
+	"rediscloud_transit_gateway_route":               config.IdentifierFromProvider,
 }
 
-// ExternalNameConfigurations applies all external name configs listed in the
-// table ExternalNameConfigs and sets the version of those resources to v1beta1
-// assuming they will be tested.
+// ExternalNameConfigurations applies the external name configs listed in
+// ExternalNameConfigs. Managed resources stay at v1alpha1.
 func ExternalNameConfigurations() config.ResourceOption {
 	return func(r *config.Resource) {
 		if e, ok := ExternalNameConfigs[r.Name]; ok {

@@ -15,12 +15,15 @@ import (
 
 type ActiveSubscriptionDatabaseInitParameters struct {
 
-	// SSL certificate to authenticate user connections.
-	ClientSSLCertificate *string `json:"clientSslCertificate,omitempty" tf:"client_ssl_certificate,omitempty"`
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+	AutoMinorVersionUpgrade *bool `json:"autoMinorVersionUpgrade,omitempty" tf:"auto_minor_version_upgrade,omitempty"`
 
-	// A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
-	// TLS certificates to authenticate user connections
-	ClientTLSCertificates []*string `json:"clientTlsCertificates,omitempty" tf:"client_tls_certificates,omitempty"`
+	// SSL certificate to authenticate user connections, conflicts with client_tls_certificates
+	// SSL certificate to authenticate user connections.
+	ClientSSLCertificateSecretRef *v1.SecretKeySelector `json:"clientSslCertificateSecretRef,omitempty" tf:"-"`
+
+	ClientTLSCertificatesSecretRef *[]v1.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`
 
 	// The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
 	// Data eviction items policy
@@ -31,7 +34,6 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 	DatasetSizeInGb *float64 `json:"datasetSizeInGb,omitempty" tf:"dataset_size_in_gb,omitempty"`
 
 	// Use TLS for authentication. Default: ‘false’
-	// client_ssl_certificate -  SSL certificate to authenticate user connections, conflicts with client_tls_certificates
 	// Use TLS for authentication.
 	EnableTLS *bool `json:"enableTls,omitempty" tf:"enable_tls,omitempty"`
 
@@ -48,19 +50,27 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 	// Rate of database data persistence (in persistent storage)
 	GlobalDataPersistence *string `json:"globalDataPersistence,omitempty" tf:"global_data_persistence,omitempty"`
 
-	// A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.
+	// When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+	// When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+	GlobalEnableDefaultUser *bool `json:"globalEnableDefaultUser,omitempty" tf:"global_enable_default_user,omitempty"`
+
+	// When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+	// When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+	GlobalEnablePasswordless *bool `json:"globalEnablePasswordless,omitempty" tf:"global_enable_passwordless,omitempty"`
+
+	// A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
 	// List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
 	GlobalModules []*string `json:"globalModules,omitempty" tf:"global_modules,omitempty"`
 
-	// Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically
-	// Password used to access the database. If left empty, the password will be generated automatically
+	// Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
+	// Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
 	GlobalPasswordSecretRef *v1.SecretKeySelector `json:"globalPasswordSecretRef,omitempty" tf:"-"`
 
-	// Either 'resp2' or 'resp3'. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.
+	// Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
 	// The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
 	GlobalRespVersion *string `json:"globalRespVersion,omitempty" tf:"global_resp_version,omitempty"`
 
-	// List of source IP addresses or subnet masks of regions that don't override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'])
+	// List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
 	// Set of CIDR addresses to allow access to the database
 	// +listType=set
 	GlobalSourceIps []*string `json:"globalSourceIps,omitempty" tf:"global_source_ips,omitempty"`
@@ -69,7 +79,7 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 	// (Deprecated) Maximum memory usage for this specific database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.
+	// A meaningful name to identify the database (maximum 40 characters).
 	// A meaningful name to identify the database
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
@@ -80,6 +90,10 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 	// TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.
 	// TCP port on which the database is available
 	Port *float64 `json:"port,omitempty" tf:"port,omitempty"`
+
+	// The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
 
 	// Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
 	// Identifier of the subscription
@@ -97,12 +111,9 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 
 type ActiveSubscriptionDatabaseObservation struct {
 
-	// SSL certificate to authenticate user connections.
-	ClientSSLCertificate *string `json:"clientSslCertificate,omitempty" tf:"client_ssl_certificate,omitempty"`
-
-	// A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
-	// TLS certificates to authenticate user connections
-	ClientTLSCertificates []*string `json:"clientTlsCertificates,omitempty" tf:"client_tls_certificates,omitempty"`
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+	AutoMinorVersionUpgrade *bool `json:"autoMinorVersionUpgrade,omitempty" tf:"auto_minor_version_upgrade,omitempty"`
 
 	// Identifier of the database created
 	// Identifier of the database created
@@ -117,7 +128,6 @@ type ActiveSubscriptionDatabaseObservation struct {
 	DatasetSizeInGb *float64 `json:"datasetSizeInGb,omitempty" tf:"dataset_size_in_gb,omitempty"`
 
 	// Use TLS for authentication. Default: ‘false’
-	// client_ssl_certificate -  SSL certificate to authenticate user connections, conflicts with client_tls_certificates
 	// Use TLS for authentication.
 	EnableTLS *bool `json:"enableTls,omitempty" tf:"enable_tls,omitempty"`
 
@@ -134,26 +144,35 @@ type ActiveSubscriptionDatabaseObservation struct {
 	// Rate of database data persistence (in persistent storage)
 	GlobalDataPersistence *string `json:"globalDataPersistence,omitempty" tf:"global_data_persistence,omitempty"`
 
-	// A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.
+	// When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+	// When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+	GlobalEnableDefaultUser *bool `json:"globalEnableDefaultUser,omitempty" tf:"global_enable_default_user,omitempty"`
+
+	// When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+	// When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+	GlobalEnablePasswordless *bool `json:"globalEnablePasswordless,omitempty" tf:"global_enable_passwordless,omitempty"`
+
+	// A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
 	// List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
 	GlobalModules []*string `json:"globalModules,omitempty" tf:"global_modules,omitempty"`
 
-	// Either 'resp2' or 'resp3'. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.
+	// Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
 	// The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
 	GlobalRespVersion *string `json:"globalRespVersion,omitempty" tf:"global_resp_version,omitempty"`
 
-	// List of source IP addresses or subnet masks of regions that don't override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'])
+	// List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
 	// Set of CIDR addresses to allow access to the database
 	// +listType=set
 	GlobalSourceIps []*string `json:"globalSourceIps,omitempty" tf:"global_source_ips,omitempty"`
 
+	// The ID of the subscription and database in the format {subscription_id}/{db_id}
 	ID *string `json:"id,omitempty" tf:"id,omitempty"`
 
 	// Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of
 	// (Deprecated) Maximum memory usage for this specific database
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.
+	// A meaningful name to identify the database (maximum 40 characters).
 	// A meaningful name to identify the database
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
@@ -166,14 +185,22 @@ type ActiveSubscriptionDatabaseObservation struct {
 	Port *float64 `json:"port,omitempty" tf:"port,omitempty"`
 
 	// A map of which private endpoints can to access the database per region, uses region name as key.
-	// Region public and private endpoints to access the database
+	// Region private endpoints to access the database
 	// +mapType=granular
 	PrivateEndpoint map[string]*string `json:"privateEndpoint,omitempty" tf:"private_endpoint,omitempty"`
 
 	// A map of which public endpoints can to access the database per region, uses region name as key.
-	// Region public and private endpoints to access the database
+	// Region public endpoints to access the database
 	// +mapType=granular
 	PublicEndpoint map[string]*string `json:"publicEndpoint,omitempty" tf:"public_endpoint,omitempty"`
+
+	// The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
+
+	// The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true.
+	// The actual Redis database version
+	RedisVersionActual *string `json:"redisVersionActual,omitempty" tf:"redis_version_actual,omitempty"`
 
 	// Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
 	// Identifier of the subscription
@@ -191,14 +218,20 @@ type ActiveSubscriptionDatabaseObservation struct {
 
 type ActiveSubscriptionDatabaseParameters struct {
 
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+	// Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+	// +kubebuilder:validation:Optional
+	AutoMinorVersionUpgrade *bool `json:"autoMinorVersionUpgrade,omitempty" tf:"auto_minor_version_upgrade,omitempty"`
+
+	// SSL certificate to authenticate user connections, conflicts with client_tls_certificates
 	// SSL certificate to authenticate user connections.
 	// +kubebuilder:validation:Optional
-	ClientSSLCertificate *string `json:"clientSslCertificate,omitempty" tf:"client_ssl_certificate,omitempty"`
+	ClientSSLCertificateSecretRef *v1.SecretKeySelector `json:"clientSslCertificateSecretRef,omitempty" tf:"-"`
 
 	// A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
 	// TLS certificates to authenticate user connections
 	// +kubebuilder:validation:Optional
-	ClientTLSCertificates []*string `json:"clientTlsCertificates,omitempty" tf:"client_tls_certificates,omitempty"`
+	ClientTLSCertificatesSecretRef *[]v1.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`
 
 	// The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
 	// Data eviction items policy
@@ -211,7 +244,6 @@ type ActiveSubscriptionDatabaseParameters struct {
 	DatasetSizeInGb *float64 `json:"datasetSizeInGb,omitempty" tf:"dataset_size_in_gb,omitempty"`
 
 	// Use TLS for authentication. Default: ‘false’
-	// client_ssl_certificate -  SSL certificate to authenticate user connections, conflicts with client_tls_certificates
 	// Use TLS for authentication.
 	// +kubebuilder:validation:Optional
 	EnableTLS *bool `json:"enableTls,omitempty" tf:"enable_tls,omitempty"`
@@ -232,22 +264,32 @@ type ActiveSubscriptionDatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	GlobalDataPersistence *string `json:"globalDataPersistence,omitempty" tf:"global_data_persistence,omitempty"`
 
-	// A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.
+	// When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+	// When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+	// +kubebuilder:validation:Optional
+	GlobalEnableDefaultUser *bool `json:"globalEnableDefaultUser,omitempty" tf:"global_enable_default_user,omitempty"`
+
+	// When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+	// When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+	// +kubebuilder:validation:Optional
+	GlobalEnablePasswordless *bool `json:"globalEnablePasswordless,omitempty" tf:"global_enable_passwordless,omitempty"`
+
+	// A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
 	// List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
 	// +kubebuilder:validation:Optional
 	GlobalModules []*string `json:"globalModules,omitempty" tf:"global_modules,omitempty"`
 
-	// Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically
-	// Password used to access the database. If left empty, the password will be generated automatically
+	// Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
+	// Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
 	// +kubebuilder:validation:Optional
 	GlobalPasswordSecretRef *v1.SecretKeySelector `json:"globalPasswordSecretRef,omitempty" tf:"-"`
 
-	// Either 'resp2' or 'resp3'. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.
+	// Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
 	// The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
 	// +kubebuilder:validation:Optional
 	GlobalRespVersion *string `json:"globalRespVersion,omitempty" tf:"global_resp_version,omitempty"`
 
-	// List of source IP addresses or subnet masks of regions that don't override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'])
+	// List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
 	// Set of CIDR addresses to allow access to the database
 	// +kubebuilder:validation:Optional
 	// +listType=set
@@ -258,7 +300,7 @@ type ActiveSubscriptionDatabaseParameters struct {
 	// +kubebuilder:validation:Optional
 	MemoryLimitInGb *float64 `json:"memoryLimitInGb,omitempty" tf:"memory_limit_in_gb,omitempty"`
 
-	// A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.
+	// A meaningful name to identify the database (maximum 40 characters).
 	// A meaningful name to identify the database
 	// +kubebuilder:validation:Optional
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
@@ -272,6 +314,11 @@ type ActiveSubscriptionDatabaseParameters struct {
 	// TCP port on which the database is available
 	// +kubebuilder:validation:Optional
 	Port *float64 `json:"port,omitempty" tf:"port,omitempty"`
+
+	// The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+	// Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+	// +kubebuilder:validation:Optional
+	RedisVersion *string `json:"redisVersion,omitempty" tf:"redis_version,omitempty"`
 
 	// Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
 	// Identifier of the subscription
@@ -362,23 +409,31 @@ type OverrideGlobalAlertParameters struct {
 
 type OverrideRegionInitParameters struct {
 
+	// Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+	// When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
+
 	// Region name.
 	// Region name
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
 	// A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
-	// Set of alerts to enable on the database
+	// Set of alerts to enable on the database in this region
 	OverrideGlobalAlert []OverrideGlobalAlertInitParameters `json:"overrideGlobalAlert,omitempty" tf:"override_global_alert,omitempty"`
 
 	// Regional instance of an Active-Active database data persistence rate (in persistent storage)
 	// Rate of database data persistence (in persistent storage)
 	OverrideGlobalDataPersistence *string `json:"overrideGlobalDataPersistence,omitempty" tf:"override_global_data_persistence,omitempty"`
 
-	// If specified, this regional instance of an Active-Active database password will be used to access the database
+	// When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+	// When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+	OverrideGlobalEnablePasswordless *bool `json:"overrideGlobalEnablePasswordless,omitempty" tf:"override_global_enable_passwordless,omitempty"`
+
+	// If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
 	// Password used to access the database. If left empty, the password will be generated automatically
 	OverrideGlobalPasswordSecretRef *v1.SecretKeySelector `json:"overrideGlobalPasswordSecretRef,omitempty" tf:"-"`
 
-	// List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'] )
+	// List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
 	// Set of CIDR addresses to allow access to the database
 	// +listType=set
 	OverrideGlobalSourceIps []*string `json:"overrideGlobalSourceIps,omitempty" tf:"override_global_source_ips,omitempty"`
@@ -390,19 +445,27 @@ type OverrideRegionInitParameters struct {
 
 type OverrideRegionObservation struct {
 
+	// Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+	// When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
+
 	// Region name.
 	// Region name
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
 
 	// A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
-	// Set of alerts to enable on the database
+	// Set of alerts to enable on the database in this region
 	OverrideGlobalAlert []OverrideGlobalAlertObservation `json:"overrideGlobalAlert,omitempty" tf:"override_global_alert,omitempty"`
 
 	// Regional instance of an Active-Active database data persistence rate (in persistent storage)
 	// Rate of database data persistence (in persistent storage)
 	OverrideGlobalDataPersistence *string `json:"overrideGlobalDataPersistence,omitempty" tf:"override_global_data_persistence,omitempty"`
 
-	// List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'] )
+	// When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+	// When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+	OverrideGlobalEnablePasswordless *bool `json:"overrideGlobalEnablePasswordless,omitempty" tf:"override_global_enable_passwordless,omitempty"`
+
+	// List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
 	// Set of CIDR addresses to allow access to the database
 	// +listType=set
 	OverrideGlobalSourceIps []*string `json:"overrideGlobalSourceIps,omitempty" tf:"override_global_source_ips,omitempty"`
@@ -414,13 +477,18 @@ type OverrideRegionObservation struct {
 
 type OverrideRegionParameters struct {
 
+	// Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+	// When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+	// +kubebuilder:validation:Optional
+	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
+
 	// Region name.
 	// Region name
 	// +kubebuilder:validation:Optional
 	Name *string `json:"name" tf:"name,omitempty"`
 
 	// A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
-	// Set of alerts to enable on the database
+	// Set of alerts to enable on the database in this region
 	// +kubebuilder:validation:Optional
 	OverrideGlobalAlert []OverrideGlobalAlertParameters `json:"overrideGlobalAlert,omitempty" tf:"override_global_alert,omitempty"`
 
@@ -429,12 +497,17 @@ type OverrideRegionParameters struct {
 	// +kubebuilder:validation:Optional
 	OverrideGlobalDataPersistence *string `json:"overrideGlobalDataPersistence,omitempty" tf:"override_global_data_persistence,omitempty"`
 
-	// If specified, this regional instance of an Active-Active database password will be used to access the database
+	// When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+	// When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+	// +kubebuilder:validation:Optional
+	OverrideGlobalEnablePasswordless *bool `json:"overrideGlobalEnablePasswordless,omitempty" tf:"override_global_enable_passwordless,omitempty"`
+
+	// If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
 	// Password used to access the database. If left empty, the password will be generated automatically
 	// +kubebuilder:validation:Optional
 	OverrideGlobalPasswordSecretRef *v1.SecretKeySelector `json:"overrideGlobalPasswordSecretRef,omitempty" tf:"-"`
 
-	// List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'] )
+	// List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
 	// Set of CIDR addresses to allow access to the database
 	// +kubebuilder:validation:Optional
 	// +listType=set
@@ -456,7 +529,7 @@ type RemoteBackupInitParameters struct {
 	// Defines a URI representing the backup storage location
 	StoragePath *string `json:"storagePath,omitempty" tf:"storage_path,omitempty"`
 
-	// Defines the provider of the storage location
+	// Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
 	// Defines the provider of the storage location
 	StorageType *string `json:"storageType,omitempty" tf:"storage_type,omitempty"`
 
@@ -475,7 +548,7 @@ type RemoteBackupObservation struct {
 	// Defines a URI representing the backup storage location
 	StoragePath *string `json:"storagePath,omitempty" tf:"storage_path,omitempty"`
 
-	// Defines the provider of the storage location
+	// Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
 	// Defines the provider of the storage location
 	StorageType *string `json:"storageType,omitempty" tf:"storage_type,omitempty"`
 
@@ -496,7 +569,7 @@ type RemoteBackupParameters struct {
 	// +kubebuilder:validation:Optional
 	StoragePath *string `json:"storagePath" tf:"storage_path,omitempty"`
 
-	// Defines the provider of the storage location
+	// Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
 	// Defines the provider of the storage location
 	// +kubebuilder:validation:Optional
 	StorageType *string `json:"storageType" tf:"storage_type,omitempty"`
