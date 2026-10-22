@@ -7,7 +7,6 @@ package lookup
 import (
 	"context"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -77,7 +76,7 @@ func listPlans(ctx context.Context, api *rediscloud.Client, spec lookupv1alpha1.
 		return api.FixedPlanSubscriptions.List(ctx, id)
 	}
 	if spec.CloudProvider != nil && *spec.CloudProvider != "" {
-		return api.FixedPlans.ListWithProvider(ctx, strings.ToUpper(*spec.CloudProvider))
+		return api.FixedPlans.ListWithProvider(ctx, lookup.CanonicalProvider(*spec.CloudProvider))
 	}
 	return api.FixedPlans.List(ctx)
 }
@@ -98,7 +97,7 @@ func planQuery(spec lookupv1alpha1.EssentialsPlanParameters) lookup.EssentialsPl
 		Name:                   deref(spec.Name),
 		Size:                   deref(spec.Size),
 		SizeMeasurementUnit:    deref(spec.SizeMeasurementUnit),
-		CloudProvider:          deref(spec.CloudProvider),
+		CloudProvider:          lookup.CanonicalProvider(deref(spec.CloudProvider)),
 		Region:                 deref(spec.Region),
 		Availability:           deref(spec.Availability),
 		SupportDataPersistence: spec.SupportDataPersistence,

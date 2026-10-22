@@ -30,6 +30,21 @@ func TestMatchEssentialsPlan(t *testing.T) {
 		t.Fatalf("id = %d", redisPlanID(got))
 	}
 
+	azure := plan(3, "1GB", 1, "GB", "Azure", "eastus", "No replication", false)
+	got, err = MatchEssentialsPlan([]*plans.GetPlanResponse{azure}, EssentialsPlanQuery{
+		CloudProvider: "azure",
+		Region:        "eastus",
+	})
+	if err != nil {
+		t.Fatalf("azure: %v", err)
+	}
+	if redisPlanID(got) != 3 {
+		t.Fatalf("azure id = %d", redisPlanID(got))
+	}
+	if CanonicalProvider("AZURE") != "Azure" || CanonicalProvider("gcp") != "GCP" {
+		t.Fatal("provider canonical form")
+	}
+
 	_, err = MatchEssentialsPlan(plansList, EssentialsPlanQuery{Name: "small"})
 	if !errors.Is(err, ErrMany) {
 		t.Fatalf("many: %v", err)

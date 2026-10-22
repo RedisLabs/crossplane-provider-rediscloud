@@ -7,10 +7,26 @@ package lookup
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/RedisLabs/rediscloud-go-api/redis"
 	"github.com/RedisLabs/rediscloud-go-api/service/fixed/plans"
 )
+
+// CanonicalProvider maps AWS, GCP, and Azure to the values the Redis Cloud
+// API returns. Other providers are returned trimmed, so a typo stays visible.
+func CanonicalProvider(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "aws":
+		return "AWS"
+	case "gcp":
+		return "GCP"
+	case "azure":
+		return "Azure"
+	default:
+		return strings.TrimSpace(value)
+	}
+}
 
 // EssentialsPlanQuery is the filter for one Essentials plan.
 type EssentialsPlanQuery struct {
@@ -66,7 +82,7 @@ func MatchEssentialsPlan(list []*plans.GetPlanResponse, query EssentialsPlanQuer
 		if query.SizeMeasurementUnit != "" && redis.StringValue(plan.SizeMeasurementUnit) != query.SizeMeasurementUnit {
 			continue
 		}
-		if query.CloudProvider != "" && redis.StringValue(plan.Provider) != query.CloudProvider {
+		if query.CloudProvider != "" && !strings.EqualFold(redis.StringValue(plan.Provider), query.CloudProvider) {
 			continue
 		}
 		if query.Region != "" && redis.StringValue(plan.Region) != query.Region {

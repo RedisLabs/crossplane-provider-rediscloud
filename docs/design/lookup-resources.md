@@ -42,7 +42,7 @@ A successful reconcile sets Ready and Synced. Zero matches or more than one matc
 | `EssentialsPlan` | `id`, `name`, `size`, `sizeMeasurementUnit`, `cloudProvider`, `region`, `availability`, `supportDataPersistence`, `supportReplication`, `subscriptionId` | the matching plan, including `id` |
 | `Regions` | `providerName` (`AWS` or `GCP`), optional `name` | `regions[]` with `regionId`, `name`, `providerName` |
 
-`PaymentMethod` and `EssentialsPlan` require exactly one match, as the Terraform data sources do. `Regions` returns every region that passes the filter.
+`PaymentMethod` and `EssentialsPlan` require exactly one match, as the Terraform data sources do. `Regions` returns every region that passes the filter. `cloudProvider` accepts `AWS`, `GCP`, and `Azure` in any case. The API call uses `AWS`, `GCP`, or `Azure`, and the match ignores case.
 
 Pro and Active-Active `paymentMethodId` are strings. This change does not add `paymentMethodIdRef`. The author copies `status.atProvider.id` onto the subscription. Essentials `planId` and Essentials `paymentMethodId` are numbers, so those stay hand copies too.
 
