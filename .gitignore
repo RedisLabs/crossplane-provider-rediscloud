@@ -22,6 +22,8 @@ devenv.local.nix
 
 # Testing
 .kube/
+__pycache__/
+*.pyc
 
 # Internal review. Names, tickets, and customer notes in this file stay local.
 /CROSSPLANE-REDISCLOUD-HANDOFF.md
