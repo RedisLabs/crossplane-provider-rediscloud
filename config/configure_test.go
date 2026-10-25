@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestSubscriptionReferences(t *testing.T) {
 	t.Parallel()
@@ -55,4 +59,49 @@ func TestDatabaseConnectionDetails(t *testing.T) {
 	if _, ok := got["private_endpoint"]; ok {
 		t.Fatal("empty private endpoint should be omitted")
 	}
+}
+
+func TestActiveActiveDatabaseConnectionDetails(t *testing.T) {
+	t.Parallel()
+	got := connectionDetailsFromJSON(t, `{
+		"public_endpoint": {"us-east-1": "redis-east.example:12000", "eu-west-1": ""},
+		"private_endpoint": {"us-east-1": "redis-east.internal:12000", "eu-west-1": null},
+		"port": 12000,
+		"password": "do-not-copy"
+	}`)
+	want := map[string]string{
+		"public_endpoint.us-east-1":  "redis-east.example:12000",
+		"private_endpoint.us-east-1": "redis-east.internal:12000",
+		"port":                       "12000",
+	}
+	for key, value := range want {
+		if string(got[key]) != value {
+			t.Fatalf("%s = %s", key, got[key])
+		}
+	}
+	for _, key := range []string{"public_endpoint", "public_endpoint.eu-west-1", "private_endpoint.eu-west-1", "password"} {
+		if _, ok := got[key]; ok {
+			t.Fatalf("unexpected key %s", key)
+		}
+	}
+
+	_, err := databaseConnectionDetails(map[string]any{
+		"public_endpoint": map[string]any{"us-east-1": map[string]any{"host": "nope"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported type") {
+		t.Fatalf("nested endpoint: %v", err)
+	}
+}
+
+func connectionDetailsFromJSON(t *testing.T, raw string) map[string][]byte {
+	t.Helper()
+	var attr map[string]any
+	if err := json.Unmarshal([]byte(raw), &attr); err != nil {
+		t.Fatal(err)
+	}
+	got, err := databaseConnectionDetails(attr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }
