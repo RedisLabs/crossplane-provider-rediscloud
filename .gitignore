@@ -10,6 +10,12 @@ cover.out
 .vscode/
 .idea/
 
+# Local agent settings.
+.claude/
+
+# Local credentials. Real keys stay in .envrc.local.
+.envrc.local
+
 # Devenv
 .devenv*
 devenv.local.nix
@@ -22,6 +28,9 @@ devenv.local.nix
 
 # Testing
 .kube/
+kubeconfig
+cluster/test/processed-examples/
+cluster/test/datasource.yaml
 __pycache__/
 *.pyc
 

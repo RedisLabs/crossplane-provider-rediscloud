@@ -17,8 +17,6 @@ The main CI pipeline runs on every push to main/release branches and on pull req
 - **check-examples**: Validates example manifests against CRDs
 - **publish-artifacts**: Builds and publishes provider artifacts
 
-All resource-intensive jobs include disk cleanup for optimal performance.
-
 ### End-to-End Testing (`.github/workflows/uptest-trigger.yaml`)
 
 Triggered via PR comments with `/test-examples="<path>"`:
@@ -45,11 +43,9 @@ Automatically manages stale issues and PRs:
 
 ### Unit Tests
 
-Unit tests are located throughout the codebase in `*_test.go` files:
-
-- `config/provider_test.go`: Tests provider configuration
-- `config/external_name_test.go`: Tests external name configuration
-- `internal/clients/rediscloud_test.go`: Tests client setup
+Unit tests live in `*_test.go` files. The provider configuration tests are in
+`config/`. The lookup tests are in `internal/lookup/` and
+`internal/controller/lookup/`.
 
 Run unit tests:
 ```bash
@@ -75,14 +71,22 @@ Requirements:
 
 ### End-to-End Tests
 
-Run e2e tests with uptest:
+`make e2e` creates the Redis Cloud resources listed in `UPTEST_EXAMPLE_LIST`.
+The main CI workflow leaves that run to a `/test-examples` comment, which
+needs the `UPTEST_CLOUD_CREDENTIALS` repository secret.
+
 ```bash
-make e2e
+UPTEST_EXAMPLE_LIST="examples/rediscloud/acl-rule.yaml" make e2e
 ```
 
 Required environment variables:
 - `UPTEST_EXAMPLE_LIST`: Comma-separated list of example files
-- `UPTEST_CLOUD_CREDENTIALS`: Cloud provider credentials
+- `UPTEST_CLOUD_CREDENTIALS`: Provider credential JSON (`api_key`, `secret_key`, optional `url`)
+
+A Pro subscription example needs a payment method id, and an Essentials
+subscription example needs a plan id. Apply the lookup manifests under
+`examples/lookup/` and copy `status.atProvider.id`. Account-specific ids stay
+out of the repository.
 
 ## Code Coverage
 
@@ -96,17 +100,12 @@ Coverage requirements:
 
 Example manifests are located in `examples/` directory:
 
-- `examples/rediscloud/`: Resource examples
-  - `subscription.yaml`: Redis subscription
-  - `database.yaml`: Subscription database
-  - `subscription-peering.yaml`: VPC peering
-  - `acl-user.yaml`: ACL user
-  - `acl-rule.yaml`: ACL rule
-  - `cloud-account.yaml`: Cloud account
-- `examples/compositions/`: Crossplane compositions
-  - `redis-cluster.yaml`: Complete Redis cluster composition
+- `examples/rediscloud/`: Pro subscription, database, peering, ACL, and cloud account
+- `examples/active/`: Active-Active private link and transit gateway examples
+- `examples/private/`: Private link
+- `examples/transit/`: Transit gateway examples
+- `examples/lookup/`: Read-only payment method, Essentials plan, and region lookups
 - `examples/providerconfig/`: Provider configuration
-- `examples/storeconfig/`: Store configuration
 
 ## Make Targets
 
@@ -130,11 +129,11 @@ When submitting PRs:
 2. Validate examples: `make check-examples`
 3. Run linting: `make lint`
 4. Verify generated code: `make check-diff`
-5. Test your changes with: `/test-examples="<path>"` comment on PR
+5. When the change needs a real Redis Cloud resource, comment `/test-examples="<path>"` on the pull request
 
 ## Dependencies
 
-- Go 1.21+
+- Go 1.24, matching `.github/workflows/ci.yml`
 - Python 3.x (for check-examples.py)
 - PyYAML (`pip install pyyaml`)
 - Docker (for local deployment)

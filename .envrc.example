@@ -1,0 +1,7 @@
+# Copy this file to .envrc.local and replace the placeholders.
+# .envrc loads .envrc.local when direnv is active.
+# Get the keys from Redis Cloud: Account Settings → API Keys.
+
+export REDISCLOUD_API_KEY="YOUR_API_KEY_HERE"
+export REDISCLOUD_SECRET_KEY="YOUR_SECRET_KEY_HERE"
+export REDISCLOUD_URL="https://api.redislabs.com/v1"

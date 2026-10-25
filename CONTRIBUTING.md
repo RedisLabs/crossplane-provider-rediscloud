@@ -26,9 +26,16 @@ See the [README.md](README.md#developing) for development setup instructions.
 
 Before submitting a pull request:
 
-1. Run the full test suite: `make test`
-2. Test your changes locally: `./scripts/test-provider.sh`
-3. Ensure all CRDs generate properly: `make generate`
+1. Run the unit tests: `make test`
+2. Deploy locally when the change needs a cluster: `make local-deploy`
+3. Regenerate when CRDs or controllers change: `make generate`
+4. Validate examples when manifests change: `make check-examples`
+
+`scripts/test-provider.sh` is the old podman harness. It creates and deletes a
+Kind cluster named `rediscloud-test`.
+
+End-to-end tests create real Redis Cloud resources. A reviewer starts them on
+a pull request with `/test-examples="<path>"`. See [TESTING.md](TESTING.md).
 
 ## Submitting Changes
 

@@ -75,7 +75,9 @@ metadata:
 spec:
   forProvider:
     name: "My Redis Subscription"
-    planId: 1  # Free plan
+    # Copy status.atProvider.id from an EssentialsPlan lookup.
+    # The lookup manifest is examples/lookup/essentialsplan.yaml.
+    planId: 123456
   providerConfigRef:
     name: default
 ```
@@ -112,13 +114,16 @@ make build
 
 ### Testing
 
-Run the test harness (uses podman by default):
+Run the unit tests:
 
 ```bash
-./scripts/test-provider.sh
+make test
 ```
 
-For detailed testing instructions, see [TESTING.md](TESTING.md).
+`make local-deploy` installs the provider into a local control plane in the
+`upbound-system` namespace. End-to-end tests create Redis Cloud resources. A
+reviewer starts them with a `/test-examples="<path>"` comment on the pull
+request. The steps are in [TESTING.md](TESTING.md).
 
 ### Local Development
 
