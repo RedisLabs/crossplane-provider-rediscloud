@@ -1,0 +1,10 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: Regions
+metadata:
+  name: example-gcp-regions
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    providerName: GCP
+    name: us-central1

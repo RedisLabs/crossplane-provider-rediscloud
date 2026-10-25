@@ -1,0 +1,15 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: EssentialsPlan
+metadata:
+  name: example-essentials-plan
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    cloudProvider: GCP
+    region: us-central1
+    name: "1GB"
+    size: "1"
+    sizeMeasurementUnit: GB
+    supportReplication: false
+    supportDataPersistence: false
