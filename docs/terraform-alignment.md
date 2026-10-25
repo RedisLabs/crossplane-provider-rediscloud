@@ -120,13 +120,13 @@ On this branch, managed-resource coverage matches the Terraform provider.
 | Data sources | 29 | 3 read-only lookup CRDs; the other 26 stay pasted IDs | 0 CRDs |
 | Provider settings | `api_key`, `secret_key`, `url` | `ProviderConfig` | `ProviderConfig` |
 
-GitHub `main` is what a user can clone today; it is 18 Terraform provider releases behind. This branch brings managed-resource coverage into alignment with Terraform provider v2.19.2.
+The `6128cb7` column is GitHub main before the alignment merge. That merge is now on main. This pull request adds the three lookups.
 
 No managed resource from Terraform v2.19.2 is missing on this branch. Nothing extra was generated. A second pass re-counted the schema, the external-name list, and the generated controllers, and that count held. The numbered gaps run from 1 through 9. **severity:** 🔴 is high, 🟡 is medium, and 🟣 is minor. ✅ on **Status:** means this branch fixed that gap.
 
 ## Resource map
 
-All 27 Terraform resources have a generated kind, CRD, and controller. On GitHub `main`, ✅ means the resource is already there and ❌ means it is not. Six are ❌.
+All 27 Terraform resources have a generated kind, CRD, and controller. On GitHub main at `6128cb7`, before the alignment merge, ✅ means the resource was already there and ❌ means it was not. Six were ❌. Those six are on main after the alignment merge.
 
 | Terraform resource | Kind | API group | On GitHub `main` |
 | --- | --- | --- | --- |
