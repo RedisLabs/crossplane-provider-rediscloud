@@ -10,7 +10,9 @@ spec:
   forProvider:
     awsAccountId: "123456789012"
     region: eu-west-1
-    subscriptionId: ${rediscloud_subscription.example.id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
     vpcCidr: 10.0.0.0/8
     vpcId: vpc-01234567890
 

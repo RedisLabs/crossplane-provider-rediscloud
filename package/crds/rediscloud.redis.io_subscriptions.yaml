@@ -149,6 +149,14 @@ spec:
                                 type: string
                             type: object
                           type: array
+                        resourceTags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            A string/string map of tags to associate with this subscription's cloud resources.
+                            A map of tags to associate with this subscription.
+                          type: object
+                          x-kubernetes-map-type: granular
                       type: object
                     type: array
                   creationPlan:
@@ -161,8 +169,9 @@ spec:
                           description: |-
                             Relevant only to ram-and-flash clusters
                             Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-                            be the maximum average item size defined in one of your databases.  Default: 1000
-                            Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+                            be the maximum average item size defined in one of your databases.  Default: 1000.
+                            Deprecated: This attribute is deprecated. Configure
+                            (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
                           type: number
                         datasetSizeInGb:
                           description: |-
@@ -176,8 +185,7 @@ spec:
                           type: number
                         modules:
                           description: |-
-                            a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-                            Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+                            a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
                             Modules that will be used by the databases in this subscription.
                           items:
                             type: string
@@ -188,9 +196,15 @@ spec:
                             The planned number of databases
                           type: number
                         queryPerformanceFactor:
-                          description: Query performance factor for this specific
-                            database
+                          description: |-
+                            The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                            Query performance factor for this specific database
                           type: string
+                        ramPercentage:
+                          description: |-
+                            instead. This attribute will be removed in the next major version of the provider.
+                            Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                          type: number
                         replication:
                           description: |-
                             Databases replication. Default: ‘true’
@@ -213,6 +227,29 @@ spec:
                           type: number
                       type: object
                     type: array
+                  customerManagedKey:
+                    description: |-
+                      The customer managed keys (CMK) to use for this subscription.
+                      CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+                    items:
+                      properties:
+                        resourceName:
+                          description: |-
+                            The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+                            Resource name of the customer managed key as defined by the cloud provider.
+                          type: string
+                      type: object
+                    type: array
+                  customerManagedKeyDeletionGracePeriod:
+                    description: |-
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                    type: string
+                  customerManagedKeyEnabled:
+                    description: |-
+                      Whether to enable the customer managed encryption key flow.
+                      Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+                    type: boolean
                   maintenanceWindows:
                     description: |-
                       The subscription's maintenance window specification, documented below.
@@ -263,7 +300,7 @@ spec:
                     type: string
                   paymentMethod:
                     description: |-
-                      card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+                      card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
                       Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
                     type: string
                   paymentMethodId:
@@ -271,9 +308,14 @@ spec:
                       A valid payment method pre-defined in the current account. Only Required when payment_method is credit-card.
                       A valid payment method pre-defined in the current account
                     type: string
+                  publicEndpointAccess:
+                    description: |-
+                      Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+                      Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+                    type: boolean
                   redisVersion:
                     description: |-
-                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.
+                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
                       Version of Redis to create
                     type: string
                 type: object
@@ -367,6 +409,14 @@ spec:
                                 type: string
                             type: object
                           type: array
+                        resourceTags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            A string/string map of tags to associate with this subscription's cloud resources.
+                            A map of tags to associate with this subscription.
+                          type: object
+                          x-kubernetes-map-type: granular
                       type: object
                     type: array
                   creationPlan:
@@ -379,8 +429,9 @@ spec:
                           description: |-
                             Relevant only to ram-and-flash clusters
                             Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-                            be the maximum average item size defined in one of your databases.  Default: 1000
-                            Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+                            be the maximum average item size defined in one of your databases.  Default: 1000.
+                            Deprecated: This attribute is deprecated. Configure
+                            (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
                           type: number
                         datasetSizeInGb:
                           description: |-
@@ -394,8 +445,7 @@ spec:
                           type: number
                         modules:
                           description: |-
-                            a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-                            Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+                            a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
                             Modules that will be used by the databases in this subscription.
                           items:
                             type: string
@@ -406,9 +456,15 @@ spec:
                             The planned number of databases
                           type: number
                         queryPerformanceFactor:
-                          description: Query performance factor for this specific
-                            database
+                          description: |-
+                            The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                            Query performance factor for this specific database
                           type: string
+                        ramPercentage:
+                          description: |-
+                            instead. This attribute will be removed in the next major version of the provider.
+                            Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                          type: number
                         replication:
                           description: |-
                             Databases replication. Default: ‘true’
@@ -431,6 +487,29 @@ spec:
                           type: number
                       type: object
                     type: array
+                  customerManagedKey:
+                    description: |-
+                      The customer managed keys (CMK) to use for this subscription.
+                      CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+                    items:
+                      properties:
+                        resourceName:
+                          description: |-
+                            The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+                            Resource name of the customer managed key as defined by the cloud provider.
+                          type: string
+                      type: object
+                    type: array
+                  customerManagedKeyDeletionGracePeriod:
+                    description: |-
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                    type: string
+                  customerManagedKeyEnabled:
+                    description: |-
+                      Whether to enable the customer managed encryption key flow.
+                      Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+                    type: boolean
                   maintenanceWindows:
                     description: |-
                       The subscription's maintenance window specification, documented below.
@@ -481,7 +560,7 @@ spec:
                     type: string
                   paymentMethod:
                     description: |-
-                      card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+                      card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
                       Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
                     type: string
                   paymentMethodId:
@@ -489,9 +568,14 @@ spec:
                       A valid payment method pre-defined in the current account. Only Required when payment_method is credit-card.
                       A valid payment method pre-defined in the current account
                     type: string
+                  publicEndpointAccess:
+                    description: |-
+                      Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+                      Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+                    type: boolean
                   redisVersion:
                     description: |-
-                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.
+                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
                       Version of Redis to create
                     type: string
                 type: object
@@ -702,6 +786,11 @@ spec:
                       A cloud provider object
                     items:
                       properties:
+                        awsAccountId:
+                          description: |-
+                            AWS account ID that the subscription is deployed in (AWS subscriptions only).
+                            AWS account ID associated with the subscription (only applicable for AWS subscriptions)
+                          type: string
                         cloudAccountId:
                           description: |-
                             Cloud account identifier. Default: Redis Labs internal cloud account. Modifying this attribute will force creation of a new resource.
@@ -767,6 +856,14 @@ spec:
                                 type: string
                             type: object
                           type: array
+                        resourceTags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            A string/string map of tags to associate with this subscription's cloud resources.
+                            A map of tags to associate with this subscription.
+                          type: object
+                          x-kubernetes-map-type: granular
                       type: object
                     type: array
                   creationPlan:
@@ -779,8 +876,9 @@ spec:
                           description: |-
                             Relevant only to ram-and-flash clusters
                             Estimated average size (measured in bytes) of the items stored in the database. The value needs to
-                            be the maximum average item size defined in one of your databases.  Default: 1000
-                            Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+                            be the maximum average item size defined in one of your databases.  Default: 1000.
+                            Deprecated: This attribute is deprecated. Configure
+                            (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
                           type: number
                         datasetSizeInGb:
                           description: |-
@@ -794,8 +892,7 @@ spec:
                           type: number
                         modules:
                           description: |-
-                            a list of modules that will be used by the databases in this subscription. Not currently compatible with ‘ram-and-flash’ memory storage.
-                            Example: modules = ["RedisJSON", "RediSearch", "RedisTimeSeries", "RedisBloom"]
+                            a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
                             Modules that will be used by the databases in this subscription.
                           items:
                             type: string
@@ -806,9 +903,15 @@ spec:
                             The planned number of databases
                           type: number
                         queryPerformanceFactor:
-                          description: Query performance factor for this specific
-                            database
+                          description: |-
+                            The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                            Query performance factor for this specific database
                           type: string
+                        ramPercentage:
+                          description: |-
+                            instead. This attribute will be removed in the next major version of the provider.
+                            Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                          type: number
                         replication:
                           description: |-
                             Databases replication. Default: ‘true’
@@ -831,6 +934,39 @@ spec:
                           type: number
                       type: object
                     type: array
+                  customerManagedKey:
+                    description: |-
+                      The customer managed keys (CMK) to use for this subscription.
+                      CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+                    items:
+                      properties:
+                        resourceName:
+                          description: |-
+                            The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+                            Resource name of the customer managed key as defined by the cloud provider.
+                          type: string
+                      type: object
+                    type: array
+                  customerManagedKeyAwsRoleArn:
+                    description: |-
+                      The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy. Only set for AWS subscriptions with CMK enabled.
+                      The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy
+                    type: string
+                  customerManagedKeyDeletionGracePeriod:
+                    description: |-
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                    type: string
+                  customerManagedKeyEnabled:
+                    description: |-
+                      Whether to enable the customer managed encryption key flow.
+                      Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+                    type: boolean
+                  customerManagedKeyRedisServiceAccount:
+                    description: |-
+                      Outputs the ID of the GCP service account associated with the subscription. Useful as part of the CMK flow for GCP subscriptions.
+                      The principal of the Redis service account that the subscription is created in. This is used by the user to give access to their customer managed key
+                    type: string
                   id:
                     type: string
                   maintenanceWindows:
@@ -883,7 +1019,7 @@ spec:
                     type: string
                   paymentMethod:
                     description: |-
-                      card or marketplace). If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+                      card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
                       Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
                     type: string
                   paymentMethodId:
@@ -921,9 +1057,19 @@ spec:
                           type: string
                       type: object
                     type: array
+                  prometheusEndpoint:
+                    description: |-
+                      The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.
+                      The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.
+                    type: string
+                  publicEndpointAccess:
+                    description: |-
+                      Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+                      Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+                    type: boolean
                   redisVersion:
                     description: |-
-                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default. Modifying this attribute will force creation of a new resource.
+                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
                       Version of Redis to create
                     type: string
                 type: object

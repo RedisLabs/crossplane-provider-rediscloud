@@ -15,15 +15,24 @@ import (
 
 type GatewayAttachmentInitParameters struct {
 
-	// A list of consumer Cidr blocks. May only be added once the Attachment has been accepted
-	// A list of consumer Cidr blocks.
+	// A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.
+	// A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.
 	Cidrs []*string `json:"cidrs,omitempty" tf:"cidrs,omitempty"`
 
-	// The id of the Pro/Flexible subscription to attach
-	// The id of the Pro/Flexible subscription to attach
+	// The ID of the Pro subscription to attach
+	// The ID of the Pro subscription to attach
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1.Subscription
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
 
-	// The id of the Transit Gateway to attach to
+	// Reference to a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+
+	// The ID of the Transit Gateway to attach to
 	// The id of the Transit Gateway to attach to
 	TgwID *float64 `json:"tgwId,omitempty" tf:"tgw_id,omitempty"`
 }
@@ -38,16 +47,16 @@ type GatewayAttachmentObservation struct {
 	// A unique identifier for the Subscription/Transit Gateway attachment, if established
 	AttachmentUID *string `json:"attachmentUid,omitempty" tf:"attachment_uid,omitempty"`
 
-	// The Transit Gateway's AWS account id
+	// The Transit Gateway's AWS account ID
 	// The Transit Gateway's AWS account id
 	AwsAccountID *string `json:"awsAccountId,omitempty" tf:"aws_account_id,omitempty"`
 
-	// The id of the Transit Gateway as known to AWS
+	// The ID of the Transit Gateway as known to AWS
 	// The id of the Transit Gateway as known to AWS
 	AwsTgwUID *string `json:"awsTgwUid,omitempty" tf:"aws_tgw_uid,omitempty"`
 
-	// A list of consumer Cidr blocks. May only be added once the Attachment has been accepted
-	// A list of consumer Cidr blocks.
+	// A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.
+	// A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.
 	Cidrs []*string `json:"cidrs,omitempty" tf:"cidrs,omitempty"`
 
 	ID *string `json:"id,omitempty" tf:"id,omitempty"`
@@ -56,28 +65,37 @@ type GatewayAttachmentObservation struct {
 	// The status of the Transit Gateway
 	Status *string `json:"status,omitempty" tf:"status,omitempty"`
 
-	// The id of the Pro/Flexible subscription to attach
-	// The id of the Pro/Flexible subscription to attach
+	// The ID of the Pro subscription to attach
+	// The ID of the Pro subscription to attach
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
 
-	// The id of the Transit Gateway to attach to
+	// The ID of the Transit Gateway to attach to
 	// The id of the Transit Gateway to attach to
 	TgwID *float64 `json:"tgwId,omitempty" tf:"tgw_id,omitempty"`
 }
 
 type GatewayAttachmentParameters struct {
 
-	// A list of consumer Cidr blocks. May only be added once the Attachment has been accepted
-	// A list of consumer Cidr blocks.
+	// A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.
+	// A list of consumer CIDR blocks. It is recommended to use the rediscloud_transit_gateway_route resource instead for managing CIDRs.
 	// +kubebuilder:validation:Optional
 	Cidrs []*string `json:"cidrs,omitempty" tf:"cidrs,omitempty"`
 
-	// The id of the Pro/Flexible subscription to attach
-	// The id of the Pro/Flexible subscription to attach
+	// The ID of the Pro subscription to attach
+	// The ID of the Pro subscription to attach
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1.Subscription
 	// +kubebuilder:validation:Optional
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
 
-	// The id of the Transit Gateway to attach to
+	// Reference to a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a Subscription in rediscloud to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+
+	// The ID of the Transit Gateway to attach to
 	// The id of the Transit Gateway to attach to
 	// +kubebuilder:validation:Optional
 	TgwID *float64 `json:"tgwId,omitempty" tf:"tgw_id,omitempty"`
@@ -119,7 +137,6 @@ type GatewayAttachmentStatus struct {
 type GatewayAttachment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.subscriptionId) || (has(self.initProvider) && has(self.initProvider.subscriptionId))",message="spec.forProvider.subscriptionId is a required parameter"
 	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.tgwId) || (has(self.initProvider) && has(self.initProvider.tgwId))",message="spec.forProvider.tgwId is a required parameter"
 	Spec   GatewayAttachmentSpec   `json:"spec"`
 	Status GatewayAttachmentStatus `json:"status,omitempty"`

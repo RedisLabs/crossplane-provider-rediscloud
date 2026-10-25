@@ -1,0 +1,10 @@
+apiVersion: private.redis.io/v1alpha1
+kind: Link
+metadata:
+  name: example-private-link
+spec:
+  forProvider:
+    subscriptionIdRef:
+      name: example-subscription
+  providerConfigRef:
+    name: default

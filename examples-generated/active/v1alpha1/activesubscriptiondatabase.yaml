@@ -13,8 +13,6 @@ spec:
     - name: dataset-size
       value: 1
     globalDataPersistence: aof-every-1-second
-    globalModules:
-    - RedisJSON
     globalPasswordSecretRef:
       key: example-key
       name: example-secret

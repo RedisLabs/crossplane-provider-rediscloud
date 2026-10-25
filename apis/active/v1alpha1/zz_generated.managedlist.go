@@ -8,6 +8,15 @@ package v1alpha1
 
 import resource "github.com/crossplane/crossplane-runtime/pkg/resource"
 
+// GetItems of this ActivePrivateLinkList.
+func (l *ActivePrivateLinkList) GetItems() []resource.Managed {
+	items := make([]resource.Managed, len(l.Items))
+	for i := range l.Items {
+		items[i] = &l.Items[i]
+	}
+	return items
+}
+
 // GetItems of this ActivePrivateServiceConnectEndpointAccepterList.
 func (l *ActivePrivateServiceConnectEndpointAccepterList) GetItems() []resource.Managed {
 	items := make([]resource.Managed, len(l.Items))
@@ -73,6 +82,24 @@ func (l *ActiveSubscriptionRegionsList) GetItems() []resource.Managed {
 
 // GetItems of this ActiveTransitGatewayAttachmentList.
 func (l *ActiveTransitGatewayAttachmentList) GetItems() []resource.Managed {
+	items := make([]resource.Managed, len(l.Items))
+	for i := range l.Items {
+		items[i] = &l.Items[i]
+	}
+	return items
+}
+
+// GetItems of this ActiveTransitGatewayInvitationAcceptorList.
+func (l *ActiveTransitGatewayInvitationAcceptorList) GetItems() []resource.Managed {
+	items := make([]resource.Managed, len(l.Items))
+	for i := range l.Items {
+		items[i] = &l.Items[i]
+	}
+	return items
+}
+
+// GetItems of this ActiveTransitGatewayRouteList.
+func (l *ActiveTransitGatewayRouteList) GetItems() []resource.Managed {
 	items := make([]resource.Managed, len(l.Items))
 	for i := range l.Items {
 		items[i] = &l.Items[i]

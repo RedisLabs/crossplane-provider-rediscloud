@@ -1,0 +1,55 @@
+apiVersion: active.redis.io/v1alpha1
+kind: ActiveTransitGatewayRoute
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1alpha1/activetransitgatewayroute
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    cidrs:
+    - 10.10.20.0/24
+    - 10.10.30.0/24
+    regionId: 1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwId: ${data.rediscloud_active_active_transit_gateway.example.tgw_id}
+
+---
+
+apiVersion: active.redis.io/v1alpha1
+kind: ActiveTransitGatewayAttachment
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1alpha1/activetransitgatewayroute
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    regionId: 1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwId: ${data.rediscloud_active_active_transit_gateway.example.tgw_id}
+
+---
+
+apiVersion: active.redis.io/v1alpha1
+kind: ActiveTransitGatewayInvitationAcceptor
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1alpha1/activetransitgatewayroute
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    action: accept
+    regionId: 1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwInvitationId: ${data.rediscloud_active_active_transit_gateway_invitations.example.invitations[0].id}

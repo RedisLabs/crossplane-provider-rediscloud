@@ -83,24 +83,71 @@ def validate_example(example_file, crds):
                         errors.append(f"Document {doc_idx}: No CRD found for {kind} in {api_version}")
                     continue
                 
-                # Basic validation - check if spec exists if required
                 crd_schema = crds[key]['schema']
                 if 'properties' in crd_schema:
                     spec_schema = crd_schema.get('properties', {}).get('spec', {})
                     if spec_schema and 'spec' not in doc:
                         errors.append(f"Document {doc_idx}: Missing required 'spec' field")
-                    
-                    # Check for required fields
-                    required_fields = crd_schema.get('required', [])
-                    for field in required_fields:
+                    for field in crd_schema.get('required', []):
                         if field not in doc:
                             errors.append(f"Document {doc_idx}: Missing required field '{field}'")
+                    spec = doc.get('spec') or {}
+                    spec_properties = (spec_schema or {}).get('properties', {})
+                    for field_name in ('forProvider', 'initProvider'):
+                        if field_name in spec:
+                            errors.extend(check_value(
+                                spec[field_name],
+                                spec_properties.get(field_name, {}),
+                                f"Document {doc_idx}: spec.{field_name}",
+                            ))
                 
         except yaml.YAMLError as e:
             errors.append(f"YAML parsing error: {e}")
         except Exception as e:
             errors.append(f"Unexpected error: {e}")
     
+    return errors
+
+
+def check_value(value, schema, path):
+    """Reject fields and types the CRD OpenAPI schema does not allow."""
+    errors = []
+    if not schema:
+        return errors
+    expected = schema.get('type')
+    if isinstance(expected, list):
+        expected = next((item for item in expected if item != 'null'), expected[0])
+    if expected == 'object' and not isinstance(value, dict):
+        return [f"{path}: expected object"]
+    if expected == 'array' and not isinstance(value, list):
+        return [f"{path}: expected array"]
+    if expected in ('string',) and not isinstance(value, str):
+        return [f"{path}: expected string"]
+    if expected in ('integer', 'number') and isinstance(value, bool) or (
+        expected in ('integer', 'number') and not isinstance(value, (int, float))
+    ):
+        return [f"{path}: expected number"]
+    if expected == 'boolean' and not isinstance(value, bool):
+        return [f"{path}: expected boolean"]
+    if isinstance(value, dict):
+        properties = schema.get('properties', {})
+        additional = schema.get('additionalProperties', False)
+        for key, child in value.items():
+            if key in properties:
+                errors.extend(check_value(child, properties[key], f"{path}.{key}"))
+            elif additional is True:
+                continue
+            elif isinstance(additional, dict):
+                errors.extend(check_value(child, additional, f"{path}.{key}"))
+            elif properties:
+                errors.append(f"{path}.{key}: field is not in the CRD schema")
+        for key in schema.get('required', []):
+            if key not in value:
+                errors.append(f"{path}.{key}: required field is missing")
+    if isinstance(value, list):
+        item_schema = schema.get('items', {})
+        for index, child in enumerate(value):
+            errors.extend(check_value(child, item_schema, f"{path}[{index}]"))
     return errors
 
 def main():

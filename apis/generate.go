@@ -24,6 +24,10 @@ Copyright 2021 Upbound Inc.
 // Run Upjet generator
 //go:generate go run ../cmd/generator/main.go ..
 
+// Upjet emits the wrong Go type for one Active-Active initProvider secret list.
+// Correct it before controller-gen writes the CRD and deepcopy methods.
+//go:generate python3 ../scripts/fix_generated_types.py
+
 // Generate deepcopy methodsets and CRD manifests
 //go:generate go run -tags generate sigs.k8s.io/controller-tools/cmd/controller-gen object:headerFile=../hack/boilerplate.go.txt paths=./... crd:allowDangerousTypes=true,crdVersions=v1 output:artifacts:config=../package/crds
 

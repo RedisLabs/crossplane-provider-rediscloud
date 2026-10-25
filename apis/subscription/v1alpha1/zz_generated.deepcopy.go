@@ -125,6 +125,11 @@ func (in *DatabaseInitParameters) DeepCopyInto(out *DatabaseInitParameters) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.AutoMinorVersionUpgrade != nil {
+		in, out := &in.AutoMinorVersionUpgrade, &out.AutoMinorVersionUpgrade
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AverageItemSizeInBytes != nil {
 		in, out := &in.AverageItemSizeInBytes, &out.AverageItemSizeInBytes
 		*out = new(float64)
@@ -163,6 +168,11 @@ func (in *DatabaseInitParameters) DeepCopyInto(out *DatabaseInitParameters) {
 	}
 	if in.EnableDefaultUser != nil {
 		in, out := &in.EnableDefaultUser, &out.EnableDefaultUser
+		*out = new(bool)
+		**out = **in
+	}
+	if in.EnablePasswordless != nil {
+		in, out := &in.EnablePasswordless, &out.EnablePasswordless
 		*out = new(bool)
 		**out = **in
 	}
@@ -226,6 +236,16 @@ func (in *DatabaseInitParameters) DeepCopyInto(out *DatabaseInitParameters) {
 	}
 	if in.QueryPerformanceFactor != nil {
 		in, out := &in.QueryPerformanceFactor, &out.QueryPerformanceFactor
+		*out = new(string)
+		**out = **in
+	}
+	if in.RAMPercentage != nil {
+		in, out := &in.RAMPercentage, &out.RAMPercentage
+		*out = new(float64)
+		**out = **in
+	}
+	if in.RedisVersion != nil {
+		in, out := &in.RedisVersion, &out.RedisVersion
 		*out = new(string)
 		**out = **in
 	}
@@ -358,6 +378,11 @@ func (in *DatabaseObservation) DeepCopyInto(out *DatabaseObservation) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.AutoMinorVersionUpgrade != nil {
+		in, out := &in.AutoMinorVersionUpgrade, &out.AutoMinorVersionUpgrade
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AverageItemSizeInBytes != nil {
 		in, out := &in.AverageItemSizeInBytes, &out.AverageItemSizeInBytes
 		*out = new(float64)
@@ -401,6 +426,11 @@ func (in *DatabaseObservation) DeepCopyInto(out *DatabaseObservation) {
 	}
 	if in.EnableDefaultUser != nil {
 		in, out := &in.EnableDefaultUser, &out.EnableDefaultUser
+		*out = new(bool)
+		**out = **in
+	}
+	if in.EnablePasswordless != nil {
+		in, out := &in.EnablePasswordless, &out.EnablePasswordless
 		*out = new(bool)
 		**out = **in
 	}
@@ -474,6 +504,21 @@ func (in *DatabaseObservation) DeepCopyInto(out *DatabaseObservation) {
 	}
 	if in.QueryPerformanceFactor != nil {
 		in, out := &in.QueryPerformanceFactor, &out.QueryPerformanceFactor
+		*out = new(string)
+		**out = **in
+	}
+	if in.RAMPercentage != nil {
+		in, out := &in.RAMPercentage, &out.RAMPercentage
+		*out = new(float64)
+		**out = **in
+	}
+	if in.RedisVersion != nil {
+		in, out := &in.RedisVersion, &out.RedisVersion
+		*out = new(string)
+		**out = **in
+	}
+	if in.RedisVersionActual != nil {
+		in, out := &in.RedisVersionActual, &out.RedisVersionActual
 		*out = new(string)
 		**out = **in
 	}
@@ -574,6 +619,11 @@ func (in *DatabaseParameters) DeepCopyInto(out *DatabaseParameters) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.AutoMinorVersionUpgrade != nil {
+		in, out := &in.AutoMinorVersionUpgrade, &out.AutoMinorVersionUpgrade
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AverageItemSizeInBytes != nil {
 		in, out := &in.AverageItemSizeInBytes, &out.AverageItemSizeInBytes
 		*out = new(float64)
@@ -612,6 +662,11 @@ func (in *DatabaseParameters) DeepCopyInto(out *DatabaseParameters) {
 	}
 	if in.EnableDefaultUser != nil {
 		in, out := &in.EnableDefaultUser, &out.EnableDefaultUser
+		*out = new(bool)
+		**out = **in
+	}
+	if in.EnablePasswordless != nil {
+		in, out := &in.EnablePasswordless, &out.EnablePasswordless
 		*out = new(bool)
 		**out = **in
 	}
@@ -675,6 +730,16 @@ func (in *DatabaseParameters) DeepCopyInto(out *DatabaseParameters) {
 	}
 	if in.QueryPerformanceFactor != nil {
 		in, out := &in.QueryPerformanceFactor, &out.QueryPerformanceFactor
+		*out = new(string)
+		**out = **in
+	}
+	if in.RAMPercentage != nil {
+		in, out := &in.RAMPercentage, &out.RAMPercentage
+		*out = new(float64)
+		**out = **in
+	}
+	if in.RedisVersion != nil {
+		in, out := &in.RedisVersion, &out.RedisVersion
 		*out = new(string)
 		**out = **in
 	}
@@ -920,6 +985,16 @@ func (in *PeeringInitParameters) DeepCopyInto(out *PeeringInitParameters) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.SubscriptionIDRef != nil {
+		in, out := &in.SubscriptionIDRef, &out.SubscriptionIDRef
+		*out = new(v1.Reference)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.SubscriptionIDSelector != nil {
+		in, out := &in.SubscriptionIDSelector, &out.SubscriptionIDSelector
+		*out = new(v1.Selector)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.VPCCidr != nil {
 		in, out := &in.VPCCidr, &out.VPCCidr
 		*out = new(string)
@@ -1113,6 +1188,16 @@ func (in *PeeringParameters) DeepCopyInto(out *PeeringParameters) {
 		in, out := &in.SubscriptionID, &out.SubscriptionID
 		*out = new(string)
 		**out = **in
+	}
+	if in.SubscriptionIDRef != nil {
+		in, out := &in.SubscriptionIDRef, &out.SubscriptionIDRef
+		*out = new(v1.Reference)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.SubscriptionIDSelector != nil {
+		in, out := &in.SubscriptionIDSelector, &out.SubscriptionIDSelector
+		*out = new(v1.Selector)
+		(*in).DeepCopyInto(*out)
 	}
 	if in.VPCCidr != nil {
 		in, out := &in.VPCCidr, &out.VPCCidr

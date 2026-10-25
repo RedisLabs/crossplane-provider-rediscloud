@@ -1,0 +1,52 @@
+apiVersion: transit.redis.io/v1alpha1
+kind: GatewayRoute
+metadata:
+  annotations:
+    meta.upbound.io/example-id: transit/v1alpha1/gatewayroute
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    cidrs:
+    - 10.10.20.0/24
+    - 10.10.30.0/24
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwId: ${data.rediscloud_transit_gateway.example.tgw_id}
+
+---
+
+apiVersion: transit.redis.io/v1alpha1
+kind: GatewayAttachment
+metadata:
+  annotations:
+    meta.upbound.io/example-id: transit/v1alpha1/gatewayroute
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwId: ${data.rediscloud_transit_gateway.example.tgw_id}
+
+---
+
+apiVersion: transit.redis.io/v1alpha1
+kind: GatewayInvitationAcceptor
+metadata:
+  annotations:
+    meta.upbound.io/example-id: transit/v1alpha1/gatewayroute
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    action: accept
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwInvitationId: ${data.rediscloud_transit_gateway_invitations.example.invitations[0].id}

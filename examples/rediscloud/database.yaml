@@ -4,15 +4,15 @@ metadata:
   name: example-database
 spec:
   forProvider:
-    subscriptionIdRef:
-      name: example-subscription
+    # subscriptionId is a number in Terraform. A name reference cannot fill it.
+    # Copy the subscription's status.atProvider.id here after it exists.
+    subscriptionId: 123456
     name: my-redis-database
     protocol: redis
     memoryLimitInGb: 1
     dataPersistence: aof-every-1-second
-    throughputMeasurement:
-      by: operations-per-second
-      value: 10000
+    throughputMeasurementBy: operations-per-second
+    throughputMeasurementValue: 10000
     replication: true
     modules:
       - name: RedisJSON

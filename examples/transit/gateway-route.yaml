@@ -1,0 +1,10 @@
+apiVersion: transit.redis.io/v1alpha1
+kind: GatewayRoute
+metadata:
+  name: example-gateway-route
+spec:
+  forProvider:
+    subscriptionIdRef:
+      name: example-subscription
+  providerConfigRef:
+    name: default

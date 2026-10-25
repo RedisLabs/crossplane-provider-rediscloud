@@ -74,15 +74,52 @@ spec:
                 type: string
               forProvider:
                 properties:
-                  clientSslCertificate:
-                    description: SSL certificate to authenticate user connections.
-                    type: string
-                  clientTlsCertificates:
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
+                  clientSslCertificateSecretRef:
+                    description: |-
+                      SSL certificate to authenticate user connections, conflicts with client_tls_certificates
+                      SSL certificate to authenticate user connections.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  clientTlsCertificatesSecretRef:
                     description: |-
                       A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
                       TLS certificates to authenticate user connections
                     items:
-                      type: string
+                      description: A SecretKeySelector is a reference to a secret
+                        key in an arbitrary namespace.
+                      properties:
+                        key:
+                          description: The key to select.
+                          type: string
+                        name:
+                          description: Name of the secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the secret.
+                          type: string
+                      required:
+                      - key
+                      - name
+                      - namespace
+                      type: object
                     type: array
                   dataEviction:
                     description: |-
@@ -97,7 +134,6 @@ spec:
                   enableTls:
                     description: |-
                       Use TLS for authentication. Default: ‘false’
-                      client_ssl_certificate -  SSL certificate to authenticate user connections, conflicts with client_tls_certificates
                       Use TLS for authentication.
                     type: boolean
                   externalEndpointForOssClusterApi:
@@ -129,17 +165,27 @@ spec:
                       Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: 'none'
                       Rate of database data persistence (in persistent storage)
                     type: string
+                  globalEnableDefaultUser:
+                    description: |-
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+                    type: boolean
+                  globalEnablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+                      When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+                    type: boolean
                   globalModules:
                     description: |-
-                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.
+                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
                       List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
                     items:
                       type: string
                     type: array
                   globalPasswordSecretRef:
                     description: |-
-                      Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically
-                      Password used to access the database. If left empty, the password will be generated automatically
+                      Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
+                      Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
                     properties:
                       key:
                         description: The key to select.
@@ -157,12 +203,12 @@ spec:
                     type: object
                   globalRespVersion:
                     description: |-
-                      Either 'resp2' or 'resp3'. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.
+                      Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
                       The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
                     type: string
                   globalSourceIps:
                     description: |-
-                      List of source IP addresses or subnet masks of regions that don't override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'])
+                      List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
                       Set of CIDR addresses to allow access to the database
                     items:
                       type: string
@@ -175,7 +221,7 @@ spec:
                     type: number
                   name:
                     description: |-
-                      A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.
+                      A meaningful name to identify the database (maximum 40 characters).
                       A meaningful name to identify the database
                     type: string
                   overrideRegion:
@@ -184,6 +230,11 @@ spec:
                       Region-specific configuration parameters to override the global configuration
                     items:
                       properties:
+                        enableDefaultUser:
+                          description: |-
+                            Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+                            When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+                          type: boolean
                         name:
                           description: |-
                             Region name.
@@ -192,7 +243,7 @@ spec:
                         overrideGlobalAlert:
                           description: |-
                             A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
-                            Set of alerts to enable on the database
+                            Set of alerts to enable on the database in this region
                           items:
                             properties:
                               name:
@@ -212,9 +263,14 @@ spec:
                             Regional instance of an Active-Active database data persistence rate (in persistent storage)
                             Rate of database data persistence (in persistent storage)
                           type: string
+                        overrideGlobalEnablePasswordless:
+                          description: |-
+                            When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+                            When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+                          type: boolean
                         overrideGlobalPasswordSecretRef:
                           description: |-
-                            If specified, this regional instance of an Active-Active database password will be used to access the database
+                            If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
                             Password used to access the database. If left empty, the password will be generated automatically
                           properties:
                             key:
@@ -233,7 +289,7 @@ spec:
                           type: object
                         overrideGlobalSourceIps:
                           description: |-
-                            List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'] )
+                            List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
                             Set of CIDR addresses to allow access to the database
                           items:
                             type: string
@@ -257,7 +313,7 @@ spec:
                                 type: string
                               storageType:
                                 description: |-
-                                  Defines the provider of the storage location
+                                  Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
                                   Defines the provider of the storage location
                                 type: string
                               timeUtc:
@@ -274,6 +330,11 @@ spec:
                       TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.
                       TCP port on which the database is available
                     type: number
+                  redisVersion:
+                    description: |-
+                      The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
                   subscriptionId:
                     description: |-
                       Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
@@ -306,15 +367,49 @@ spec:
                   for example because of an external controller is managing them, like an
                   autoscaler.
                 properties:
-                  clientSslCertificate:
-                    description: SSL certificate to authenticate user connections.
-                    type: string
-                  clientTlsCertificates:
+                  autoMinorVersionUpgrade:
                     description: |-
-                      A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
-                      TLS certificates to authenticate user connections
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
+                  clientSslCertificateSecretRef:
+                    description: |-
+                      SSL certificate to authenticate user connections, conflicts with client_tls_certificates
+                      SSL certificate to authenticate user connections.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  clientTlsCertificatesSecretRef:
                     items:
-                      type: string
+                      description: A SecretKeySelector is a reference to a secret
+                        key in an arbitrary namespace.
+                      properties:
+                        key:
+                          description: The key to select.
+                          type: string
+                        name:
+                          description: Name of the secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the secret.
+                          type: string
+                      required:
+                      - key
+                      - name
+                      - namespace
+                      type: object
                     type: array
                   dataEviction:
                     description: |-
@@ -329,7 +424,6 @@ spec:
                   enableTls:
                     description: |-
                       Use TLS for authentication. Default: ‘false’
-                      client_ssl_certificate -  SSL certificate to authenticate user connections, conflicts with client_tls_certificates
                       Use TLS for authentication.
                     type: boolean
                   externalEndpointForOssClusterApi:
@@ -361,17 +455,27 @@ spec:
                       Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: 'none'
                       Rate of database data persistence (in persistent storage)
                     type: string
+                  globalEnableDefaultUser:
+                    description: |-
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+                    type: boolean
+                  globalEnablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+                      When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+                    type: boolean
                   globalModules:
                     description: |-
-                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.
+                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
                       List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
                     items:
                       type: string
                     type: array
                   globalPasswordSecretRef:
                     description: |-
-                      Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically
-                      Password used to access the database. If left empty, the password will be generated automatically
+                      Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
+                      Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
                     properties:
                       key:
                         description: The key to select.
@@ -389,12 +493,12 @@ spec:
                     type: object
                   globalRespVersion:
                     description: |-
-                      Either 'resp2' or 'resp3'. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.
+                      Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
                       The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
                     type: string
                   globalSourceIps:
                     description: |-
-                      List of source IP addresses or subnet masks of regions that don't override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'])
+                      List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
                       Set of CIDR addresses to allow access to the database
                     items:
                       type: string
@@ -407,7 +511,7 @@ spec:
                     type: number
                   name:
                     description: |-
-                      A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.
+                      A meaningful name to identify the database (maximum 40 characters).
                       A meaningful name to identify the database
                     type: string
                   overrideRegion:
@@ -416,6 +520,11 @@ spec:
                       Region-specific configuration parameters to override the global configuration
                     items:
                       properties:
+                        enableDefaultUser:
+                          description: |-
+                            Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+                            When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+                          type: boolean
                         name:
                           description: |-
                             Region name.
@@ -424,7 +533,7 @@ spec:
                         overrideGlobalAlert:
                           description: |-
                             A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
-                            Set of alerts to enable on the database
+                            Set of alerts to enable on the database in this region
                           items:
                             properties:
                               name:
@@ -444,9 +553,14 @@ spec:
                             Regional instance of an Active-Active database data persistence rate (in persistent storage)
                             Rate of database data persistence (in persistent storage)
                           type: string
+                        overrideGlobalEnablePasswordless:
+                          description: |-
+                            When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+                            When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+                          type: boolean
                         overrideGlobalPasswordSecretRef:
                           description: |-
-                            If specified, this regional instance of an Active-Active database password will be used to access the database
+                            If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
                             Password used to access the database. If left empty, the password will be generated automatically
                           properties:
                             key:
@@ -465,7 +579,7 @@ spec:
                           type: object
                         overrideGlobalSourceIps:
                           description: |-
-                            List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'] )
+                            List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
                             Set of CIDR addresses to allow access to the database
                           items:
                             type: string
@@ -489,7 +603,7 @@ spec:
                                 type: string
                               storageType:
                                 description: |-
-                                  Defines the provider of the storage location
+                                  Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
                                   Defines the provider of the storage location
                                 type: string
                               timeUtc:
@@ -506,6 +620,11 @@ spec:
                       TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.
                       TCP port on which the database is available
                     type: number
+                  redisVersion:
+                    description: |-
+                      The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
                   subscriptionId:
                     description: |-
                       Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
@@ -707,16 +826,11 @@ spec:
             properties:
               atProvider:
                 properties:
-                  clientSslCertificate:
-                    description: SSL certificate to authenticate user connections.
-                    type: string
-                  clientTlsCertificates:
+                  autoMinorVersionUpgrade:
                     description: |-
-                      A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
-                      TLS certificates to authenticate user connections
-                    items:
-                      type: string
-                    type: array
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
                   dataEviction:
                     description: |-
                       The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
@@ -735,7 +849,6 @@ spec:
                   enableTls:
                     description: |-
                       Use TLS for authentication. Default: ‘false’
-                      client_ssl_certificate -  SSL certificate to authenticate user connections, conflicts with client_tls_certificates
                       Use TLS for authentication.
                     type: boolean
                   externalEndpointForOssClusterApi:
@@ -767,27 +880,39 @@ spec:
                       Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: 'none'
                       Rate of database data persistence (in persistent storage)
                     type: string
+                  globalEnableDefaultUser:
+                    description: |-
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+                    type: boolean
+                  globalEnablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+                      When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+                    type: boolean
                   globalModules:
                     description: |-
-                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. Ignored after database creation.
+                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
                       List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
                     items:
                       type: string
                     type: array
                   globalRespVersion:
                     description: |-
-                      Either 'resp2' or 'resp3'. Resp version for Crdb databases within the AA database. Must be compatible with Redis version.
+                      Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
                       The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
                     type: string
                   globalSourceIps:
                     description: |-
-                      List of source IP addresses or subnet masks of regions that don't override global settings. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'])
+                      List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
                       Set of CIDR addresses to allow access to the database
                     items:
                       type: string
                     type: array
                     x-kubernetes-list-type: set
                   id:
+                    description: The ID of the subscription and database in the format
+                      {subscription_id}/{db_id}
                     type: string
                   memoryLimitInGb:
                     description: |-
@@ -796,7 +921,7 @@ spec:
                     type: number
                   name:
                     description: |-
-                      A meaningful name to identify the database. Modifying this attribute will force creation of a new resource.
+                      A meaningful name to identify the database (maximum 40 characters).
                       A meaningful name to identify the database
                     type: string
                   overrideRegion:
@@ -805,6 +930,11 @@ spec:
                       Region-specific configuration parameters to override the global configuration
                     items:
                       properties:
+                        enableDefaultUser:
+                          description: |-
+                            Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+                            When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+                          type: boolean
                         name:
                           description: |-
                             Region name.
@@ -813,7 +943,7 @@ spec:
                         overrideGlobalAlert:
                           description: |-
                             A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
-                            Set of alerts to enable on the database
+                            Set of alerts to enable on the database in this region
                           items:
                             properties:
                               name:
@@ -833,9 +963,14 @@ spec:
                             Regional instance of an Active-Active database data persistence rate (in persistent storage)
                             Rate of database data persistence (in persistent storage)
                           type: string
+                        overrideGlobalEnablePasswordless:
+                          description: |-
+                            When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+                            When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+                          type: boolean
                         overrideGlobalSourceIps:
                           description: |-
-                            List of regional instance of an Active-Active database source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: ['192.168.10.0/32', '192.168.12.0/24'] )
+                            List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
                             Set of CIDR addresses to allow access to the database
                           items:
                             type: string
@@ -859,7 +994,7 @@ spec:
                                 type: string
                               storageType:
                                 description: |-
-                                  Defines the provider of the storage location
+                                  Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
                                   Defines the provider of the storage location
                                 type: string
                               timeUtc:
@@ -881,7 +1016,7 @@ spec:
                       type: string
                     description: |-
                       A map of which private endpoints can to access the database per region, uses region name as key.
-                      Region public and private endpoints to access the database
+                      Region private endpoints to access the database
                     type: object
                     x-kubernetes-map-type: granular
                   publicEndpoint:
@@ -889,9 +1024,19 @@ spec:
                       type: string
                     description: |-
                       A map of which public endpoints can to access the database per region, uses region name as key.
-                      Region public and private endpoints to access the database
+                      Region public endpoints to access the database
                     type: object
                     x-kubernetes-map-type: granular
+                  redisVersion:
+                    description: |-
+                      The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
+                  redisVersionActual:
+                    description: |-
+                      The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true.
+                      The actual Redis database version
+                    type: string
                   subscriptionId:
                     description: |-
                       Active subscription to create the database in. Modifying this attribute will force creation of a new resource.

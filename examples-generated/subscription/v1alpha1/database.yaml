@@ -13,8 +13,6 @@ spec:
       value: 1
     dataPersistence: aof-every-write
     datasetSizeInGb: 15
-    modules:
-    - name: RedisJSON
     name: database-name
     replication: true
     subscriptionId: ${rediscloud_subscription.subscription-resource.id}
@@ -47,13 +45,10 @@ spec:
         region: eu-west-1
     creationPlan:
     - datasetSizeInGb: 15
-      modules:
-      - RedisJSON
       quantity: 1
       replication: true
       throughputMeasurementBy: operations-per-second
       throughputMeasurementValue: 20000
-    memoryStorage: ram
     name: subscription-name
     paymentMethod: credit-card
     paymentMethodId: ${data.rediscloud_payment_method.card.id}

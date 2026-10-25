@@ -11,7 +11,9 @@ spec:
     awsAccountId: "123456789012"
     destinationRegion: eu-west-2
     sourceRegion: us-east-1
-    subscriptionId: ${rediscloud_active_active_subscription.subscription-resource.id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription-resource
     vpcCidr: 10.0.10.0/24
     vpcId: vpc-01234567890
 

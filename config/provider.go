@@ -32,12 +32,7 @@ func GetProvider() *ujconfig.Provider {
 			ExternalNameConfigurations(),
 		))
 
-	// Configure resource groups
-	for _, configure := range []func(provider *ujconfig.Provider){
-		// add custom config functions for resource groups
-	} {
-		configure(pc)
-	}
+	configure(pc)
 
 	pc.ConfigureResources()
 	return pc

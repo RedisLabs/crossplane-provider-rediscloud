@@ -18,10 +18,11 @@ spec:
         - euw1-az2
         - euw1-az3
         region: eu-west-1
+      resourceTags:
+        environment: production
+        team: platform
     creationPlan:
     - datasetSizeInGb: 15
-      modules:
-      - RedisJSON
       quantity: 1
       replication: true
       throughputMeasurementBy: operations-per-second
@@ -34,8 +35,6 @@ spec:
         - Friday
         durationInHours: 8
         startHour: 22
-    memoryStorage: ram
     name: subscription-name
     paymentMethod: credit-card
     paymentMethodId: ${data.rediscloud_payment_method.card.id}
-    redisVersion: "7.2"

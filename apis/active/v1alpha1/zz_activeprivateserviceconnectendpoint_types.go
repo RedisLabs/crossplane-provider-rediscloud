@@ -41,7 +41,16 @@ type ActivePrivateServiceConnectEndpointInitParameters struct {
 
 	// The ID of the Pro subscription to attach Modifying this attribute will force creation of a new resource.
 	// The ID of the Pro subscription to attach
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1.ActiveSubscription
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ActivePrivateServiceConnectEndpointObservation struct {
@@ -119,8 +128,17 @@ type ActivePrivateServiceConnectEndpointParameters struct {
 
 	// The ID of the Pro subscription to attach Modifying this attribute will force creation of a new resource.
 	// The ID of the Pro subscription to attach
+	// +crossplane:generate:reference:type=github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1.ActiveSubscription
 	// +kubebuilder:validation:Optional
 	SubscriptionID *string `json:"subscriptionId,omitempty" tf:"subscription_id,omitempty"`
+
+	// Reference to a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+
+	// Selector for a ActiveSubscription in active to populate subscriptionId.
+	// +kubebuilder:validation:Optional
+	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ServiceAttachmentsInitParameters struct {
@@ -186,7 +204,6 @@ type ActivePrivateServiceConnectEndpoint struct {
 	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.gcpVpcSubnetName) || (has(self.initProvider) && has(self.initProvider.gcpVpcSubnetName))",message="spec.forProvider.gcpVpcSubnetName is a required parameter"
 	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.privateServiceConnectServiceId) || (has(self.initProvider) && has(self.initProvider.privateServiceConnectServiceId))",message="spec.forProvider.privateServiceConnectServiceId is a required parameter"
 	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.regionId) || (has(self.initProvider) && has(self.initProvider.regionId))",message="spec.forProvider.regionId is a required parameter"
-	// +kubebuilder:validation:XValidation:rule="!('*' in self.managementPolicies || 'Create' in self.managementPolicies || 'Update' in self.managementPolicies) || has(self.forProvider.subscriptionId) || (has(self.initProvider) && has(self.initProvider.subscriptionId))",message="spec.forProvider.subscriptionId is a required parameter"
 	Spec   ActivePrivateServiceConnectEndpointSpec   `json:"spec"`
 	Status ActivePrivateServiceConnectEndpointStatus `json:"status,omitempty"`
 }

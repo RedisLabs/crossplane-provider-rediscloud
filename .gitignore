@@ -22,3 +22,10 @@ devenv.local.nix
 
 # Testing
 .kube/
+
+# Internal review. Names, tickets, and customer notes in this file stay local.
+/CROSSPLANE-REDISCLOUD-HANDOFF.md
+
+# Local drafts. Not part of the provider, and they still describe Terraform 2.1.5.
+/ARCHITECTURE.md
+/Crossplane-Redis-Provider-Presentation.md

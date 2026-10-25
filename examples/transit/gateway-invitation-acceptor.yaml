@@ -1,0 +1,10 @@
+apiVersion: transit.redis.io/v1alpha1
+kind: GatewayInvitationAcceptor
+metadata:
+  name: example-gateway-invitation-acceptor
+spec:
+  forProvider:
+    subscriptionIdRef:
+      name: example-subscription
+  providerConfigRef:
+    name: default

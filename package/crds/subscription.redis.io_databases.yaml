@@ -91,10 +91,16 @@ spec:
                           type: number
                       type: object
                     type: array
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
                   averageItemSizeInBytes:
                     description: |-
                       Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-                      of the items stored in the database. Default: 1000
+                      of the items stored in the database. Default: 1000.
+                      Deprecated: This attribute is deprecated. Configure
                       Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
                     type: number
                   clientSslCertificate:
@@ -129,6 +135,11 @@ spec:
                       When true enables connecting to the database with the default user. Default true.
                       When 'true', enables connecting to the database with the 'default' user. Default: 'true'
                     type: boolean
+                  enablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false
+                      When 'true', the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be used together with password. Default: 'false'
+                    type: boolean
                   enableTls:
                     description: |-
                       Use TLS for authentication. Default: ‘false’
@@ -156,8 +167,8 @@ spec:
                     type: number
                   modules:
                     description: |-
-                      A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-                      Modules to be provisioned in the database
+                      A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      Modules to be provisioned in the database. Note: NOT supported for Redis 8.0 and higher as modules are bundled by default.
                     items:
                       properties:
                         name:
@@ -172,8 +183,8 @@ spec:
                     type: string
                   passwordSecretRef:
                     description: |-
-                      Password to access the database. If omitted, a random 32 character long alphanumeric password will be automatically generated
-                      Password used to access the database. If left empty, the password will be generated automatically
+                      Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true
+                      Password used to access the database. If omitted (and enable_passwordless is false), a random password will be generated automatically. Cannot be used together with enable_passwordless
                     properties:
                       key:
                         description: The key to select.
@@ -202,10 +213,22 @@ spec:
                   protocol:
                     description: |-
                       The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.
-                      The protocol that will be used to access the database, (either ‘redis’ or 'memcached’)
+                      The protocol that will be used to access the database (either ‘redis’ or 'memcached’)
                     type: string
                   queryPerformanceFactor:
-                    description: Query performance factor for this specific database
+                    description: |-
+                      The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                      Query performance factor for this specific database
+                    type: string
+                  ramPercentage:
+                    description: |-
+                      instead. This attribute will be removed in the next major version of the provider.
+                      Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                    type: number
+                  redisVersion:
+                    description: |-
+                      The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
                     type: string
                   remoteBackup:
                     description: |-
@@ -238,8 +261,7 @@ spec:
                   replicaOf:
                     description: |-
                       Set of Redis database URIs, in the format redis://user:password@host:port, that this
-                      database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-                      Cannot be enabled when support_oss_cluster_api is enabled.
+                      database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
                       Set of Redis database URIs, in the format `redis://user:password@host:port`, that this database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided
                     items:
                       type: string
@@ -257,7 +279,7 @@ spec:
                     type: string
                   sourceIps:
                     description: |-
-                      List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])
+                      List of source IP addresses or subnet masks that are allowed to connect to the database (example: ['192.168.10.0/32', '192.168.12.0/24']). When not specified, the default behavior depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
                       Set of CIDR addresses to allow access to the database
                     items:
                       type: string
@@ -323,10 +345,16 @@ spec:
                           type: number
                       type: object
                     type: array
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
                   averageItemSizeInBytes:
                     description: |-
                       Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-                      of the items stored in the database. Default: 1000
+                      of the items stored in the database. Default: 1000.
+                      Deprecated: This attribute is deprecated. Configure
                       Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
                     type: number
                   clientSslCertificate:
@@ -361,6 +389,11 @@ spec:
                       When true enables connecting to the database with the default user. Default true.
                       When 'true', enables connecting to the database with the 'default' user. Default: 'true'
                     type: boolean
+                  enablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false
+                      When 'true', the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be used together with password. Default: 'false'
+                    type: boolean
                   enableTls:
                     description: |-
                       Use TLS for authentication. Default: ‘false’
@@ -388,8 +421,8 @@ spec:
                     type: number
                   modules:
                     description: |-
-                      A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-                      Modules to be provisioned in the database
+                      A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      Modules to be provisioned in the database. Note: NOT supported for Redis 8.0 and higher as modules are bundled by default.
                     items:
                       properties:
                         name:
@@ -404,8 +437,8 @@ spec:
                     type: string
                   passwordSecretRef:
                     description: |-
-                      Password to access the database. If omitted, a random 32 character long alphanumeric password will be automatically generated
-                      Password used to access the database. If left empty, the password will be generated automatically
+                      Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true
+                      Password used to access the database. If omitted (and enable_passwordless is false), a random password will be generated automatically. Cannot be used together with enable_passwordless
                     properties:
                       key:
                         description: The key to select.
@@ -434,10 +467,22 @@ spec:
                   protocol:
                     description: |-
                       The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.
-                      The protocol that will be used to access the database, (either ‘redis’ or 'memcached’)
+                      The protocol that will be used to access the database (either ‘redis’ or 'memcached’)
                     type: string
                   queryPerformanceFactor:
-                    description: Query performance factor for this specific database
+                    description: |-
+                      The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                      Query performance factor for this specific database
+                    type: string
+                  ramPercentage:
+                    description: |-
+                      instead. This attribute will be removed in the next major version of the provider.
+                      Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                    type: number
+                  redisVersion:
+                    description: |-
+                      The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
                     type: string
                   remoteBackup:
                     description: |-
@@ -470,8 +515,7 @@ spec:
                   replicaOf:
                     description: |-
                       Set of Redis database URIs, in the format redis://user:password@host:port, that this
-                      database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-                      Cannot be enabled when support_oss_cluster_api is enabled.
+                      database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
                       Set of Redis database URIs, in the format `redis://user:password@host:port`, that this database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided
                     items:
                       type: string
@@ -489,7 +533,7 @@ spec:
                     type: string
                   sourceIps:
                     description: |-
-                      List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])
+                      List of source IP addresses or subnet masks that are allowed to connect to the database (example: ['192.168.10.0/32', '192.168.12.0/24']). When not specified, the default behavior depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
                       Set of CIDR addresses to allow access to the database
                     items:
                       type: string
@@ -731,10 +775,16 @@ spec:
                           type: number
                       type: object
                     type: array
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
                   averageItemSizeInBytes:
                     description: |-
                       Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes)
-                      of the items stored in the database. Default: 1000
+                      of the items stored in the database. Default: 1000.
+                      Deprecated: This attribute is deprecated. Configure
                       Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
                     type: number
                   clientSslCertificate:
@@ -774,6 +824,11 @@ spec:
                       When true enables connecting to the database with the default user. Default true.
                       When 'true', enables connecting to the database with the 'default' user. Default: 'true'
                     type: boolean
+                  enablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be true when password is set. Default: false
+                      When 'true', the database is configured without a password. Only valid when the subscription has public_endpoint_access disabled. Cannot be used together with password. Default: 'false'
+                    type: boolean
                   enableTls:
                     description: |-
                       Use TLS for authentication. Default: ‘false’
@@ -803,8 +858,8 @@ spec:
                     type: number
                   modules:
                     description: |-
-                      A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-                      Modules to be provisioned in the database
+                      A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      Modules to be provisioned in the database. Note: NOT supported for Redis 8.0 and higher as modules are bundled by default.
                     items:
                       properties:
                         name:
@@ -835,7 +890,7 @@ spec:
                   protocol:
                     description: |-
                       The protocol that will be used to access the database, (either ‘redis’ or ‘memcached’) Default: ‘redis’. Modifying this attribute will force creation of a new resource.
-                      The protocol that will be used to access the database, (either ‘redis’ or 'memcached’)
+                      The protocol that will be used to access the database (either ‘redis’ or 'memcached’)
                     type: string
                   publicEndpoint:
                     description: |-
@@ -843,7 +898,24 @@ spec:
                       Public endpoint to access the database
                     type: string
                   queryPerformanceFactor:
-                    description: Query performance factor for this specific database
+                    description: |-
+                      The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                      Query performance factor for this specific database
+                    type: string
+                  ramPercentage:
+                    description: |-
+                      instead. This attribute will be removed in the next major version of the provider.
+                      Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                    type: number
+                  redisVersion:
+                    description: |-
+                      The requested Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
+                  redisVersionActual:
+                    description: |-
+                      The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true
+                      The actual Redis database version
                     type: string
                   remoteBackup:
                     description: |-
@@ -876,8 +948,7 @@ spec:
                   replicaOf:
                     description: |-
                       Set of Redis database URIs, in the format redis://user:password@host:port, that this
-                      database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided.
-                      Cannot be enabled when support_oss_cluster_api is enabled.
+                      database will be a replica of. If the URI provided is a Redis Cloud resource, only host and port should be provided.
                       Set of Redis database URIs, in the format `redis://user:password@host:port`, that this database will be a replica of. If the URI provided is Redis Labs Cloud instance, only host and port should be provided
                     items:
                       type: string
@@ -895,7 +966,7 @@ spec:
                     type: string
                   sourceIps:
                     description: |-
-                      List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP addresses ranges (example: [‘192.168.10.0/32’, ‘192.168.12.0/24’])
+                      List of source IP addresses or subnet masks that are allowed to connect to the database (example: ['192.168.10.0/32', '192.168.12.0/24']). When not specified, the default behavior depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
                       Set of CIDR addresses to allow access to the database
                     items:
                       type: string

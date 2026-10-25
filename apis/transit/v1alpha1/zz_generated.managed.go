@@ -67,3 +67,123 @@ func (mg *GatewayAttachment) SetPublishConnectionDetailsTo(r *xpv1.PublishConnec
 func (mg *GatewayAttachment) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
+
+// GetCondition of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+	return mg.Status.GetCondition(ct)
+}
+
+// GetDeletionPolicy of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) GetDeletionPolicy() xpv1.DeletionPolicy {
+	return mg.Spec.DeletionPolicy
+}
+
+// GetManagementPolicies of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) GetManagementPolicies() xpv1.ManagementPolicies {
+	return mg.Spec.ManagementPolicies
+}
+
+// GetProviderConfigReference of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) GetProviderConfigReference() *xpv1.Reference {
+	return mg.Spec.ProviderConfigReference
+}
+
+// GetPublishConnectionDetailsTo of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
+	return mg.Spec.PublishConnectionDetailsTo
+}
+
+// GetWriteConnectionSecretToReference of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+	return mg.Spec.WriteConnectionSecretToReference
+}
+
+// SetConditions of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) SetConditions(c ...xpv1.Condition) {
+	mg.Status.SetConditions(c...)
+}
+
+// SetDeletionPolicy of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+	mg.Spec.DeletionPolicy = r
+}
+
+// SetManagementPolicies of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) SetManagementPolicies(r xpv1.ManagementPolicies) {
+	mg.Spec.ManagementPolicies = r
+}
+
+// SetProviderConfigReference of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) SetProviderConfigReference(r *xpv1.Reference) {
+	mg.Spec.ProviderConfigReference = r
+}
+
+// SetPublishConnectionDetailsTo of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
+	mg.Spec.PublishConnectionDetailsTo = r
+}
+
+// SetWriteConnectionSecretToReference of this GatewayInvitationAcceptor.
+func (mg *GatewayInvitationAcceptor) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+	mg.Spec.WriteConnectionSecretToReference = r
+}
+
+// GetCondition of this GatewayRoute.
+func (mg *GatewayRoute) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+	return mg.Status.GetCondition(ct)
+}
+
+// GetDeletionPolicy of this GatewayRoute.
+func (mg *GatewayRoute) GetDeletionPolicy() xpv1.DeletionPolicy {
+	return mg.Spec.DeletionPolicy
+}
+
+// GetManagementPolicies of this GatewayRoute.
+func (mg *GatewayRoute) GetManagementPolicies() xpv1.ManagementPolicies {
+	return mg.Spec.ManagementPolicies
+}
+
+// GetProviderConfigReference of this GatewayRoute.
+func (mg *GatewayRoute) GetProviderConfigReference() *xpv1.Reference {
+	return mg.Spec.ProviderConfigReference
+}
+
+// GetPublishConnectionDetailsTo of this GatewayRoute.
+func (mg *GatewayRoute) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
+	return mg.Spec.PublishConnectionDetailsTo
+}
+
+// GetWriteConnectionSecretToReference of this GatewayRoute.
+func (mg *GatewayRoute) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+	return mg.Spec.WriteConnectionSecretToReference
+}
+
+// SetConditions of this GatewayRoute.
+func (mg *GatewayRoute) SetConditions(c ...xpv1.Condition) {
+	mg.Status.SetConditions(c...)
+}
+
+// SetDeletionPolicy of this GatewayRoute.
+func (mg *GatewayRoute) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+	mg.Spec.DeletionPolicy = r
+}
+
+// SetManagementPolicies of this GatewayRoute.
+func (mg *GatewayRoute) SetManagementPolicies(r xpv1.ManagementPolicies) {
+	mg.Spec.ManagementPolicies = r
+}
+
+// SetProviderConfigReference of this GatewayRoute.
+func (mg *GatewayRoute) SetProviderConfigReference(r *xpv1.Reference) {
+	mg.Spec.ProviderConfigReference = r
+}
+
+// SetPublishConnectionDetailsTo of this GatewayRoute.
+func (mg *GatewayRoute) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
+	mg.Spec.PublishConnectionDetailsTo = r
+}
+
+// SetWriteConnectionSecretToReference of this GatewayRoute.
+func (mg *GatewayRoute) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+	mg.Spec.WriteConnectionSecretToReference = r
+}

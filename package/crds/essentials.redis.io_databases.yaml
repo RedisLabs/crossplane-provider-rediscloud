@@ -138,8 +138,8 @@ spec:
                     type: number
                   modules:
                     description: |-
-                      A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-                      Modules to be provisioned in the database
+                      A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      Modules to be provisioned in the database. Note: Not supported for Redis 8.0 and higher as modules are bundled by default.
                     items:
                       properties:
                         name:
@@ -180,6 +180,11 @@ spec:
                     description: |-
                       Database protocol. 'stack' is a suite of all Redis' data modules. Default: 'stack'. Either: 'redis', 'memcached' or 'stack'. 'redis' is only used with Pay-As-You-Go databases.
                       The protocol that will be used to access the database, (either 'redis', 'memcached' or 'stack')
+                    type: string
+                  redisVersion:
+                    description: |-
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the Redis database version. If omitted, the Redis version will be set to the default version
                     type: string
                   regexRules:
                     description: |-
@@ -232,7 +237,7 @@ spec:
                   sourceIps:
                     description: |-
                       List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP address ranges. Example value: ['192.168.10.0/32', '192.168.12.0/24'].
-                      Set of CIDR addresses to allow access to the database
+                      Set of CIDR addresses to allow access to the database.
                     items:
                       type: string
                     type: array
@@ -334,8 +339,8 @@ spec:
                     type: number
                   modules:
                     description: |-
-                      A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-                      Modules to be provisioned in the database
+                      A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      Modules to be provisioned in the database. Note: Not supported for Redis 8.0 and higher as modules are bundled by default.
                     items:
                       properties:
                         name:
@@ -376,6 +381,11 @@ spec:
                     description: |-
                       Database protocol. 'stack' is a suite of all Redis' data modules. Default: 'stack'. Either: 'redis', 'memcached' or 'stack'. 'redis' is only used with Pay-As-You-Go databases.
                       The protocol that will be used to access the database, (either 'redis', 'memcached' or 'stack')
+                    type: string
+                  redisVersion:
+                    description: |-
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the Redis database version. If omitted, the Redis version will be set to the default version
                     type: string
                   regexRules:
                     description: |-
@@ -428,7 +438,7 @@ spec:
                   sourceIps:
                     description: |-
                       List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP address ranges. Example value: ['192.168.10.0/32', '192.168.12.0/24'].
-                      Set of CIDR addresses to allow access to the database
+                      Set of CIDR addresses to allow access to the database.
                     items:
                       type: string
                     type: array
@@ -721,8 +731,8 @@ spec:
                     type: number
                   modules:
                     description: |-
-                      A list of modules objects, documented below. Modifying this attribute will force creation of a new resource.
-                      Modules to be provisioned in the database
+                      A list of modules objects, documented below. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      Modules to be provisioned in the database. Note: Not supported for Redis 8.0 and higher as modules are bundled by default.
                     items:
                       properties:
                         name:
@@ -754,6 +764,16 @@ spec:
                     description: |-
                       Public endpoint to access the database.
                       Public endpoint to access the database
+                    type: string
+                  redisVersion:
+                    description: |-
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. May differ if a minor version upgrade has been automatically applied. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the Redis database version. If omitted, the Redis version will be set to the default version
+                    type: string
+                  redisVersionActual:
+                    description: |-
+                      The Redis version of the database. Can differ from redis_version if a minor version upgrade has been automatically applied.
+                      The actual Redis database version
                     type: string
                   redisVersionCompliance:
                     description: |-
@@ -816,7 +836,7 @@ spec:
                   sourceIps:
                     description: |-
                       List of source IP addresses or subnet masks. If specified, Redis clients will be able to connect to this database only from within the specified source IP address ranges. Example value: ['192.168.10.0/32', '192.168.12.0/24'].
-                      Set of CIDR addresses to allow access to the database
+                      Set of CIDR addresses to allow access to the database.
                     items:
                       type: string
                     type: array
