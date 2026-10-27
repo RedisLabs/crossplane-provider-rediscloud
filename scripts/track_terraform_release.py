@@ -196,8 +196,35 @@ def assert_head_is_main(root: Path) -> None:
         raise SystemExit("refusing to open a pull request unless HEAD is main")
 
 
+TOKEN_ENV_NAMES = ("GH_TOKEN", "GITHUB_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+
+
+def scrubbed_environ() -> dict[str, str]:
+    env = dict(os.environ)
+    for name in TOKEN_ENV_NAMES:
+        env.pop(name, None)
+    return env
+
+
+def without_github_tokens() -> dict[str, str]:
+    saved: dict[str, str] = {}
+    for name in TOKEN_ENV_NAMES:
+        if name in os.environ:
+            saved[name] = os.environ.pop(name)
+    return saved
+
+
+def restore_github_tokens(saved: dict[str, str]) -> None:
+    os.environ.update(saved)
+
+
 def default_generate(root: Path) -> None:
-    completed = subprocess.run(["make", "generate"], cwd=root, check=False)
+    completed = subprocess.run(
+        ["make", "generate"],
+        cwd=root,
+        check=False,
+        env=scrubbed_environ(),
+    )
     if completed.returncode != 0:
         raise SystemExit("make generate failed")
 
@@ -214,23 +241,53 @@ def write_temp(name: str, content: str) -> str:
     return handle.name
 
 
-def open_pull_request(
-    root: Path,
-    candidate: str,
-    *,
-    github_repo: str,
-    skip_generate: bool,
-    generate_fn=default_generate,
-) -> str:
-    root = root.resolve()
-    github_repo = validate_repo(github_repo)
-    candidate = normalize_version(candidate)
-    assert_head_is_main(root)
-    if run(["git", "status", "--porcelain"], root).strip():
-        raise SystemExit("working tree is not clean; refusing to open a pull request")
+def branch_name(candidate: str) -> str:
+    return f"track/terraform-provider-{normalize_version(candidate)}"
 
-    branch = f"track/terraform-provider-{candidate}"
-    existing = json.loads(
+
+def github_output(values: dict[str, str]) -> None:
+    path = os.environ.get("GITHUB_OUTPUT")
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as handle:
+        for key, value in values.items():
+            if "\n" in value or "\r" in value:
+                raise SystemExit(f"refusing multiline GitHub output for {key}")
+            handle.write(f"{key}={value}\n")
+
+
+def bundle_destination() -> Path:
+    directory = Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()))
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / "track-release.bundle"
+
+
+def remote_branch_sha(root: Path, branch: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "ls-remote", "origin", f"refs/heads/{branch}"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        raise SystemExit(f"git ls-remote failed: {detail}")
+    line = completed.stdout.strip()
+    if not line:
+        return None
+    sha = line.split()[0]
+    if len(sha) < 7:
+        raise SystemExit(f"unexpected ls-remote output: {line}")
+    return sha
+
+
+def pin_at(root: Path, ref: str) -> str:
+    return read_pin(run(["git", "show", f"{ref}:Makefile"], root))
+
+
+def existing_pull_request(root: Path, github_repo: str, branch: str) -> bool:
+    listed = json.loads(
         run(
             [
                 "gh",
@@ -249,74 +306,39 @@ def open_pull_request(
         )
         or "[]"
     )
-    if existing:
-        print(f"decision=already-open pin={read_pin((root / 'Makefile').read_text())} candidate={candidate}")
-        return "already-open"
+    return bool(listed)
 
-    before = protected_snapshot(root)
-    makefile_path = root / "Makefile"
-    makefile_path.write_text(bump_pin(makefile_path.read_text(), candidate))
-    if not skip_generate:
-        generate_fn(root)
-        assert_timeouts(root)
-    after = protected_snapshot(root)
-    if before != after:
-        changed = {
-            key: (before.get(key), after.get(key))
-            for key in sorted(set(before) | set(after))
-            if before.get(key) != after.get(key)
-        }
-        raise SystemExit(
-            "refusing to open a pull request; protected versions changed: "
-            f"{changed}"
-        )
-    if read_pin(makefile_path.read_text()) != candidate:
-        raise SystemExit("pin was not updated to the candidate release")
 
-    run(["git", "checkout", "-B", branch], root)
-    message = write_temp(
-        "commit",
-        "\n".join(
-            [
-                f"Bump the Terraform Redis Cloud provider to v{candidate}.",
-                "",
-                "The release-tracking workflow updates TERRAFORM_PROVIDER_VERSION and regenerates from that release. It does not merge.",
-                "",
-            ]
-        ),
+def commit_message(candidate: str) -> str:
+    return "\n".join(
+        [
+            f"Bump the Terraform Redis Cloud provider to v{candidate}.",
+            "",
+            "The release-tracking workflow updates TERRAFORM_PROVIDER_VERSION and regenerates from that release. It does not merge.",
+            "",
+        ]
     )
-    body = write_temp(
-        "body",
-        "\n".join(
-            [
-                "This pull request was opened by `.github/workflows/terraform-release.yaml`.",
-                "",
-                f"`RedisLabs/terraform-provider-rediscloud` published v{candidate}, which is newer than `TERRAFORM_PROVIDER_VERSION` on main. This changes that pin and regenerates the provider. It does not change the Crossplane, Go, or Upjet versions. It does not merge itself.",
-                "",
-                "Review the generated diff and confirm the controller timeout is still 30 minutes. Merge only after CI is green. A pull request opened with the workflow token does not start GitHub Actions by itself. Push a commit from a user account if checks do not appear.",
-                "",
-            ]
-        ),
+
+
+def pull_request_body(candidate: str) -> str:
+    return "\n".join(
+        [
+            "This pull request was opened by `.github/workflows/terraform-release.yaml`.",
+            "",
+            f"`RedisLabs/terraform-provider-rediscloud` published v{candidate}, which is newer than `TERRAFORM_PROVIDER_VERSION` on main. This changes that pin and regenerates the provider. It does not change the Crossplane, Go, or Upjet versions. It does not merge itself.",
+            "",
+            "Review the generated diff and confirm the controller timeout is still 30 minutes. Merge only after CI is green. A pull request opened with the workflow token does not start GitHub Actions by itself. Push a commit from a user account if checks do not appear.",
+            "",
+            "Generation runs without the token that pushes and opens pull requests. If the branch was pushed and opening the pull request failed, the next run opens the pull request from that branch.",
+            "",
+        ]
     )
+
+
+def create_pull_request(root: Path, github_repo: str, branch: str, candidate: str) -> str:
+    body = write_temp("body", pull_request_body(candidate))
     try:
-        run(["git", "add", "-A"], root)
-        run(
-            [
-                "git",
-                "-c",
-                "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-                "-c",
-                "user.name=github-actions[bot]",
-                "-c",
-                "commit.gpgsign=false",
-                "commit",
-                "-F",
-                message,
-            ],
-            root,
-        )
-        run(["git", "push", "--set-upstream", "origin", branch], root)
-        url = run(
+        return run(
             [
                 "gh",
                 "pr",
@@ -335,8 +357,217 @@ def open_pull_request(
             root,
         ).strip()
     finally:
-        os.unlink(message)
         os.unlink(body)
+
+
+def push_branch(root: Path, branch: str, remote_sha: str | None) -> None:
+    if remote_sha is None:
+        run(["git", "push", "--set-upstream", "origin", branch], root)
+        return
+    run(
+        [
+            "git",
+            "push",
+            "origin",
+            f"{branch}:{branch}",
+            f"--force-with-lease=refs/heads/{branch}:{remote_sha}",
+        ],
+        root,
+    )
+
+
+def require_clean_main(root: Path) -> None:
+    assert_head_is_main(root)
+    if run(["git", "status", "--porcelain"], root).strip():
+        raise SystemExit("working tree is not clean; refusing to open a pull request")
+
+
+def generate_and_commit(
+    root: Path,
+    candidate: str,
+    *,
+    skip_generate: bool,
+    generate_fn=default_generate,
+) -> str:
+    branch = branch_name(candidate)
+    before = protected_snapshot(root)
+    makefile_path = root / "Makefile"
+    makefile_path.write_text(bump_pin(makefile_path.read_text(), candidate))
+    saved_tokens = without_github_tokens()
+    try:
+        if not skip_generate:
+            generate_fn(root)
+            assert_timeouts(root)
+    finally:
+        restore_github_tokens(saved_tokens)
+    after = protected_snapshot(root)
+    if before != after:
+        changed = {
+            key: (before.get(key), after.get(key))
+            for key in sorted(set(before) | set(after))
+            if before.get(key) != after.get(key)
+        }
+        raise SystemExit(
+            "refusing to open a pull request; protected versions changed: "
+            f"{changed}"
+        )
+    if read_pin(makefile_path.read_text()) != candidate:
+        raise SystemExit("pin was not updated to the candidate release")
+
+    run(["git", "checkout", "-B", branch], root)
+    message = write_temp("commit", commit_message(candidate))
+    try:
+        run(["git", "add", "-A"], root)
+        run(
+            [
+                "git",
+                "-c",
+                "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+                "-c",
+                "user.name=github-actions[bot]",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-F",
+                message,
+            ],
+            root,
+        )
+    finally:
+        os.unlink(message)
+    return branch
+
+
+def remote_candidate_sha(root: Path, branch: str, candidate: str) -> str | None:
+    remote_sha = remote_branch_sha(root, branch)
+    if remote_sha is None:
+        return None
+    run(["git", "fetch", "origin", f"refs/heads/{branch}"], root)
+    if pin_at(root, "FETCH_HEAD") != candidate:
+        return None
+    return remote_sha
+
+
+def open_pull_request(
+    root: Path,
+    candidate: str,
+    *,
+    github_repo: str,
+    skip_generate: bool,
+    generate_fn=default_generate,
+) -> str:
+    root = root.resolve()
+    github_repo = validate_repo(github_repo)
+    candidate = normalize_version(candidate)
+    require_clean_main(root)
+    branch = branch_name(candidate)
+    if existing_pull_request(root, github_repo, branch):
+        print(
+            f"decision=already-open pin={read_pin((root / 'Makefile').read_text())} candidate={candidate}"
+        )
+        return "already-open"
+
+    remote_sha = remote_branch_sha(root, branch)
+    if remote_candidate_sha(root, branch, candidate) is not None:
+        url = create_pull_request(root, github_repo, branch, candidate)
+        print(f"decision=retried candidate={candidate} url={url}")
+        return url
+
+    generate_and_commit(
+        root,
+        candidate,
+        skip_generate=skip_generate,
+        generate_fn=generate_fn,
+    )
+    push_branch(root, branch, remote_sha)
+    url = create_pull_request(root, github_repo, branch, candidate)
+    print(f"decision=opened candidate={candidate} url={url}")
+    return url
+
+
+def prepare_release(
+    root: Path,
+    candidate: str,
+    *,
+    github_repo: str,
+    skip_generate: bool,
+    generate_fn=default_generate,
+) -> str:
+    root = root.resolve()
+    github_repo = validate_repo(github_repo)
+    candidate = normalize_version(candidate)
+    require_clean_main(root)
+    branch = branch_name(candidate)
+    if existing_pull_request(root, github_repo, branch):
+        print(
+            f"decision=already-open pin={read_pin((root / 'Makefile').read_text())} candidate={candidate}"
+        )
+        github_output({"action": "already-open", "candidate": candidate, "branch": branch})
+        return "already-open"
+    if remote_candidate_sha(root, branch, candidate) is not None:
+        print(f"decision=retry candidate={candidate}")
+        github_output({"action": "retry", "candidate": candidate, "branch": branch})
+        return "retry"
+
+    generate_and_commit(
+        root,
+        candidate,
+        skip_generate=skip_generate,
+        generate_fn=generate_fn,
+    )
+    destination = bundle_destination()
+    if destination.exists():
+        destination.unlink()
+    run(["git", "bundle", "create", str(destination), branch], root)
+    print(f"decision=prepared candidate={candidate} bundle={destination}")
+    github_output(
+        {
+            "action": "publish",
+            "candidate": candidate,
+            "branch": branch,
+            "bundle": str(destination),
+        }
+    )
+    return "publish"
+
+
+def publish_release(
+    root: Path,
+    candidate: str,
+    *,
+    github_repo: str,
+    reuse: bool,
+    bundle: Path | None,
+) -> str:
+    root = root.resolve()
+    github_repo = validate_repo(github_repo)
+    candidate = normalize_version(candidate)
+    require_clean_main(root)
+    branch = branch_name(candidate)
+    if existing_pull_request(root, github_repo, branch):
+        print(
+            f"decision=already-open pin={read_pin((root / 'Makefile').read_text())} candidate={candidate}"
+        )
+        return "already-open"
+    if reuse:
+        if remote_candidate_sha(root, branch, candidate) is None:
+            raise SystemExit("remote branch is missing or does not carry the candidate pin")
+        url = create_pull_request(root, github_repo, branch, candidate)
+        print(f"decision=retried candidate={candidate} url={url}")
+        return url
+    if bundle is None or not bundle.is_file():
+        raise SystemExit("release bundle is missing")
+    run(
+        ["git", "fetch", str(bundle), f"refs/heads/{branch}:refs/heads/{branch}"],
+        root,
+    )
+    remote_sha = remote_branch_sha(root, branch)
+    local_sha = resolve_ref(root, f"refs/heads/{branch}")
+    if local_sha is None:
+        raise SystemExit("bundle did not create the release branch")
+    if remote_sha != local_sha:
+        push_branch(root, branch, remote_sha)
+    url = create_pull_request(root, github_repo, branch, candidate)
     print(f"decision=opened candidate={candidate} url={url}")
     return url
 
@@ -358,6 +589,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tag", default="")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="Bump, generate, and bundle a commit. Do not push or open a pull request.",
+    )
+    parser.add_argument(
+        "--publish-only",
+        action="store_true",
+        help="Push a prepared bundle, or open a pull request for an existing branch.",
+    )
+    parser.add_argument("--reuse-remote", action="store_true")
+    parser.add_argument("--bundle", default="")
+    parser.add_argument(
         "--skip-generate",
         action="store_true",
         help="Test-only. Skip make generate and the controller timeout check.",
@@ -369,12 +612,44 @@ def main(argv: list[str] | None = None) -> int:
         args.dry_run = True
 
     root = Path(args.repo_root).resolve()
+    if args.publish_only:
+        raw_candidate = args.tag or os.environ.get("TRACK_CANDIDATE", "")
+        if not raw_candidate:
+            raise SystemExit("publish-only requires a candidate")
+        candidate = normalize_version(raw_candidate)
+        reuse = args.reuse_remote or os.environ.get("TRACK_REUSE", "").lower() == "true"
+        bundle_text = args.bundle or os.environ.get("TRACK_BUNDLE", "")
+        publish_release(
+            root,
+            candidate,
+            github_repo=args.github_repo,
+            reuse=reuse,
+            bundle=Path(bundle_text) if bundle_text else None,
+        )
+        return 0
+
     pin = read_pin((root / "Makefile").read_text())
     candidate = candidate_for(pin, args.tag, args.upstream)
     newer = version_tuple(candidate) > version_tuple(pin)
     if args.dry_run or not newer:
         label = "would-open" if newer else "none"
         print(f"decision={label} pin={pin} candidate={candidate}")
+        github_output(
+            {
+                "action": "none",
+                "candidate": candidate,
+                "branch": branch_name(candidate),
+            }
+        )
+        return 0
+
+    if args.prepare_only:
+        prepare_release(
+            root,
+            candidate,
+            github_repo=args.github_repo,
+            skip_generate=args.skip_generate,
+        )
         return 0
 
     open_pull_request(

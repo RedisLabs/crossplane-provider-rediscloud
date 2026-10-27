@@ -18,33 +18,79 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 concurrency:
   group: terraform-release-track
   cancel-in-progress: false
 
 jobs:
-  track:
+  prepare:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      action: ${{ steps.prepare.outputs.action }}
+      candidate: ${{ steps.prepare.outputs.candidate }}
+      branch: ${{ steps.prepare.outputs.branch }}
+      bundle: ${{ steps.prepare.outputs.bundle }}
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
           submodules: true
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
           go-version: "1.24"
 
-      - name: Track release
+      - name: Prepare release
+        id: prepare
         env:
+          # Read-only. The script removes this token before make generate.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TRACK_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
           TRACK_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
-        run: python3 scripts/track_terraform_release.py
+        run: python3 scripts/track_terraform_release.py --prepare-only
+
+      - name: Upload release bundle
+        if: steps.prepare.outputs.action == 'publish'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: track-release-bundle
+          path: ${{ steps.prepare.outputs.bundle }}
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.action == 'publish' || needs.prepare.outputs.action == 'retry'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release bundle
+        if: needs.prepare.outputs.action == 'publish'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: track-release-bundle
+          path: track-release-artifact
+
+      - name: Publish pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRACK_CANDIDATE: ${{ needs.prepare.outputs.candidate }}
+          TRACK_REUSE: ${{ needs.prepare.outputs.action == 'retry' && 'true' || 'false' }}
+          TRACK_BUNDLE: ${{ needs.prepare.outputs.action == 'publish' && 'track-release-artifact/track-release.bundle' || '' }}
+        run: python3 scripts/track_terraform_release.py --publish-only

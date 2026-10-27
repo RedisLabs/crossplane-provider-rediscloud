@@ -86,7 +86,7 @@ class GhLog:
 
 
 @contextmanager
-def fake_gh(list_json: str = "[]"):
+def fake_gh(list_json: str = "[]", create_status: int = 0):
     holder = GhLog()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -107,11 +107,15 @@ def fake_gh(list_json: str = "[]"):
                     "if sys.argv[1:3] == ['pr', 'list']:",
                     "    sys.stdout.write(os.environ.get('GH_LIST', '[]'))",
                     "    raise SystemExit(0)",
-                    "if sys.argv[1:3] == ['pr', 'create']:",
-                    "    if 'merge' in sys.argv:",
-                    "        raise SystemExit(2)",
-                    "    sys.stdout.write('https://example.test/pull/1\\n')",
-                    "    raise SystemExit(0)",
+"if sys.argv[1:3] == ['pr', 'create']:",
+"    if 'merge' in sys.argv:",
+"        raise SystemExit(2)",
+"    code = int(os.environ.get('GH_CREATE_STATUS', '0'))",
+"    if code != 0:",
+"        sys.stderr.write('create failed\\n')",
+"        raise SystemExit(code)",
+"    sys.stdout.write('https://example.test/pull/1\\n')",
+"    raise SystemExit(0)",
                     "sys.stderr.write('unexpected gh command\\n')",
                     "raise SystemExit(1)",
                     "",
@@ -122,9 +126,11 @@ def fake_gh(list_json: str = "[]"):
         old_path = os.environ.get("PATH", "")
         old_log = os.environ.get("GH_LOG")
         old_list = os.environ.get("GH_LIST")
+        old_create = os.environ.get("GH_CREATE_STATUS")
         os.environ["PATH"] = str(root) + os.pathsep + old_path
         os.environ["GH_LOG"] = str(log)
         os.environ["GH_LIST"] = list_json
+        os.environ["GH_CREATE_STATUS"] = str(create_status)
         holder.path = log
         try:
             yield holder
@@ -140,6 +146,10 @@ def fake_gh(list_json: str = "[]"):
                 os.environ.pop("GH_LIST", None)
             else:
                 os.environ["GH_LIST"] = old_list
+            if old_create is None:
+                os.environ.pop("GH_CREATE_STATUS", None)
+            else:
+                os.environ["GH_CREATE_STATUS"] = old_create
 
 
 def gh_calls(log: Path) -> list[dict]:
@@ -149,14 +159,18 @@ def gh_calls(log: Path) -> list[dict]:
 
 
 class TrackReleaseTest(unittest.TestCase):
-    def test_real_makefile_pin_is_current_release(self) -> None:
-        self.assertEqual(track.read_pin((REPO / "Makefile").read_text()), "2.19.2")
+    def test_real_makefile_pin_is_a_stable_version(self) -> None:
+        pin = track.read_pin((REPO / "Makefile").read_text())
+        self.assertEqual(track.normalize_version(pin), pin)
 
     def test_bump_real_makefile_changes_only_the_pin(self) -> None:
         original = (REPO / "Makefile").read_text()
-        bumped = track.bump_pin(original, "v2.20.0")
+        pin = track.read_pin(original)
+        major, minor, patch = track.version_tuple(pin)
+        candidate = f"{major}.{minor}.{patch + 1}"
+        bumped = track.bump_pin(original, f"v{candidate}")
         self.assertEqual((REPO / "Makefile").read_text(), original)
-        self.assertEqual(track.read_pin(bumped), "2.20.0")
+        self.assertEqual(track.read_pin(bumped), candidate)
         self.assertEqual(
             track.assignment(original, "CROSSPLANE_VERSION"),
             track.assignment(bumped, "CROSSPLANE_VERSION"),
@@ -174,8 +188,8 @@ class TrackReleaseTest(unittest.TestCase):
             changed,
             [
                 (
-                    "export TERRAFORM_PROVIDER_VERSION ?= 2.19.2",
-                    "export TERRAFORM_PROVIDER_VERSION ?= 2.20.0",
+                    f"export TERRAFORM_PROVIDER_VERSION ?= {pin}",
+                    f"export TERRAFORM_PROVIDER_VERSION ?= {candidate}",
                 )
             ],
         )
@@ -224,7 +238,8 @@ class TrackReleaseTest(unittest.TestCase):
         self.assertEqual(snap["upjet"], "v1.4.1")
         self.assertEqual(snap["crossplane-runtime"], "v1.16.0")
         self.assertEqual(snap["ci.GO_VERSION"], "1.24")
-        self.assertEqual(snap["uptest.GO_VERSION"], "1.21")
+        uptest = (REPO / ".github/workflows/uptest-trigger.yaml").read_text()
+        self.assertEqual(snap["uptest.GO_VERSION"], track.workflow_env(uptest, "GO_VERSION"))
 
     def test_current_controllers_keep_thirty_minute_timeout(self) -> None:
         self.assertGreaterEqual(track.assert_timeouts(REPO), 27)
@@ -412,26 +427,298 @@ class TrackReleaseTest(unittest.TestCase):
             self.assertIn("export TERRAFORM_PROVIDER_VERSION ?= 2.19.2", (repo / "Makefile").read_text())
             self.assertEqual(git(repo, "rev-list", "--count", "HEAD").stdout.strip(), "1")
 
-    def test_live_dry_run_against_published_release_opens_nothing(self) -> None:
+    def test_live_dry_run_follows_the_pin_and_published_release(self) -> None:
         before = (REPO / "Makefile").read_bytes()
+        pin = track.read_pin(before.decode())
         output = io.StringIO()
         with redirect_stdout(output):
             code = track.main(["--dry-run", "--repo-root", str(REPO)])
         self.assertEqual(code, 0)
         self.assertEqual((REPO / "Makefile").read_bytes(), before)
-        self.assertIn("decision=none pin=2.19.2 candidate=2.19.2", output.getvalue())
+        decision, seen_pin, candidate = output.getvalue().split()
+        self.assertEqual(seen_pin, f"pin={pin}")
+        self.assertTrue(candidate.startswith("candidate="))
+        published = candidate.split("=", 1)[1]
+        newer = track.version_tuple(published) > track.version_tuple(pin)
+        if newer:
+            self.assertEqual(decision, "decision=would-open")
+        else:
+            self.assertEqual(decision, "decision=none")
 
-    def test_workflow_tracks_releases_and_does_not_merge(self) -> None:
+    def test_workflow_keeps_generation_away_from_the_write_token(self) -> None:
         workflow = (REPO / ".github/workflows/terraform-release.yaml").read_text()
         self.assertIn("scripts/track_terraform_release.py", workflow)
         self.assertIn("workflow_dispatch", workflow)
         self.assertIn("schedule:", workflow)
-        self.assertIn("contents: write", workflow)
-        self.assertIn("pull-requests: write", workflow)
         self.assertIn("dry_run", workflow)
         self.assertIn("timeout-minutes: 90", workflow)
         self.assertNotIn("pr merge", workflow)
         self.assertNotIn("CROSSPLANE_VERSION", workflow)
+        prepare, publish = workflow.split("\n  publish:\n", 1)
+        self.assertIn("contents: read", prepare)
+        self.assertIn("pull-requests: read", prepare)
+        self.assertNotIn("contents: write", prepare)
+        self.assertIn("persist-credentials: false", prepare)
+        self.assertIn("--prepare-only", prepare)
+        self.assertIn("contents: write", publish)
+        self.assertIn("pull-requests: write", publish)
+        self.assertIn("--publish-only", publish)
+        self.assertNotIn("make generate", publish)
+
+    def test_generate_does_not_see_github_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            seen: dict[str, str | None] = {}
+
+            def generate(root: Path) -> None:
+                seen["gh"] = os.environ.get("GH_TOKEN")
+                seen["github"] = os.environ.get("GITHUB_TOKEN")
+                path = root / "internal/controller/example/example/zz_controller.go"
+                path.parent.mkdir(parents=True)
+                path.write_text("managed.WithTimeout(30 * time.Minute)\n")
+
+            os.environ["GH_TOKEN"] = "write-token"
+            os.environ["GITHUB_TOKEN"] = "also-write"
+            try:
+                with fake_gh(), redirect_stdout(io.StringIO()):
+                    track.open_pull_request(
+                        repo,
+                        "2.20.0",
+                        github_repo="local/test",
+                        skip_generate=False,
+                        generate_fn=generate,
+                    )
+                self.assertIsNone(seen["gh"])
+                self.assertIsNone(seen["github"])
+                self.assertEqual(os.environ.get("GH_TOKEN"), "write-token")
+                self.assertEqual(os.environ.get("GITHUB_TOKEN"), "also-write")
+            finally:
+                os.environ.pop("GH_TOKEN", None)
+                os.environ.pop("GITHUB_TOKEN", None)
+
+    def test_default_generate_strips_tokens_from_make(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bindir = root / "bin"
+            bindir.mkdir()
+            envfile = root / "env.txt"
+            make = bindir / "make"
+            make.write_text(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        f"env > {envfile}",
+                        "exit 0",
+                        "",
+                    ]
+                )
+            )
+            make.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bindir) + os.pathsep + old_path
+            os.environ["GH_TOKEN"] = "secret"
+            os.environ["GITHUB_TOKEN"] = "secret2"
+            try:
+                track.default_generate(root)
+            finally:
+                os.environ["PATH"] = old_path
+                os.environ.pop("GH_TOKEN", None)
+                os.environ.pop("GITHUB_TOKEN", None)
+            names = {
+                line.split("=", 1)[0]
+                for line in envfile.read_text().splitlines()
+                if "=" in line
+            }
+            self.assertNotIn("GH_TOKEN", names)
+            self.assertNotIn("GITHUB_TOKEN", names)
+            self.assertNotIn("GITHUB_ENTERPRISE_TOKEN", names)
+
+    def test_push_uses_force_with_lease_when_the_remote_branch_exists(self) -> None:
+        calls: list[list[str]] = []
+        original = track.run
+
+        def fake(args: list[str], cwd: Path) -> str:
+            calls.append(args)
+            return ""
+
+        track.run = fake
+        try:
+            track.push_branch(Path("."), "track/terraform-provider-2.20.0", "abc123")
+            track.push_branch(Path("."), "track/terraform-provider-2.20.0", None)
+        finally:
+            track.run = original
+        self.assertEqual(
+            calls[0],
+            [
+                "git",
+                "push",
+                "origin",
+                "track/terraform-provider-2.20.0:track/terraform-provider-2.20.0",
+                "--force-with-lease=refs/heads/track/terraform-provider-2.20.0:abc123",
+            ],
+        )
+        self.assertEqual(
+            calls[1],
+            ["git", "push", "--set-upstream", "origin", "track/terraform-provider-2.20.0"],
+        )
+        self.assertNotIn("--force", " ".join(calls[1]))
+
+    def test_failed_pull_request_create_is_retried_without_a_new_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            branch = "track/terraform-provider-2.20.0"
+            with fake_gh(create_status=1):
+                with self.assertRaises(SystemExit) as caught:
+                    track.open_pull_request(
+                        repo,
+                        "2.20.0",
+                        github_repo="local/test",
+                        skip_generate=True,
+                    )
+                self.assertIn("create failed", str(caught.exception))
+            first = git(repo, "rev-parse", branch).stdout.strip()
+            git(repo, "checkout", "main")
+            output = io.StringIO()
+            with fake_gh() as log, redirect_stdout(output):
+                result = track.open_pull_request(
+                    repo,
+                    "2.20.0",
+                    github_repo="local/test",
+                    skip_generate=True,
+                )
+            self.assertEqual(result, "https://example.test/pull/1")
+            self.assertIn("decision=retried", output.getvalue())
+            self.assertEqual(git(repo, "rev-parse", branch).stdout.strip(), first)
+            self.assertEqual(
+                [call["argv"][:2] for call in log.calls],
+                [["pr", "list"], ["pr", "create"]],
+            )
+
+    def test_stale_remote_branch_is_replaced_with_a_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            branch = "track/terraform-provider-2.20.0"
+            git(repo, "checkout", "-B", branch)
+            git(repo, "commit", "--allow-empty", "-m", "stale")
+            git(repo, "push", "origin", branch)
+            stale = git(repo, "rev-parse", branch).stdout.strip()
+            git(repo, "checkout", "main")
+            with fake_gh(), redirect_stdout(io.StringIO()):
+                track.open_pull_request(
+                    repo,
+                    "2.20.0",
+                    github_repo="local/test",
+                    skip_generate=True,
+                )
+            updated = git(
+                repo, "ls-remote", "origin", f"refs/heads/{branch}"
+            ).stdout.split()[0]
+            self.assertNotEqual(updated, stale)
+            makefile = git(repo, "show", f"{updated}:Makefile").stdout
+            self.assertIn("export TERRAFORM_PROVIDER_VERSION ?= 2.20.0", makefile)
+
+    def test_prepare_does_not_push_and_publish_opens_the_pull_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            runner = Path(tmp) / "runner"
+            runner.mkdir()
+            old_runner = os.environ.get("RUNNER_TEMP")
+            os.environ["RUNNER_TEMP"] = str(runner)
+            try:
+                output = io.StringIO()
+                with fake_gh() as log, redirect_stdout(output):
+                    code = track.main(
+                        [
+                            "--prepare-only",
+                            "--skip-generate",
+                            "--tag",
+                            "v2.20.0",
+                            "--repo-root",
+                            str(repo),
+                            "--github-repo",
+                            "local/test",
+                        ]
+                    )
+                self.assertEqual(code, 0)
+                self.assertIn("decision=prepared", output.getvalue())
+                self.assertEqual([call["argv"][:2] for call in log.calls], [["pr", "list"]])
+                self.assertEqual(
+                    git(
+                        repo,
+                        "ls-remote",
+                        "origin",
+                        "refs/heads/track/terraform-provider-2.20.0",
+                    ).stdout.strip(),
+                    "",
+                )
+                bundle = runner / "track-release.bundle"
+                self.assertTrue(bundle.is_file())
+                git(repo, "checkout", "main")
+                output = io.StringIO()
+                with fake_gh() as log, redirect_stdout(output):
+                    code = track.main(
+                        [
+                            "--publish-only",
+                            "--tag",
+                            "v2.20.0",
+                            "--bundle",
+                            str(bundle),
+                            "--repo-root",
+                            str(repo),
+                            "--github-repo",
+                            "local/test",
+                        ]
+                    )
+                self.assertEqual(code, 0)
+                self.assertIn("decision=opened", output.getvalue())
+                self.assertEqual(log.calls[-1]["argv"][:2], ["pr", "create"])
+                self.assertNotIn("merge", log.calls[-1]["argv"])
+                remote = git(
+                    repo,
+                    "ls-remote",
+                    "origin",
+                    "refs/heads/track/terraform-provider-2.20.0",
+                ).stdout
+                self.assertIn("refs/heads/track/terraform-provider-2.20.0", remote)
+                before = git(
+                    repo, "rev-list", "--count", "track/terraform-provider-2.20.0"
+                ).stdout.strip()
+                git(repo, "checkout", "main")
+                output = io.StringIO()
+                with fake_gh(), redirect_stdout(output):
+                    code = track.main(
+                        [
+                            "--prepare-only",
+                            "--skip-generate",
+                            "--tag",
+                            "v2.20.0",
+                            "--repo-root",
+                            str(repo),
+                            "--github-repo",
+                            "local/test",
+                        ]
+                    )
+                self.assertEqual(code, 0)
+                self.assertIn("decision=retry", output.getvalue())
+                self.assertEqual(
+                    git(
+                        repo, "rev-list", "--count", "track/terraform-provider-2.20.0"
+                    ).stdout.strip(),
+                    before,
+                )
+            finally:
+                if old_runner is None:
+                    os.environ.pop("RUNNER_TEMP", None)
+                else:
+                    os.environ["RUNNER_TEMP"] = old_runner
 
 
 if __name__ == "__main__":
