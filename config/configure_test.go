@@ -38,55 +38,54 @@ func TestSubscriptionReferences(t *testing.T) {
 
 func TestDatabaseConnectionDetails(t *testing.T) {
 	t.Parallel()
-	t.Run("port already in terraform state", func(t *testing.T) {
-		got, err := databaseConnectionDetails(map[string]any{
-			"public_endpoint":  "redis.example:12345",
-			"private_endpoint": "",
-			"port":             float64(12345),
-			"password":         "do-not-copy",
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(got["public_endpoint"]) != "redis.example:12345" {
-			t.Fatalf("public endpoint: %s", got["public_endpoint"])
-		}
-		if string(got["port"]) != "12345" {
-			t.Fatalf("port: %s", got["port"])
-		}
-		if _, ok := got["password"]; ok {
-			t.Fatal("password must stay out of the additional connection details")
-		}
-		if _, ok := got["private_endpoint"]; ok {
-			t.Fatal("empty private endpoint should be omitted")
-		}
+	got, err := databaseConnectionDetails(map[string]any{
+		"public_endpoint":  "redis.example:12345",
+		"private_endpoint": "",
+		"port":             float64(12345),
+		"password":         "do-not-copy",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got["public_endpoint"]) != "redis.example:12345" {
+		t.Fatalf("public endpoint: %s", got["public_endpoint"])
+	}
+	if string(got["port"]) != "12345" {
+		t.Fatalf("port: %s", got["port"])
+	}
+	if _, ok := got["password"]; ok {
+		t.Fatal("password must stay out of the additional connection details")
+	}
+	if _, ok := got["private_endpoint"]; ok {
+		t.Fatal("empty private endpoint should be omitted")
+	}
+}
 
-	// The 27 October 2026 QA database had both endpoints set and no port.
-	t.Run("live observation without port", func(t *testing.T) {
-		got, err := databaseConnectionDetails(map[string]any{
-			"public_endpoint":  "redis.example:12345",
-			"private_endpoint": "redis.internal:12345",
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(got["public_endpoint"]) != "redis.example:12345" {
-			t.Fatalf("public endpoint: %s", got["public_endpoint"])
-		}
-		if string(got["private_endpoint"]) != "redis.internal:12345" {
-			t.Fatalf("private endpoint: %s", got["private_endpoint"])
-		}
-		if _, ok := got["port"]; ok {
-			t.Fatal("port must stay absent when Terraform state has no port")
-		}
-		if _, ok := got["password"]; ok {
-			t.Fatal("password must stay out of the additional connection details")
-		}
-		if len(got) != 2 {
-			t.Fatalf("secret keys: %v", got)
-		}
+// The 27 October 2026 QA database had both endpoints set and no port.
+func TestDatabaseConnectionDetailsWithoutPort(t *testing.T) {
+	t.Parallel()
+	got, err := databaseConnectionDetails(map[string]any{
+		"public_endpoint":  "redis.example:12345",
+		"private_endpoint": "redis.internal:12345",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got["public_endpoint"]) != "redis.example:12345" {
+		t.Fatalf("public endpoint: %s", got["public_endpoint"])
+	}
+	if string(got["private_endpoint"]) != "redis.internal:12345" {
+		t.Fatalf("private endpoint: %s", got["private_endpoint"])
+	}
+	if _, ok := got["port"]; ok {
+		t.Fatal("port must stay absent when Terraform state has no port")
+	}
+	if _, ok := got["password"]; ok {
+		t.Fatal("password must stay out of the additional connection details")
+	}
+	if len(got) != 2 {
+		t.Fatalf("secret keys: %v", got)
+	}
 }
 
 func TestActiveActiveDatabaseConnectionDetails(t *testing.T) {
