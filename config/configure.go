@@ -54,12 +54,14 @@ func configure(p *ujconfig.Provider) {
 	}
 }
 
-// databaseConnectionDetails publishes the endpoints and port that Terraform
-// computes. A Pro or Essentials endpoint is one string and keeps its own key.
-// An Active-Active endpoint is a map keyed by region. Each region is stored
-// as "<key>.<region>", for example public_endpoint.us-east-1. Port stays one
-// value. The password stays on its secret reference and is not copied here,
-// because that key is already reserved by the sensitive-field mapping.
+// databaseConnectionDetails publishes public_endpoint and private_endpoint.
+// port is an optional Terraform input, so it is published only when state
+// already has a value. A Pro or Essentials endpoint is one string and keeps
+// its own key. An Active-Active endpoint is a map keyed by region. Each
+// region is stored as "<key>.<region>", for example public_endpoint.us-east-1.
+// When port is present it stays one value. The password stays on its secret
+// reference and is not copied here, because that key is already reserved by
+// the sensitive-field mapping.
 func databaseConnectionDetails(attr map[string]any) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, key := range []string{"public_endpoint", "private_endpoint", "port"} {

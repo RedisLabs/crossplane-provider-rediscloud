@@ -6,7 +6,9 @@ spec:
   forProvider:
     name: "my-redis-subscription"
     memoryStorage: "ram"
-    paymentMethod: "credit-card"
+    # Placeholder. Replace it with the account payment method id.
+    # The real id stays out of git. The QA script reads it from the PaymentMethod lookup.
+    paymentMethodId: "example-payment-method-id"
     cloudProvider:
     - provider: "AWS"
       region:
@@ -16,7 +18,8 @@ spec:
     creationPlan:
     - quantity: 1
       replication: true
-      throughputMeasurementBy: "number-of-shards"
-      throughputMeasurementValue: 1
+      datasetSizeInGb: 1
+      throughputMeasurementBy: "operations-per-second"
+      throughputMeasurementValue: 1000
   providerConfigRef:
     name: default
