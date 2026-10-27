@@ -36,7 +36,7 @@ Numbering and the architecture diagrams were added on 22 October 2026. Evidence 
 | <a id="g6"></a>6. Managed APIs are `v1alpha1`<br>**severity:** 🟡<br>**Fix status:** open | Open<br>• The README says the managed APIs are `v1alpha1`.<br>• **Left unfixed:** because managed resources stay `v1alpha1` for this refresh.<br>• **Plan:** No fix. Managed resources remain `v1alpha1` for this refresh. |
 | <a id="g7"></a>7. No proof of a real apply<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** ACL rules, a Pro subscription, and a Database custom resource were created, became Ready, and were deleted against a Redis Cloud account. The database copied the numeric subscription id, reached Cloud active and Kubernetes Ready, then both were deleted cleanly. |
 | <a id="g8"></a>8. Data-source lookups are manual<br>**severity:** 🔴<br>**Fix status:** partial | ✅ Fixed for payment method, Essentials plan, and region<br>• **Fix detail:** `PaymentMethod`, `EssentialsPlan`, and `Regions` are read-only cluster objects in `lookup.redis.io`. They read the ProviderConfig credentials, call the Redis Cloud API, and write the matched id to status. Delete does not change the account. Examples are in `examples/lookup`.<br>• **Left unfixed:** for the other 26 data sources. Callers keep pasting those IDs.<br>• **Plan:** No fix for the other 26 data sources. Callers keep pasting those IDs. |
-| <a id="g9"></a>9. Stay aligned with later Terraform provider releases<br>**severity:** 🟡<br>**Fix status:** open | Open<br>• No automated job currently bumps `TERRAFORM_PROVIDER_VERSION` when new upstream releases are tagged.<br>• **Left unfixed:** because automated tracking of upstream releases is not yet configured.<br>• **Plan:** Fix: add a workflow to track upstream releases and bump `TERRAFORM_PROVIDER_VERSION` to stay aligned with later Terraform provider releases. |
+| <a id="g9"></a>9. Stay aligned with later Terraform provider releases<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** `.github/workflows/terraform-release.yaml` opens a pull request when `RedisLabs/terraform-provider-rediscloud` publishes a release newer than `TERRAFORM_PROVIDER_VERSION`. That pull request changes the pin and regenerates. It does not merge itself, and it does not bump Crossplane, Go, or Upjet. |
 
 ## Architectures
 
@@ -92,7 +92,7 @@ flowchart TB
   plugin["Same terraform-provider-rediscloud\nv2.19.2 plugin"]
   cloud["Redis Cloud API"]
   proof["ACL rules, Pro subscription,\nand Database CR created and deleted\n🟡 ✅ 7"]
-  stale["No job bumps\nTERRAFORM_PROVIDER_VERSION\n🟡 9"]
+  track["Workflow opens a pull request\nwhen a Terraform release is newer\n🟡 ✅ 9"]
 
   author --> k8s --> crd --> ctrl
   alpha -.-> crd
@@ -102,10 +102,10 @@ flowchart TB
   lookup -.-> crd
   ctrl --> ws --> plugin --> cloud
   proof -.-> cloud
-  stale -.-> plugin
+  track -.-> plugin
 
-  class author,k8s,crd,pc,refs,ctrl,ws,plugin,cloud,lookup present
-  class alpha,dbref,stale,proof medium
+  class author,k8s,crd,pc,refs,ctrl,ws,plugin,cloud,lookup,track present
+  class alpha,dbref,proof medium
 ```
 
 The provider pod does not call Redis Cloud itself for managed resources. It runs Terraform, and Terraform runs the same plugin as the diagram above. The resource boxes match. Payment method, Essentials plan, and region lookups are read-only objects (🔴 ✅ [8](#g8)). The other data-source IDs stay pasted. 🟡 [3](#g3) stays yellow because string children already reference a subscription, and databases still cannot.
@@ -201,6 +201,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 | Lookup objects on the test cluster | `PaymentMethod`, `EssentialsPlan`, and `Regions` became Ready. Status ids matched the Redis Cloud API for the same filters. Deleting the objects left the account payment methods unchanged. |
 | `go build -buildvcs=false -o /tmp/provider-rediscloud-spike ./cmd/provider` | Passed. |
 | `python3 scripts/check-examples.py package/crds examples` | Passed. 16 examples, including the three lookups and the six resources added in Terraform v2.19.2. |
+| Release-tracking dry run and fixture, 26 October 2026 | A dry run against published v2.19.2 opens nothing. Fixture tag `v2.20.0` opens a pull request that changes `TERRAFORM_PROVIDER_VERSION` and leaves `CROSSPLANE_VERSION` unchanged. A generate result that restores the 3 minute timeout does not open a pull request. |
 | `golangci-lint` v1.64.8 on `./config/...`, `./internal/clients/...`, `./cmd/...` | Passed with `GOFLAGS=-buildvcs=false`. |
 | ACL rule on a Redis Cloud account | Three create, Ready, and delete cycles. Each rule was verified deleted from the Cloud API after deletion. |
 | Pro subscription on a Redis Cloud account | Three create, Ready, and delete cycles. Each reached Cloud `active` and Kubernetes Ready, then verified deleted (404). An additional subscription was created for Database CR verification and deleted the same way. |
@@ -222,6 +223,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 - 🟡 ✅ [5](#g5). The Active-Active TLS `initProvider` field matches `forProvider`.
 - 🟡 ✅ [7](#g7). ACL rules, a Pro subscription, and a Database CR were created, became Ready, and were deleted against a Redis Cloud account.
 - 🔴 ✅ [8](#g8), three lookups only. `PaymentMethod`, `EssentialsPlan`, and `Regions` write the matched id to status. The other 26 data sources stay pasted IDs.
+- 🟡 ✅ [9](#g9). A workflow opens a pull request when Terraform Redis Cloud publishes a release newer than `TERRAFORM_PROVIDER_VERSION`. The pull request changes that pin and regenerates. It does not merge, and it does not bump Crossplane, Go, or Upjet.
 - Examples for the six resources added in Terraform v2.19.2 are in `examples/private`, `examples/transit`, and `examples/active`. `config/coverage_test.go` lists all 27 managed resources and those six.
 
 ## What not to treat as a gap

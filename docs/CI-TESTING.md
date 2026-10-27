@@ -39,13 +39,20 @@ Automatically manages stale issues and PRs:
 - Closes them after 14 additional days without activity
 - Users can use `/fresh` comment to remove stale label
 
+### Terraform provider release tracking (`.github/workflows/terraform-release.yaml`)
+
+Runs every day, and from Actions → Run workflow. It compares `TERRAFORM_PROVIDER_VERSION` with the latest release of `RedisLabs/terraform-provider-rediscloud`. The same version opens nothing. A newer stable release updates that pin, runs `make generate` in a job that cannot push, and a second job opens a pull request. The workflow does not merge that pull request, and it does not change the Crossplane, Go, or Upjet versions. If the branch was already pushed, the next run opens the pull request from that branch.
+
+A manual run can set `dry_run` to print the decision without opening a pull request, or set `tag` to a fixture such as `v2.20.0`.
+
 ## Testing
 
 ### Unit Tests
 
 Unit tests live in `*_test.go` files. The provider configuration tests are in
 `config/`. The lookup tests are in `internal/lookup/` and
-`internal/controller/lookup/`.
+`internal/controller/lookup/`. `make test` also runs
+`scripts/test_track_terraform_release.py`.
 
 Run unit tests:
 ```bash

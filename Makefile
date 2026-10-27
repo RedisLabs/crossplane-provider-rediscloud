@@ -261,6 +261,15 @@ help-special: crossplane.help
 
 .PHONY: crossplane.help help-special
 
+test.run: test.track-release
+
+test.track-release:
+	@$(INFO) testing terraform release tracking
+	@python3 -m unittest discover -s scripts -p 'test_track_terraform_release.py' || $(FAIL)
+	@$(OK) testing terraform release tracking
+
+.PHONY: test.track-release
+
 # TODO(negz): Update CI to use these targets.
 vendor: modules.download
 vendor.check: modules.check
