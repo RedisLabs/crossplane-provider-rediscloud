@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2024 The Crossplane Authors <https://crossplane.io>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+name: Nightly QA
+
+# This workflow is not a required check. It runs on main after merge.
+# 06:17 UTC is two hours after terraform-release.yaml at 04:17 UTC.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-live
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  qa-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Cleanup Disk
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          large-packages: false
+          swap-storage: false
+
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          submodules: true
+
+      - name: Setup Go
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Vendor Dependencies
+        run: make vendor vendor.check
+
+      - name: Deploy the provider to kind
+        run: make local-deploy
+
+      - name: Create and delete the QA objects
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: |
+          tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
+          python3 scripts/qa_live.py --kubectl "$tool"
+
+      - name: Delete a leftover xp-ci subscription
+        if: always()
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: |
+          tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
+          python3 scripts/qa_live.py --kubectl "$tool" --cleanup-only
