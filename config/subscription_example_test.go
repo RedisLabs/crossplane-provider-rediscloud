@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -178,14 +177,29 @@ func containsAll(problems []string, parts ...string) bool {
 
 func subscriptionExampleYAML(t *testing.T) []byte {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	path := filepath.Join(filepath.Dir(file), "..", "examples", "rediscloud", "subscription.yaml")
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "examples", "rediscloud", "subscription.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+// moduleRoot walks up from the test process directory. go test -trimpath
+// hides the source path, so runtime.Caller cannot find this file on disk.
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("go.mod not found from the test working directory")
+		}
+		dir = parent
+	}
 }

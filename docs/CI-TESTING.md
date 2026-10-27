@@ -49,9 +49,10 @@ A manual run can set `dry_run` to print the decision without opening a pull requ
 
 ### Unit Tests
 
-Unit tests live in `*_test.go` files. The provider configuration tests are in
-`config/`. The lookup tests are in `internal/lookup/` and
-`internal/controller/lookup/`. `make test` also runs
+Unit tests live in `*_test.go` files. `make test` runs the packages under
+`cmd`, `internal`, `apis`, and `config`. The subscription example test and
+the connection-secret tests are in `config/`. The lookup tests are in
+`internal/lookup/` and `internal/controller/lookup/`. `make test` also runs
 `scripts/test_track_terraform_release.py`.
 
 Run unit tests:
