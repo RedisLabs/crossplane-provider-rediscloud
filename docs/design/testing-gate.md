@@ -1,7 +1,7 @@
 # Testing gate
 
 Date: 28 October 2026.
-Status: Accepted. Steps 1, 2, and 3 are on main. The ruleset on `main` requires only `CI / ci-success`.
+Status: Accepted. Steps 1, 2, and 3 are on main. The ruleset on `main` requires only the `ci-success` job.
 Owner: Shay Berman.
 Ticket: none.
 Design: this file.
