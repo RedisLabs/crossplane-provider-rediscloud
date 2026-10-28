@@ -261,7 +261,7 @@ help-special: crossplane.help
 
 .PHONY: crossplane.help help-special
 
-test.run: test.track-release test.qa-live test.ci-success
+test.run: test.track-release test.qa-live test.ci-success test.alignment-guards
 
 test.track-release:
 	@$(INFO) testing terraform release tracking
@@ -278,7 +278,12 @@ test.ci-success:
 	@python3 -m unittest discover -s scripts -p 'test_ci_success.py' || $(FAIL)
 	@$(OK) testing the ci-success job
 
-.PHONY: test.track-release test.qa-live test.ci-success
+test.alignment-guards:
+	@$(INFO) testing alignment guards
+	@python3 -m unittest discover -s scripts -p 'test_alignment_guards.py' || $(FAIL)
+	@$(OK) testing alignment guards
+
+.PHONY: test.track-release test.qa-live test.ci-success test.alignment-guards
 
 # TODO(negz): Update CI to use these targets.
 vendor: modules.download
