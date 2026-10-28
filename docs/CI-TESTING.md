@@ -45,6 +45,10 @@ Runs every day, and from Actions → Run workflow. It compares `TERRAFORM_PROVID
 
 A manual run can set `dry_run` to print the decision without opening a pull request, or set `tag` to a fixture such as `v2.20.0`.
 
+### Nightly QA (`.github/workflows/qa-live.yaml`)
+
+Runs at 06:17 UTC, and from Actions → Run workflow. It does not run on pull requests. The job builds the provider on a kind cluster and runs `scripts/qa_live.py`, which creates and deletes one ACL rule, one Pro subscription, and one database on the QA account. The credential comes from the `UPTEST_CLOUD_CREDENTIALS` secret. The script requires secret keys `public_endpoint` and `private_endpoint`. `port` is not required. `attribute.password` may also be present because the sensitive-field mapping owns the password. This workflow is not a required status check.
+
 ## Testing
 
 ### Unit Tests
@@ -53,7 +57,7 @@ Unit tests live in `*_test.go` files. `make test` runs the packages under
 `cmd`, `internal`, `apis`, and `config`. The subscription example test and
 the connection-secret tests are in `config/`. The lookup tests are in
 `internal/lookup/` and `internal/controller/lookup/`. `make test` also runs
-`scripts/test_track_terraform_release.py`.
+`scripts/test_track_terraform_release.py` and `scripts/test_qa_live.py`.
 
 Run unit tests:
 ```bash

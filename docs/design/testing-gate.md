@@ -198,5 +198,5 @@ Merge step 1, then step 2, then step 3, then enable the ruleset. Rollback of ste
 
 ## Open questions
 
-- The cron hour for step 2 is unset until that pull request. Pick an hour that does not overlap `.github/workflows/terraform-release.yaml` at 04:17 UTC.
+- The cron hour is `17 6 * * *` (06:17 UTC). `.github/workflows/terraform-release.yaml` runs at 04:17 UTC. The two hours between them keep the jobs from overlapping.
 - Step 1's `GetParameters()` test will not notice a new Redis combination rule. The hand run of the step 2 script before a subscription or database merge is what notices it.
