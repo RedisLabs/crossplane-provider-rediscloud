@@ -58,7 +58,14 @@ Unit tests live in `*_test.go` files. `make test` runs the packages under
 `cmd`, `internal`, `apis`, and `config`. The subscription example test and
 the connection-secret tests are in `config/`. The lookup tests are in
 `internal/lookup/` and `internal/controller/lookup/`. `make test` also runs
-`scripts/test_track_terraform_release.py` and `scripts/test_qa_live.py`.
+`scripts/test_track_terraform_release.py`, `scripts/test_qa_live.py`,
+`scripts/test_ci_success.py`, and `scripts/test_alignment_guards.py`.
+
+`config/alignment_guard_test.go` fails if a generated controller returns to a
+3 minute timeout, if Active-Active `clientTlsCertificatesSecretRef` is no
+longer a secret-reference list, or if a database type grows
+`subscriptionIdRef`. String children such as peering keep that reference.
+Managed APIs stay `v1alpha1` until the Upjet line move.
 
 Run unit tests:
 ```bash
