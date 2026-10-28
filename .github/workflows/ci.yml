@@ -360,3 +360,41 @@ jobs:
         with:
           name: output
           path: _output/**
+
+  # Required status check for main. detect-noop must succeed. Jobs it skips
+  # for a docs-only pull request count as success. failure and cancelled fail
+  # the job. The nightly QA workflow is not a dependency.
+  ci-success:
+    runs-on: ubuntu-24.04
+    if: always()
+    needs:
+      - detect-noop
+      - lint
+      - check-diff
+      - unit-tests
+      - local-deploy
+      - check-examples
+      - report-breaking-changes
+      - publish-artifacts
+    steps:
+      - name: Fail when a required job failed or was cancelled
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - << 'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS"])
+          bad = []
+          for name, info in sorted(needs.items()):
+              result = info.get("result")
+              print(f"{name}={result}")
+              if name == "detect-noop":
+                  allowed = {"success"}
+              else:
+                  allowed = {"success", "skipped"}
+              if result not in allowed:
+                  bad.append(f"{name}={result}")
+          if bad:
+              print("ci-success failed: " + ", ".join(bad))
+              sys.exit(1)
+          PY

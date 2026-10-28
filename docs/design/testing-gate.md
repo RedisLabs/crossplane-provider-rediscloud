@@ -1,7 +1,7 @@
 # Testing gate
 
 Date: 28 October 2026.
-Status: Proposed.
+Status: In progress. Steps 1 and 2 are on main. Step 3 adds `ci-success`. The ruleset is applied after that pull request merges and `main` has one green `ci-success` run.
 Owner: Shay Berman.
 Ticket: none.
 Design: this file.
@@ -154,19 +154,20 @@ One pull request, branched from `main` after step 2 is merged. The repository se
 
 What it changes:
 
-- CI gains one job, `ci-success`. It depends on lint, check-diff, unit-tests, local-deploy, check-examples, report-breaking-changes, and publish-artifacts.
-- `ci-success` fails when any of those results is `failure` or `cancelled`. A `skipped` result, which is what `detect-noop` does for a docs-only pull request, is success.
+- CI gains one job, `ci-success`. It depends on detect-noop, lint, check-diff, unit-tests, local-deploy, check-examples, report-breaking-changes, and publish-artifacts.
+- `detect-noop` must be `success`. `ci-success` fails when any needed result is `failure` or `cancelled`. A `skipped` result on the other jobs, which is what a docs-only pull request produces, is success. A failed `detect-noop` fails `ci-success` even when those jobs were skipped.
 - It does not depend on the nightly workflow.
 
 #### Exit criteria
 
 - A pull request with a failing unit test makes `ci-success` fail.
-- A docs-only pull request, where the other jobs are skipped, makes `ci-success` succeed.
+- A docs-only pull request, where detect-noop succeeded and the other jobs are skipped, makes `ci-success` succeed.
+- A failed detect-noop makes `ci-success` fail.
 - `ci-success` has no dependency on the nightly workflow or on an `Uptest-` status.
 
 #### How to verify
 
-1. Read the job's `needs` list and the result condition. Confirm `failure` and `cancelled` fail the job, and `skipped` does not.
+1. Read the job's `needs` list and the result condition. Confirm `detect-noop` must be `success`, `failure` and `cancelled` fail the job, and `skipped` on the other jobs does not.
 2. On this pull request, wait until `ci-success` itself is green.
 3. After merge, confirm `main` has one green `ci-success` run so the check name exists.
 4. Add a ruleset on `main` whose only required status check is `ci-success`. Do not require the nightly workflow, Codecov, or `Uptest-`.
