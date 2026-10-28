@@ -1,7 +1,7 @@
 # Testing gate
 
 Date: 28 October 2026.
-Status: Proposed.
+Status: In progress. Steps 1 and 2 are on main. Step 3 adds `ci-success`. The ruleset is applied after that pull request merges and `main` has one green `ci-success` run.
 Owner: Shay Berman.
 Ticket: none.
 Design: this file.
