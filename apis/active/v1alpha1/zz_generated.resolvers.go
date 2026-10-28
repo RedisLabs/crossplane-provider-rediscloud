@@ -8,7 +8,7 @@ package v1alpha1
 
 import (
 	"context"
-	reference "github.com/crossplane/crossplane-runtime/pkg/reference"
+	reference "github.com/crossplane/crossplane-runtime/v2/pkg/reference"
 	errors "github.com/pkg/errors"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -23,6 +23,7 @@ func (mg *ActivePrivateLink) ResolveReferences(ctx context.Context, c client.Rea
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -39,6 +40,7 @@ func (mg *ActivePrivateLink) ResolveReferences(ctx context.Context, c client.Rea
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -65,6 +67,7 @@ func (mg *ActivePrivateServiceConnect) ResolveReferences(ctx context.Context, c 
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -81,6 +84,7 @@ func (mg *ActivePrivateServiceConnect) ResolveReferences(ctx context.Context, c 
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -107,6 +111,7 @@ func (mg *ActivePrivateServiceConnectEndpoint) ResolveReferences(ctx context.Con
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -123,6 +128,7 @@ func (mg *ActivePrivateServiceConnectEndpoint) ResolveReferences(ctx context.Con
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -149,6 +155,7 @@ func (mg *ActivePrivateServiceConnectEndpointAccepter) ResolveReferences(ctx con
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -165,6 +172,7 @@ func (mg *ActivePrivateServiceConnectEndpointAccepter) ResolveReferences(ctx con
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -191,6 +199,7 @@ func (mg *ActiveSubscriptionPeering) ResolveReferences(ctx context.Context, c cl
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -207,6 +216,7 @@ func (mg *ActiveSubscriptionPeering) ResolveReferences(ctx context.Context, c cl
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -233,6 +243,7 @@ func (mg *ActiveSubscriptionRegions) ResolveReferences(ctx context.Context, c cl
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -249,6 +260,7 @@ func (mg *ActiveSubscriptionRegions) ResolveReferences(ctx context.Context, c cl
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -275,6 +287,7 @@ func (mg *ActiveTransitGatewayAttachment) ResolveReferences(ctx context.Context,
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -291,6 +304,7 @@ func (mg *ActiveTransitGatewayAttachment) ResolveReferences(ctx context.Context,
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -317,6 +331,7 @@ func (mg *ActiveTransitGatewayInvitationAcceptor) ResolveReferences(ctx context.
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -333,6 +348,7 @@ func (mg *ActiveTransitGatewayInvitationAcceptor) ResolveReferences(ctx context.
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -359,6 +375,7 @@ func (mg *ActiveTransitGatewayRoute) ResolveReferences(ctx context.Context, c cl
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -375,6 +392,7 @@ func (mg *ActiveTransitGatewayRoute) ResolveReferences(ctx context.Context, c cl
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{

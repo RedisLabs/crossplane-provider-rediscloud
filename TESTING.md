@@ -7,7 +7,7 @@ resources and run only when someone starts them.
 ## Prerequisites
 
 - Docker or Podman
-- Go 1.24, which is the version used in CI
+- Go 1.26, which is the version used in CI
 - Make
 - Redis Cloud API credentials for any test that calls the API
 

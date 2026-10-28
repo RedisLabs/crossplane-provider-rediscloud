@@ -55,17 +55,17 @@ class CheckExamplesTests(unittest.TestCase):
 
 
 class GoVersionTests(unittest.TestCase):
-    def test_workflows_and_makefile_use_go_1_24(self) -> None:
+    def test_workflows_and_makefile_use_go_1_26(self) -> None:
         ci = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
         uptest = yaml.safe_load((REPO / ".github/workflows/uptest-trigger.yaml").read_text())
         publish = yaml.safe_load((REPO / ".github/workflows/publish-provider-package.yml").read_text())
         makefile = (REPO / "Makefile").read_text()
         trigger = publish[True]["workflow_dispatch"]["inputs"]["go-version"]["default"]
 
-        self.assertEqual(ci["env"]["GO_VERSION"], "1.24")
-        self.assertEqual(uptest["env"]["GO_VERSION"], "1.24")
-        self.assertEqual(trigger, "1.24")
-        self.assertIn("GO_REQUIRED_VERSION ?= 1.24", makefile)
+        self.assertEqual(ci["env"]["GO_VERSION"], "1.26")
+        self.assertEqual(uptest["env"]["GO_VERSION"], "1.26")
+        self.assertEqual(trigger, "1.26")
+        self.assertIn("GO_REQUIRED_VERSION ?= 1.26", makefile)
 
 
 if __name__ == "__main__":

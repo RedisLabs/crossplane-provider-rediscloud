@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type GatewayRouteInitParameters struct {
@@ -26,11 +26,11 @@ type GatewayRouteInitParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// The ID of the Transit Gateway
 	// The ID of the Transit Gateway
@@ -69,11 +69,11 @@ type GatewayRouteParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// The ID of the Transit Gateway
 	// The ID of the Transit Gateway
@@ -83,8 +83,8 @@ type GatewayRouteParameters struct {
 
 // GatewayRouteSpec defines the desired state of GatewayRoute
 type GatewayRouteSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     GatewayRouteParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   GatewayRouteParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -100,8 +100,8 @@ type GatewayRouteSpec struct {
 
 // GatewayRouteStatus defines the observed state of GatewayRoute.
 type GatewayRouteStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        GatewayRouteObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               GatewayRouteObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

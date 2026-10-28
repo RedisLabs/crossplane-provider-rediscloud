@@ -1,4 +1,4 @@
-# Copyright 2022 The Upbound Authors. All rights reserved.
+# Copyright 2025 The Crossplane Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,25 +25,43 @@ local.xpkg.init: $(KUBECTL)
 	fi
 	@$(OK) patching Crossplane with dev sidecar
 
-# TODO(negz): Update this target to use the crossplane CLI, not up. We'll need
-# to add the `xpkg extract` subcommand to the crossplane CLI.
+LOCAL_XPKG_DIGEST ?= sha256:0000000000000000000000000000000000000000000000000000000000000000
 
-local.xpkg.sync: local.xpkg.init $(UP)
+local.xpkg.sync: local.xpkg.init $(CROSSPLANE_CLI)
 	@$(INFO) copying local xpkg cache to Crossplane pod
-	@mkdir -p $(XPKG_OUTPUT_DIR)/cache
-	@for pkg in $(XPKG_OUTPUT_DIR)/linux_*/*; do $(UP) xpkg xp-extract --from-xpkg $$pkg -o $(XPKG_OUTPUT_DIR)/cache/$$(basename $$pkg .xpkg).gz; done
+	@mkdir -p $(XPKG_OUTPUT_DIR)/cache/xpkg.crossplane.internal/dev
+	@# Extract each .xpkg and place it under two cache keys so that both
+	@# Crossplane <=2.1 and >=2.2 find the package with pullPolicy: Never.
+	@# - <source>@<digest>.gz — Crossplane <=2.1 uses GetSource() as cache key
+	@# - <friendlyid>.gz     — Crossplane >=2.2 uses FriendlyID() as cache key
+	@#   FriendlyID is ToDNSLabel(truncate(source,50) + "-" + truncate(digest,12)),
+	@#   where ToDNSLabel maps non-alphanumeric chars to "-" and caps at 63 chars.
+	@#   See https://github.com/crossplane/crossplane/blob/v2.2.0-rc.1/internal/xpkg/name.go
+	@for pkg in $(XPKG_OUTPUT_DIR)/linux_*/*; do \
+		pkgname=$$(basename $$pkg | sed 's/-v\([0-9]*\.[0-9]*\.[0-9]*.*\)\.xpkg//'); \
+		$(CROSSPLANE_CLI) xpkg extract --from-xpkg $$pkg -o "$(XPKG_OUTPUT_DIR)/cache/xpkg.crossplane.internal/dev/$$pkgname@$(LOCAL_XPKG_DIGEST).gz"; \
+		friendlyid=$$(printf '%.50s-%.12s' "xpkg.crossplane.internal/dev/$$pkgname" "$(LOCAL_XPKG_DIGEST)" | sed 's/[^a-z0-9]/-/g' | cut -c1-63 | sed 's/-*$$//'); \
+		cp "$(XPKG_OUTPUT_DIR)/cache/xpkg.crossplane.internal/dev/$$pkgname@$(LOCAL_XPKG_DIGEST).gz" $(XPKG_OUTPUT_DIR)/cache/$$friendlyid.gz; \
+	done
 	@XPPOD=$$($(KUBECTL) -n $(CROSSPLANE_NAMESPACE) get pod -l app=crossplane,patched=true -o jsonpath="{.items[0].metadata.name}"); \
 		$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) cp $(XPKG_OUTPUT_DIR)/cache -c dev $$XPPOD:/tmp
 	@$(OK) copying local xpkg cache to Crossplane pod
 
 local.xpkg.deploy.configuration.%: local.xpkg.sync
 	@$(INFO) deploying configuration package $* $(VERSION)
-	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Configuration","metadata":{"name":"$*"},"spec":{"package":"$*-$(VERSION).gz","packagePullPolicy":"Never"}}' | $(KUBECTL) apply -f -
+	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Configuration","metadata":{"name":"$*"},"spec":{"package":"xpkg.crossplane.internal/dev/$*@$(LOCAL_XPKG_DIGEST)","packagePullPolicy":"Never"}}' | $(KUBECTL) apply -f -
 	@$(OK) deploying configuration package $* $(VERSION)
 
 local.xpkg.deploy.provider.%: $(KIND) local.xpkg.sync
 	@$(INFO) deploying provider package $* $(VERSION)
 	@$(KIND) load docker-image $(BUILD_REGISTRY)/$*-$(ARCH) -n $(KIND_CLUSTER_NAME)
-	@echo '{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","metadata":{"name":"runtimeconfig-$*"},"spec":{"deploymentTemplate":{"spec":{"selector":{},"strategy":{},"template":{"spec":{"containers":[{"args":["--debug"],"image":"$(BUILD_REGISTRY)/$*-$(ARCH)","name":"package-runtime"}]}}}}}}' | $(KUBECTL) apply -f -
-	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"$*"},"spec":{"package":"$*-$(VERSION).gz","skipDependencyResolution": $(XPKG_SKIP_DEP_RESOLUTION), "packagePullPolicy":"Never","runtimeConfigRef":{"name":"runtimeconfig-$*"}}}' | $(KUBECTL) apply -f -
+	@if [ -f "$(DRC_FILE)" ]; then \
+		echo "Using custom DeploymentRuntimeConfig from $(DRC_FILE)"; \
+		if [ ! -f "$(YQ)" ]; then echo "Error: YQ is required for custom DRC processing but not available. Please ensure YQ dependency is included in your target."; $(FAIL); fi; \
+		drc_content=$$(cat "$(DRC_FILE)" | $(YQ) '.metadata.name = "runtimeconfig-$*" | (.spec.deploymentTemplate.spec.template.spec.containers[] | select(.name == "package-runtime")).image = "$(BUILD_REGISTRY)/$*-$(ARCH)"') && \
+		echo "$$drc_content" | $(KUBECTL) apply -f - || $(FAIL); \
+	else \
+		echo '{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","metadata":{"name":"runtimeconfig-$*"},"spec":{"deploymentTemplate":{"spec":{"selector":{},"strategy":{},"template":{"spec":{"containers":[{"args":["--debug"],"image":"$(BUILD_REGISTRY)/$*-$(ARCH)","name":"package-runtime"}]}}}}}}' | $(KUBECTL) apply -f -; \
+	fi
+	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"$*"},"spec":{"package":"xpkg.crossplane.internal/dev/$*@$(LOCAL_XPKG_DIGEST)","skipDependencyResolution": $(XPKG_SKIP_DEP_RESOLUTION), "packagePullPolicy":"Never","runtimeConfigRef":{"name":"runtimeconfig-$*"}}}' | $(KUBECTL) apply -f -
 	@$(OK) deploying provider package $* $(VERSION)

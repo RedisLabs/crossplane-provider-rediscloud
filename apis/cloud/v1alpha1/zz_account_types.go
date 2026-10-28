@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type AccountInitParameters struct {
@@ -22,12 +22,12 @@ type AccountInitParameters struct {
 	// Cloud provider secret key.
 	// Note that drift cannot currently be detected for this.
 	// Cloud provider secret key
-	AccessSecretKeySecretRef v1.SecretKeySelector `json:"accessSecretKeySecretRef" tf:"-"`
+	AccessSecretKeySecretRef v2.SecretKeySelector `json:"accessSecretKeySecretRef" tf:"-"`
 
 	// Cloud provider management console password.
 	// Note that drift cannot currently be detected for this.
 	// Cloud provider management console password
-	ConsolePasswordSecretRef v1.SecretKeySelector `json:"consolePasswordSecretRef" tf:"-"`
+	ConsolePasswordSecretRef v2.SecretKeySelector `json:"consolePasswordSecretRef" tf:"-"`
 
 	// Cloud provider management console username.
 	// Note that drift cannot currently be detected for this.
@@ -91,13 +91,13 @@ type AccountParameters struct {
 	// Note that drift cannot currently be detected for this.
 	// Cloud provider secret key
 	// +kubebuilder:validation:Optional
-	AccessSecretKeySecretRef v1.SecretKeySelector `json:"accessSecretKeySecretRef" tf:"-"`
+	AccessSecretKeySecretRef v2.SecretKeySelector `json:"accessSecretKeySecretRef" tf:"-"`
 
 	// Cloud provider management console password.
 	// Note that drift cannot currently be detected for this.
 	// Cloud provider management console password
 	// +kubebuilder:validation:Optional
-	ConsolePasswordSecretRef v1.SecretKeySelector `json:"consolePasswordSecretRef" tf:"-"`
+	ConsolePasswordSecretRef v2.SecretKeySelector `json:"consolePasswordSecretRef" tf:"-"`
 
 	// Cloud provider management console username.
 	// Note that drift cannot currently be detected for this.
@@ -125,8 +125,8 @@ type AccountParameters struct {
 
 // AccountSpec defines the desired state of Account
 type AccountSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     AccountParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   AccountParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -142,8 +142,8 @@ type AccountSpec struct {
 
 // AccountStatus defines the observed state of Account.
 type AccountStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        AccountObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               AccountObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

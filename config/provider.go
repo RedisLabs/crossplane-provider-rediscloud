@@ -8,7 +8,7 @@ import (
 	// Note(turkenh): we are importing this to embed provider schema document
 	_ "embed"
 
-	ujconfig "github.com/crossplane/upjet/pkg/config"
+	ujconfig "github.com/crossplane/upjet/v2/pkg/config"
 )
 
 const (
@@ -28,6 +28,12 @@ func GetProvider() *ujconfig.Provider {
 		ujconfig.WithRootGroup("redis.io"),
 		ujconfig.WithIncludeList(ExternalNameConfigured()),
 		ujconfig.WithFeaturesPackage("internal/features"),
+		ujconfig.WithBasePackages(ujconfig.BasePackages{
+			APIVersion: []string{"v1beta1"},
+			ControllerMap: map[string]string{
+				"providerconfig": ujconfig.PackageNameConfig,
+			},
+		}),
 		ujconfig.WithDefaultResourceOptions(
 			ExternalNameConfigurations(),
 		))

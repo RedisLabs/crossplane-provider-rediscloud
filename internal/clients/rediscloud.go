@@ -9,12 +9,12 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/upjet/pkg/terraform"
+	"github.com/crossplane/upjet/v2/pkg/terraform"
 
 	"github.com/RedisLabs/provider-rediscloud/apis/v1beta1"
 )
@@ -40,7 +40,12 @@ func TerraformSetupBuilder(version, providerSource, providerVersion string) terr
 			},
 		}
 
-		configRef := mg.GetProviderConfigReference()
+		// Cluster-scoped resources still expose the provider config through LegacyManaged.
+		legacy, ok := mg.(resource.LegacyManaged) //nolint:staticcheck // namespaced ModernManaged is a later change.
+		if !ok {
+			return ps, errors.New(errNoProviderConfig)
+		}
+		configRef := legacy.GetProviderConfigReference()
 		if configRef == nil {
 			return ps, errors.New(errNoProviderConfig)
 		}
@@ -49,8 +54,8 @@ func TerraformSetupBuilder(version, providerSource, providerVersion string) terr
 			return ps, errors.Wrap(err, errGetProviderConfig)
 		}
 
-		t := resource.NewProviderConfigUsageTracker(client, &v1beta1.ProviderConfigUsage{})
-		if err := t.Track(ctx, mg); err != nil {
+		t := resource.NewLegacyProviderConfigUsageTracker(client, &v1beta1.ProviderConfigUsage{})
+		if err := t.Track(ctx, legacy); err != nil {
 			return ps, errors.Wrap(err, errTrackUsage)
 		}
 

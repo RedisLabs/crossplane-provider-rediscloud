@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	"github.com/crossplane/upjet/pkg/config"
+	"github.com/crossplane/upjet/v2/pkg/config"
 )
 
 func TestExternalNameConfigured(t *testing.T) {
@@ -43,7 +43,7 @@ func TestExternalNameConfigurations(_ *testing.T) {
 	// Test that the function applies configurations correctly
 	// We'll test by checking if it runs without panic
 	r := &config.Resource{
-		Name: "rediscloud_subscription",
+		Name: tfSubscription,
 	}
 
 	// This should not panic and should apply the configuration
@@ -51,8 +51,8 @@ func TestExternalNameConfigurations(_ *testing.T) {
 
 	// Test with various resource names
 	testResources := []string{
-		"rediscloud_subscription",
-		"rediscloud_subscription_database",
+		tfSubscription,
+		tfSubscriptionDatabase,
 		"unknown_resource",
 	}
 
@@ -68,8 +68,8 @@ func TestExternalNameConfigurations(_ *testing.T) {
 func TestExternalNameConfigs(t *testing.T) {
 	// Test that ExternalNameConfigs contains expected resources
 	expectedResources := []string{
-		"rediscloud_subscription",
-		"rediscloud_subscription_database",
+		tfSubscription,
+		tfSubscriptionDatabase,
 		"rediscloud_subscription_peering",
 		"rediscloud_cloud_account",
 		"rediscloud_acl_user",

@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type AlertInitParameters struct {
@@ -121,7 +121,7 @@ type DatabaseInitParameters struct {
 
 	// Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true
 	// Password used to access the database. If omitted (and enable_passwordless is false), a random password will be generated automatically. Cannot be used together with enable_passwordless
-	PasswordSecretRef *v1.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
+	PasswordSecretRef *v2.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
 
 	// Path that will be used to store database backup files. Deprecated: Use
 	// Path that will be used to store database backup files
@@ -440,7 +440,7 @@ type DatabaseParameters struct {
 	// Password to access the database. If omitted (and enable_passwordless is false), a random 32 character long alphanumeric password will be automatically generated. Cannot be set when enable_passwordless is true
 	// Password used to access the database. If omitted (and enable_passwordless is false), a random password will be generated automatically. Cannot be used together with enable_passwordless
 	// +kubebuilder:validation:Optional
-	PasswordSecretRef *v1.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
+	PasswordSecretRef *v2.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
 
 	// Path that will be used to store database backup files. Deprecated: Use
 	// Path that will be used to store database backup files
@@ -609,8 +609,8 @@ type RemoteBackupParameters struct {
 
 // DatabaseSpec defines the desired state of Database
 type DatabaseSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     DatabaseParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   DatabaseParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -626,8 +626,8 @@ type DatabaseSpec struct {
 
 // DatabaseStatus defines the observed state of Database.
 type DatabaseStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        DatabaseObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               DatabaseObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

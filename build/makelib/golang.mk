@@ -1,4 +1,4 @@
-# Copyright 2016 The Upbound Authors. All rights reserved.
+# Copyright 2025 The Crossplane Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ GO_VERSION := $(shell $(GO) version | sed -ne 's/[^0-9]*\(\([0-9]\.\)\{0,4\}[0-9
 
 # We use a consistent version of golangci-lint to ensure everyone gets the same
 # linters.
-GOLANGCILINT_VERSION ?= 1.54.0
+GOLANGCILINT_VERSION ?= 1.64.8
 GOLANGCILINT := $(TOOLS_HOST_DIR)/golangci-lint-v$(GOLANGCILINT_VERSION)
 
 GO_BIN_DIR := $(abspath $(OUTPUT_DIR)/bin)
@@ -198,3 +198,8 @@ $(GOLANGCILINT):
 	@mv $(TOOLS_HOST_DIR)/tmp-golangci-lint/golangci-lint $(GOLANGCILINT) || $(FAIL)
 	@rm -fr $(TOOLS_HOST_DIR)/tmp-golangci-lint
 	@$(OK) installing golangci-lint-v$(GOLANGCILINT_VERSION) $(SAFEHOSTPLATFORM)
+
+# These targets are deprecated but are still used by some existing repos.
+# The modules targets should be used instead.
+vendor: modules.download
+vendor.check: modules.check

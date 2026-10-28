@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type ActiveTransitGatewayInvitationAcceptorInitParameters struct {
@@ -30,11 +30,11 @@ type ActiveTransitGatewayInvitationAcceptorInitParameters struct {
 
 	// Reference to a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// The ID of the Transit Gateway invitation to accept or reject. Modifying this attribute will force creation of a new resource.
 	// The Transit Gateway invitation ID
@@ -102,11 +102,11 @@ type ActiveTransitGatewayInvitationAcceptorParameters struct {
 
 	// Reference to a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// The ID of the Transit Gateway invitation to accept or reject. Modifying this attribute will force creation of a new resource.
 	// The Transit Gateway invitation ID
@@ -116,8 +116,8 @@ type ActiveTransitGatewayInvitationAcceptorParameters struct {
 
 // ActiveTransitGatewayInvitationAcceptorSpec defines the desired state of ActiveTransitGatewayInvitationAcceptor
 type ActiveTransitGatewayInvitationAcceptorSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     ActiveTransitGatewayInvitationAcceptorParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   ActiveTransitGatewayInvitationAcceptorParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -133,8 +133,8 @@ type ActiveTransitGatewayInvitationAcceptorSpec struct {
 
 // ActiveTransitGatewayInvitationAcceptorStatus defines the observed state of ActiveTransitGatewayInvitationAcceptor.
 type ActiveTransitGatewayInvitationAcceptorStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        ActiveTransitGatewayInvitationAcceptorObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               ActiveTransitGatewayInvitationAcceptorObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

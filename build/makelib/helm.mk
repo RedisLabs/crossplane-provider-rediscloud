@@ -1,4 +1,4 @@
-# Copyright 2016 The Upbound Authors. All rights reserved.
+# Copyright 2025 The Crossplane Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ HELM_OUTPUT_DIR ?= $(OUTPUT_DIR)/charts
 # the helm index file
 HELM_INDEX := $(HELM_OUTPUT_DIR)/index.yaml
 
-HELM_DOCS_VERSION ?= v1.11.0
+HELM_DOCS_VERSION ?= v1.14.2
 HELM_DOCS_ENABLED ?= false
 HELM_DOCS := $(TOOLS_HOST_DIR)/helm-docs
 

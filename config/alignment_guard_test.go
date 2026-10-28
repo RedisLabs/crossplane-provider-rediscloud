@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	commonv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	commonv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 
 	activev1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1"
 	essentialsv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/essentials/v1alpha1"

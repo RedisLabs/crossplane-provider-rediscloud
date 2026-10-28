@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type ActivePrivateServiceConnectEndpointInitParameters struct {
@@ -46,11 +46,11 @@ type ActivePrivateServiceConnectEndpointInitParameters struct {
 
 	// Reference to a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ActivePrivateServiceConnectEndpointObservation struct {
@@ -134,11 +134,11 @@ type ActivePrivateServiceConnectEndpointParameters struct {
 
 	// Reference to a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ServiceAttachmentsInitParameters struct {
@@ -164,8 +164,8 @@ type ServiceAttachmentsParameters struct {
 
 // ActivePrivateServiceConnectEndpointSpec defines the desired state of ActivePrivateServiceConnectEndpoint
 type ActivePrivateServiceConnectEndpointSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     ActivePrivateServiceConnectEndpointParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   ActivePrivateServiceConnectEndpointParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -181,8 +181,8 @@ type ActivePrivateServiceConnectEndpointSpec struct {
 
 // ActivePrivateServiceConnectEndpointStatus defines the observed state of ActivePrivateServiceConnectEndpoint.
 type ActivePrivateServiceConnectEndpointStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        ActivePrivateServiceConnectEndpointObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               ActivePrivateServiceConnectEndpointObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

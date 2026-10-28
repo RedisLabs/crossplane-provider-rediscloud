@@ -44,8 +44,8 @@ NPROCS ?= 1
 # to half the number of CPU cores.
 GO_TEST_PARALLEL := $(shell echo $$(( $(NPROCS) / 2 )))
 
-GO_REQUIRED_VERSION ?= 1.24
-GOLANGCILINT_VERSION ?= 1.54.0
+GO_REQUIRED_VERSION ?= 1.26
+GOLANGCILINT_VERSION ?= 2.15.0
 GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider $(GO_PROJECT)/cmd/generator
 GO_LDFLAGS += -X $(GO_PROJECT)/internal/version.Version=$(VERSION)
 GO_SUBDIRS += cmd internal apis config
@@ -54,10 +54,9 @@ GO_SUBDIRS += cmd internal apis config
 # ====================================================================================
 # Setup Kubernetes tools
 
-KIND_VERSION = v0.15.0
-UP_VERSION = v0.39.0
-UP_CHANNEL = stable
-UPTEST_VERSION = v0.5.0
+KIND_VERSION = v0.33.0
+CROSSPLANE_CLI_VERSION = v2.4.3
+UPTEST_VERSION = v2.2.0
 -include build/makelib/k8s_tools.mk
 
 # ====================================================================================
@@ -97,7 +96,7 @@ xpkg.build.provider-rediscloud: do.build.images
 
 # NOTE(hasheddan): we ensure up is installed prior to running platform-specific
 # build steps in parallel to avoid encountering an installation race condition.
-build.init: $(UP) check-terraform-version
+build.init: $(CROSSPLANE_CLI) check-terraform-version
 
 # ====================================================================================
 # Setup Terraform for fetching provider schema
@@ -174,7 +173,7 @@ run: go.build
 
 # ====================================================================================
 # End to End Testing
-CROSSPLANE_VERSION = 1.16.0
+CROSSPLANE_VERSION = 2.4.3
 CROSSPLANE_NAMESPACE = upbound-system
 -include build/makelib/local.xpkg.mk
 -include build/makelib/controlplane.mk

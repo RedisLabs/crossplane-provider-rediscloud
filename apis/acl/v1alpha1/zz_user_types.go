@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type UserInitParameters struct {
@@ -23,7 +23,7 @@ type UserInitParameters struct {
 	// upper-case letter, a
 	// number and a special character.
 	// The user's password
-	PasswordSecretRef v1.SecretKeySelector `json:"passwordSecretRef" tf:"-"`
+	PasswordSecretRef v2.SecretKeySelector `json:"passwordSecretRef" tf:"-"`
 
 	// The name of the Role held by the User.
 	// The role which the user has
@@ -56,7 +56,7 @@ type UserParameters struct {
 	// number and a special character.
 	// The user's password
 	// +kubebuilder:validation:Optional
-	PasswordSecretRef v1.SecretKeySelector `json:"passwordSecretRef" tf:"-"`
+	PasswordSecretRef v2.SecretKeySelector `json:"passwordSecretRef" tf:"-"`
 
 	// The name of the Role held by the User.
 	// The role which the user has
@@ -66,8 +66,8 @@ type UserParameters struct {
 
 // UserSpec defines the desired state of User
 type UserSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     UserParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   UserParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -83,8 +83,8 @@ type UserSpec struct {
 
 // UserStatus defines the observed state of User.
 type UserStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        UserObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               UserObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

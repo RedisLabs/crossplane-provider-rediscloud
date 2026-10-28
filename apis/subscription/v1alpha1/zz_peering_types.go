@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type PeeringInitParameters struct {
@@ -42,11 +42,11 @@ type PeeringInitParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// CIDR range of the VPC to be peered. Either this or vpc_cidrs must be specified. Modifying this attribute will force creation of a new resource.
 	// CIDR range of the VPC to be peered
@@ -159,11 +159,11 @@ type PeeringParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// CIDR range of the VPC to be peered. Either this or vpc_cidrs must be specified. Modifying this attribute will force creation of a new resource.
 	// CIDR range of the VPC to be peered
@@ -184,8 +184,8 @@ type PeeringParameters struct {
 
 // PeeringSpec defines the desired state of Peering
 type PeeringSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     PeeringParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   PeeringParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -201,8 +201,8 @@ type PeeringSpec struct {
 
 // PeeringStatus defines the observed state of Peering.
 type PeeringStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        PeeringObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               PeeringObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
