@@ -361,13 +361,14 @@ jobs:
           name: output
           path: _output/**
 
-  # Required status check for main. A skipped job is success: detect-noop skips
-  # the rest for a docs-only pull request. failure and cancelled fail the job.
-  # The nightly QA workflow is not a dependency.
+  # Required status check for main. detect-noop must succeed. Jobs it skips
+  # for a docs-only pull request count as success. failure and cancelled fail
+  # the job. The nightly QA workflow is not a dependency.
   ci-success:
     runs-on: ubuntu-24.04
     if: always()
     needs:
+      - detect-noop
       - lint
       - check-diff
       - unit-tests
@@ -383,11 +384,14 @@ jobs:
           python3 - << 'PY'
           import json, os, sys
           needs = json.loads(os.environ["NEEDS"])
-          allowed = {"success", "skipped"}
           bad = []
           for name, info in sorted(needs.items()):
               result = info.get("result")
               print(f"{name}={result}")
+              if name == "detect-noop":
+                  allowed = {"success"}
+              else:
+                  allowed = {"success", "skipped"}
               if result not in allowed:
                   bad.append(f"{name}={result}")
           if bad:

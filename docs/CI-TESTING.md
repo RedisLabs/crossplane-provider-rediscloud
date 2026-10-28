@@ -16,7 +16,7 @@ The main CI pipeline runs on every push to main/release branches and on pull req
 - **local-deploy**: Tests local deployment of the provider
 - **check-examples**: Validates example manifests against CRDs
 - **publish-artifacts**: Builds and publishes provider artifacts
-- **ci-success**: Depends on the jobs above except detect-noop. `failure` and `cancelled` fail this job. `skipped` is success, which is what a docs-only pull request produces. This is the status check to require on `main`. It does not depend on the nightly QA workflow.
+- **ci-success**: Depends on detect-noop and the jobs above. `detect-noop` must be success. `failure` and `cancelled` fail this job. `skipped` on the other jobs is success, which is what a docs-only pull request produces. This is the status check to require on `main`. It does not depend on the nightly QA workflow.
 
 ### End-to-End Testing (`.github/workflows/uptest-trigger.yaml`)
 

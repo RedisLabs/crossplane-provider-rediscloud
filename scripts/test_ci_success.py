@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The ci-success job fails on failure or cancellation and accepts skipped."""
+"""The ci-success job fails on failure or cancellation and accepts skipped jobs."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 REQUIRED = {
+    "detect-noop",
     "lint",
     "check-diff",
     "unit-tests",
@@ -47,12 +48,22 @@ def run_script(needs: dict) -> subprocess.CompletedProcess[str]:
 
 class CiSuccessTest(unittest.TestCase):
     def test_failure_and_cancelled_fail_and_skipped_passes(self):
-        ok = run_script({name: {"result": "skipped"} for name in REQUIRED})
+        docs_only = {name: {"result": "skipped"} for name in REQUIRED}
+        docs_only["detect-noop"] = {"result": "success"}
+        ok = run_script(docs_only)
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
-        failed = run_script({"unit-tests": {"result": "failure"}, "lint": {"result": "skipped"}})
+        skipped_gate = run_script({name: {"result": "skipped"} for name in REQUIRED})
+        self.assertNotEqual(skipped_gate.returncode, 0)
+        self.assertIn("detect-noop=skipped", skipped_gate.stdout)
+        broken_gate = {name: {"result": "skipped"} for name in REQUIRED}
+        broken_gate["detect-noop"] = {"result": "failure"}
+        gate = run_script(broken_gate)
+        self.assertNotEqual(gate.returncode, 0)
+        self.assertIn("detect-noop=failure", gate.stdout)
+        failed = run_script({"unit-tests": {"result": "failure"}, "lint": {"result": "skipped"}, "detect-noop": {"result": "success"}})
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn("unit-tests=failure", failed.stdout)
-        cancelled = run_script({"local-deploy": {"result": "cancelled"}})
+        cancelled = run_script({"local-deploy": {"result": "cancelled"}, "detect-noop": {"result": "success"}})
         self.assertNotEqual(cancelled.returncode, 0)
         self.assertIn("local-deploy=cancelled", cancelled.stdout)
 
