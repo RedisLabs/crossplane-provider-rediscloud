@@ -41,9 +41,17 @@ KUSTOMIZE_VERSION ?= v5.7.1
 KUSTOMIZE := $(TOOLS_HOST_DIR)/kustomize-$(KUSTOMIZE_VERSION)
 
 # the version of crossplane cli to use
+# crossplane/cli (>= v2.3.0) ships on cli.crossplane.io. There is no CLI
+# release for every core version; v2.4.3 core has no matching CLI tag.
 CROSSPLANE_CLI_VERSION ?= v2.0.2
 CROSSPLANE_CLI_CHANNEL ?= stable
 CROSSPLANE_CLI := $(TOOLS_HOST_DIR)/crossplane-cli-$(CROSSPLANE_CLI_VERSION)
+CROSSPLANE_CLI_SPLIT_VERSION := v2.3.0
+ifeq ($(shell printf '%s\n%s\n' "$(CROSSPLANE_CLI_VERSION)" "$(CROSSPLANE_CLI_SPLIT_VERSION)" | sort -V | head -n1),$(CROSSPLANE_CLI_SPLIT_VERSION))
+CROSSPLANE_CLI_URL := https://cli.crossplane.io/$(CROSSPLANE_CLI_CHANNEL)/$(CROSSPLANE_CLI_VERSION)/bin/$(SAFEHOST_PLATFORM)/crossplane?source=build
+else
+CROSSPLANE_CLI_URL := https://releases.crossplane.io/$(CROSSPLANE_CLI_CHANNEL)/$(CROSSPLANE_CLI_VERSION)/bin/$(SAFEHOST_PLATFORM)/crank?source=build
+endif
 
 # the version of helm 3 to use
 USE_HELM ?= false
@@ -142,7 +150,7 @@ $(KUSTOMIZE):
 # Crossplane CLI download and install
 $(CROSSPLANE_CLI):
 	@$(INFO) installing Crossplane CLI $(CROSSPLANE_CLI_VERSION)
-	@curl -fsSLo $(CROSSPLANE_CLI) --create-dirs https://releases.crossplane.io/$(CROSSPLANE_CLI_CHANNEL)/$(CROSSPLANE_CLI_VERSION)/bin/$(SAFEHOST_PLATFORM)/crank?source=build || $(FAIL)
+	@curl -fsSLo $(CROSSPLANE_CLI) --create-dirs $(CROSSPLANE_CLI_URL) || $(FAIL)
 	@chmod +x $(CROSSPLANE_CLI)
 	@$(OK) installing Crossplane CLI $(CROSSPLANE_CLI_VERSION)
 

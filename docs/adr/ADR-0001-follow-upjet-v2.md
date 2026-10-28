@@ -18,7 +18,7 @@ Follow Upjet v2.5.1 and move Go, crossplane-runtime, the Crossplane APIs, contro
 
 Stay cluster-scoped for this pull request. `pipeline.Run` accepts a nil namespaced provider and then generates the existing 27 resources into `apis/` and `internal/controller/`. Managed APIs stay `v1alpha1`. ProviderConfig stays `v1beta1`. External Secret Store support is removed because Crossplane v2 dropped it.
 
-The `up` CLI is not part of this build. The current Crossplane build scripts install the Crossplane CLI (`crank`) instead. This pull request uses Crossplane CLI v2.4.3.
+The `up` CLI is not part of this build. The current Crossplane build scripts install the Crossplane CLI instead. This pull request uses Crossplane CLI v2.4.1, the latest published CLI on the 2.4 line. Core 2.4.3 does not have a CLI release.
 
 ## Alternatives
 

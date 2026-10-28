@@ -55,7 +55,7 @@ GO_SUBDIRS += cmd internal apis config
 # Setup Kubernetes tools
 
 KIND_VERSION = v0.33.0
-CROSSPLANE_CLI_VERSION = v2.4.3
+CROSSPLANE_CLI_VERSION = v2.4.1
 UPTEST_VERSION = v2.2.0
 -include build/makelib/k8s_tools.mk
 
