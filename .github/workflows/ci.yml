@@ -361,6 +361,34 @@ jobs:
           name: output
           path: _output/**
 
+  govulncheck:
+    runs-on: ubuntu-24.04
+    needs: detect-noop
+    if: needs.detect-noop.outputs.noop != 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          submodules: true
+
+      - name: Setup Go
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Scan
+        run: |
+          set -o pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$(go env GOPATH)/bin/govulncheck" ./... | tee govulncheck.txt
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: govulncheck
+          path: govulncheck.txt
+
   # Required status check for main. detect-noop must succeed. Jobs it skips
   # for a docs-only pull request count as success. failure and cancelled fail
   # the job. The nightly QA workflow is not a dependency.
@@ -376,6 +404,7 @@ jobs:
       - check-examples
       - report-breaking-changes
       - publish-artifacts
+      - govulncheck
     steps:
       - name: Fail when a required job failed or was cancelled
         env:

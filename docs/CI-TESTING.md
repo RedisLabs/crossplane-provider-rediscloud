@@ -65,7 +65,9 @@ the connection-secret tests are in `config/`. The lookup tests are in
 3 minute timeout, if Active-Active `clientTlsCertificatesSecretRef` is no
 longer a secret-reference list, or if a database type grows
 `subscriptionIdRef`. String children such as peering keep that reference.
-Managed APIs are `v1beta1`. Lookups stay `v1alpha1`.
+Managed resources are stored and reconciled as `v1beta1`. `v1alpha1` stays served for those kinds. Lookups stay `v1alpha1`.
+
+The `govulncheck` job runs govulncheck v1.9.0 with Go 1.26. It fails when called code is affected by a vulnerability. The report is uploaded as the `govulncheck` artifact.
 
 Run unit tests:
 ```bash

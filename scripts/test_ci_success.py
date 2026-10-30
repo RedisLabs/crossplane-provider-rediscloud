@@ -21,6 +21,7 @@ REQUIRED = {
     "check-examples",
     "report-breaking-changes",
     "publish-artifacts",
+    "govulncheck",
 }
 
 
