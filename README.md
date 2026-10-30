@@ -34,7 +34,7 @@ This provider has no published package. Do not install
 exist. Build from this repository with the Developing steps below, then load
 the image into the cluster you use for testing.
 
-Managed resources are `v1alpha1`. `ProviderConfig` is `v1beta1`.
+Managed resources are stored and reconciled as `v1beta1`. `v1alpha1` stays served for those kinds. `ProviderConfig` is `v1beta1`. Lookups stay `v1alpha1`.
 
 ### Configuration
 
@@ -68,7 +68,7 @@ spec:
 Create an Essentials subscription:
 
 ```yaml
-apiVersion: essentials.redis.io/v1alpha1
+apiVersion: essentials.redis.io/v1beta1
 kind: Subscription
 metadata:
   name: my-redis-subscription

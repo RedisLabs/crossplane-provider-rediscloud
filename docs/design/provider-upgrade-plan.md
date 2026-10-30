@@ -66,7 +66,7 @@ A failed generate, a red guard test, or a QA resource that does not reach Ready 
 
 ### Step 2. Promote the APIs
 
-Branch from `main` after step 1 is merged. Move all 27 managed kinds from `v1alpha1` to `v1beta1`. Examples, the README, and `docs/terraform-alignment.md` follow. Stored objects get a conversion strategy, or the pull request states that `v1alpha1` is removed and lists the kinds. ProviderConfig stays `v1beta1` unless step 1 already had to change it.
+Branch from `main` after step 1 is merged. Move all 27 managed kinds from `v1alpha1` to `v1beta1`. Examples, the README, and `docs/terraform-alignment.md` follow. `v1alpha1` stays served for those kinds so a cluster that already stored it can accept the CRD. Storage and the controllers are `v1beta1`. ProviderConfig stays `v1beta1`. Lookups stay `v1alpha1`.
 
 Verify this step before merge:
 

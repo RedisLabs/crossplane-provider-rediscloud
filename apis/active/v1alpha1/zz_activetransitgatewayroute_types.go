@@ -119,7 +119,6 @@ type ActiveTransitGatewayRouteStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ActiveTransitGatewayRoute is the Schema for the ActiveTransitGatewayRoutes API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

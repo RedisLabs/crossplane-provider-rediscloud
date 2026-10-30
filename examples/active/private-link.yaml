@@ -1,4 +1,4 @@
-apiVersion: active.redis.io/v1alpha1
+apiVersion: active.redis.io/v1beta1
 kind: ActivePrivateLink
 metadata:
   name: example-active-private-link

@@ -1,4 +1,4 @@
-apiVersion: transit.redis.io/v1alpha1
+apiVersion: transit.redis.io/v1beta1
 kind: GatewayRoute
 metadata:
   name: example-gateway-route

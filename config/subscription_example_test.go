@@ -9,14 +9,14 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	rediscloudv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1"
+	rediscloudv1beta1 "github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1beta1"
 )
 
 // subscriptionExampleBeforeFix is the manifest Redis Cloud rejected on
 // 27 October 2026: no payment method id, no dataset size, and
 // number-of-shards without RediSearch.
 const subscriptionExampleBeforeFix = `
-apiVersion: rediscloud.redis.io/v1alpha1
+apiVersion: rediscloud.redis.io/v1beta1
 kind: Subscription
 metadata:
   name: example-subscription
@@ -93,7 +93,7 @@ func subscriptionExampleProblems(t *testing.T, raw []byte) []string {
 
 func mustSubscriptionParameters(t *testing.T, raw []byte) map[string]any {
 	t.Helper()
-	var sub rediscloudv1alpha1.Subscription
+	var sub rediscloudv1beta1.Subscription
 	if err := yaml.Unmarshal(raw, &sub); err != nil {
 		t.Fatalf("unmarshal subscription: %v", err)
 	}

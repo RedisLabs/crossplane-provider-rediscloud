@@ -220,7 +220,6 @@ type ActiveSubscriptionPeeringStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ActiveSubscriptionPeering is the Schema for the ActiveSubscriptionPeerings API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

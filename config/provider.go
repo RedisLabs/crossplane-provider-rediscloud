@@ -41,5 +41,12 @@ func GetProvider() *ujconfig.Provider {
 	configure(pc)
 
 	pc.ConfigureResources()
+	// Controllers and storage move to v1beta1. v1alpha1 stays served so a
+	// cluster that already stored that version can accept the CRD update.
+	// Lookups stay v1alpha1. ProviderConfig stays v1beta1.
+	for _, r := range pc.Resources {
+		r.Version = "v1beta1"
+		r.PreviousVersions = []string{"v1alpha1"}
+	}
 	return pc
 }

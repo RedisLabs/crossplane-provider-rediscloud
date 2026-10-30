@@ -126,7 +126,6 @@ type GatewayInvitationAcceptorStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // GatewayInvitationAcceptor is the Schema for the GatewayInvitationAcceptors API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

@@ -1,0 +1,31 @@
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscriptionPeering
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activesubscriptionpeering
+  labels:
+    testing.upbound.io/example-name: peering-resource
+  name: peering-resource
+spec:
+  forProvider:
+    awsAccountId: "123456789012"
+    destinationRegion: eu-west-2
+    sourceRegion: us-east-1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription-resource
+    vpcCidr: 10.0.10.0/24
+    vpcId: vpc-01234567890
+
+---
+
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscription
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activesubscriptionpeering
+  labels:
+    testing.upbound.io/example-name: subscription-resource
+  name: subscription-resource
+spec:
+  forProvider: {}

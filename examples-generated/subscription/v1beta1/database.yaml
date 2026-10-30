@@ -1,0 +1,54 @@
+apiVersion: subscription.redis.io/v1beta1
+kind: Database
+metadata:
+  annotations:
+    meta.upbound.io/example-id: subscription/v1beta1/database
+  labels:
+    testing.upbound.io/example-name: database-resource
+  name: database-resource
+spec:
+  forProvider:
+    alert:
+    - name: dataset-size
+      value: 1
+    dataPersistence: aof-every-write
+    datasetSizeInGb: 15
+    name: database-name
+    replication: true
+    subscriptionId: ${rediscloud_subscription.subscription-resource.id}
+    tags:
+      market: emea
+    throughputMeasurementBy: operations-per-second
+    throughputMeasurementValue: 20000
+
+---
+
+apiVersion: rediscloud.redis.io/v1beta1
+kind: Subscription
+metadata:
+  annotations:
+    meta.upbound.io/example-id: subscription/v1beta1/database
+  labels:
+    testing.upbound.io/example-name: subscription-resource
+  name: subscription-resource
+spec:
+  forProvider:
+    cloudProvider:
+    - provider: ${data.rediscloud_cloud_account.account.provider_type}
+      region:
+      - multipleAvailabilityZones: true
+        networkingDeploymentCidr: 10.0.0.0/24
+        preferredAvailabilityZones:
+        - euw1-az1
+        - euw1-az2
+        - euw1-az3
+        region: eu-west-1
+    creationPlan:
+    - datasetSizeInGb: 15
+      quantity: 1
+      replication: true
+      throughputMeasurementBy: operations-per-second
+      throughputMeasurementValue: 20000
+    name: subscription-name
+    paymentMethod: credit-card
+    paymentMethodId: ${data.rediscloud_payment_method.card.id}

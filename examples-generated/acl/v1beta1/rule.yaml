@@ -1,0 +1,12 @@
+apiVersion: acl.redis.io/v1beta1
+kind: Rule
+metadata:
+  annotations:
+    meta.upbound.io/example-id: acl/v1beta1/rule
+  labels:
+    testing.upbound.io/example-name: rule-resource
+  name: rule-resource
+spec:
+  forProvider:
+    name: my-rule
+    rule: +@read ~cache:*

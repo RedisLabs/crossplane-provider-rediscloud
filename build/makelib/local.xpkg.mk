@@ -37,7 +37,9 @@ local.xpkg.sync: local.xpkg.init $(CROSSPLANE_CLI)
 	@#   FriendlyID is ToDNSLabel(truncate(source,50) + "-" + truncate(digest,12)),
 	@#   where ToDNSLabel maps non-alphanumeric chars to "-" and caps at 63 chars.
 	@#   See https://github.com/crossplane/crossplane/blob/v2.2.0-rc.1/internal/xpkg/name.go
-	@for pkg in $(XPKG_OUTPUT_DIR)/linux_*/*; do \
+	@# Only the package for this VERSION. A lexical scan lets an older xpkg
+	@# overwrite the cache key, so the cluster keeps the previous CRDs.
+	@for pkg in $(XPKG_OUTPUT_DIR)/linux_*/$(PROJECT_NAME)-$(VERSION).xpkg; do \
 		pkgname=$$(basename $$pkg | sed 's/-v\([0-9]*\.[0-9]*\.[0-9]*.*\)\.xpkg//'); \
 		$(CROSSPLANE_CLI) xpkg extract --from-xpkg $$pkg -o "$(XPKG_OUTPUT_DIR)/cache/xpkg.crossplane.internal/dev/$$pkgname@$(LOCAL_XPKG_DIGEST).gz"; \
 		friendlyid=$$(printf '%.50s-%.12s' "xpkg.crossplane.internal/dev/$$pkgname" "$(LOCAL_XPKG_DIGEST)" | sed 's/[^a-z0-9]/-/g' | cut -c1-63 | sed 's/-*$$//'); \

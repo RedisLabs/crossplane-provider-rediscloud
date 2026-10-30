@@ -491,7 +491,7 @@ def delete_lookups(deps) -> None:
 
 def acl_manifest(name: str) -> dict:
     return {
-        "apiVersion": "acl.redis.io/v1alpha1",
+        "apiVersion": "acl.redis.io/v1beta1",
         "kind": "Rule",
         "metadata": {"name": name},
         "spec": {
@@ -503,7 +503,7 @@ def acl_manifest(name: str) -> dict:
 
 def subscription_manifest(name: str, payment_id: str, cidr: str) -> dict:
     return {
-        "apiVersion": "rediscloud.redis.io/v1alpha1",
+        "apiVersion": "rediscloud.redis.io/v1beta1",
         "kind": "Subscription",
         "metadata": {"name": name},
         "spec": {
@@ -540,7 +540,7 @@ def subscription_manifest(name: str, payment_id: str, cidr: str) -> dict:
 
 def database_manifest(name: str, subscription_id: str) -> dict:
     return {
-        "apiVersion": "subscription.redis.io/v1alpha1",
+        "apiVersion": "subscription.redis.io/v1beta1",
         "kind": "Database",
         "metadata": {"name": name},
         "spec": {

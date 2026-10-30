@@ -605,7 +605,6 @@ type ActiveSubscriptionDatabaseStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ActiveSubscriptionDatabase is the Schema for the ActiveSubscriptionDatabases API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

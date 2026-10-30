@@ -1,0 +1,35 @@
+apiVersion: active.redis.io/v1beta1
+kind: ActiveTransitGatewayAttachment
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activetransitgatewayattachment
+  labels:
+    testing.upbound.io/example-name: attachment
+  name: attachment
+spec:
+  forProvider:
+    regionId: 1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwId: ${data.rediscloud_active_active_transit_gateway.gateway.tgw_id}
+
+---
+
+apiVersion: active.redis.io/v1beta1
+kind: ActiveTransitGatewayRoute
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activetransitgatewayattachment
+  labels:
+    testing.upbound.io/example-name: route
+  name: route
+spec:
+  forProvider:
+    cidrs:
+    - 10.10.20.0/24
+    regionId: 1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwId: ${data.rediscloud_active_active_transit_gateway.gateway.tgw_id}

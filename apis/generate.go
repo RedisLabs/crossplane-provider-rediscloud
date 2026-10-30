@@ -11,8 +11,9 @@ Copyright 2021 Upbound Inc.
 // Remove existing CRDs
 //go:generate rm -rf ../package/crds
 
-// Remove generated files
-//go:generate bash -c "find . -iname 'zz_*' ! -iname 'zz_generated.managed*.go' -delete"
+// Remove generated files, including methodset files, but keep v1alpha1.
+// Those packages stay on disk so the CRD can keep serving the stored version.
+//go:generate bash -c "find . -iname 'zz_*' -not -path '*/v1alpha1/*' -delete"
 //go:generate bash -c "find . -type d -empty -delete"
 //go:generate bash -c "find ../internal/controller -iname 'zz_*' -delete"
 //go:generate bash -c "find ../internal/controller -type d -empty -delete"

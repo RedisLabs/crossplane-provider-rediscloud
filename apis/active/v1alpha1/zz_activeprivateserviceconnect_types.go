@@ -96,7 +96,6 @@ type ActivePrivateServiceConnectStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ActivePrivateServiceConnect is the Schema for the ActivePrivateServiceConnects API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

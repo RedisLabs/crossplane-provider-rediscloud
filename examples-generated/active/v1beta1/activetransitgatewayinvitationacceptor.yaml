@@ -1,0 +1,16 @@
+apiVersion: active.redis.io/v1beta1
+kind: ActiveTransitGatewayInvitationAcceptor
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activetransitgatewayinvitationacceptor
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    action: accept
+    regionId: 1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: example
+    tgwInvitationId: ${data.rediscloud_active_active_transit_gateway_invitations.example.invitations[0].id}

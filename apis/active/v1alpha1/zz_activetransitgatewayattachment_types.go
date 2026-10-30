@@ -139,7 +139,6 @@ type ActiveTransitGatewayAttachmentStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ActiveTransitGatewayAttachment is the Schema for the ActiveTransitGatewayAttachments API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

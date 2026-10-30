@@ -119,7 +119,6 @@ type ServiceConnectEndpointAccepterStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ServiceConnectEndpointAccepter is the Schema for the ServiceConnectEndpointAccepters API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"

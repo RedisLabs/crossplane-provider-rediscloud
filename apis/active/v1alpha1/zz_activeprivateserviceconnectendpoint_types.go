@@ -187,7 +187,6 @@ type ActivePrivateServiceConnectEndpointStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // ActivePrivateServiceConnectEndpoint is the Schema for the ActivePrivateServiceConnectEndpoints API.
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"
