@@ -61,7 +61,7 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 }
 
 // ExternalNameConfigurations applies the external name configs listed in
-// ExternalNameConfigs. Managed resources stay at v1alpha1.
+// ExternalNameConfigs. Managed resources are v1beta1.
 func ExternalNameConfigurations() config.ResourceOption {
 	return func(r *config.Resource) {
 		if e, ok := ExternalNameConfigs[r.Name]; ok {

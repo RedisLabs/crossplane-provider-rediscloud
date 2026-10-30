@@ -9,9 +9,9 @@ import (
 
 	commonv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 
-	activev1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1"
-	essentialsv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/essentials/v1alpha1"
-	subscriptionv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1alpha1"
+	activev1beta1 "github.com/RedisLabs/provider-rediscloud/apis/active/v1beta1"
+	essentialsv1beta1 "github.com/RedisLabs/provider-rediscloud/apis/essentials/v1beta1"
+	subscriptionv1beta1 "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1beta1"
 )
 
 func TestControllersUseThirtyMinuteTimeout(t *testing.T) {
@@ -45,8 +45,8 @@ func TestThreeMinuteControllerTimeoutIsReported(t *testing.T) {
 func TestActiveActiveTLSInitIsSecretRefList(t *testing.T) {
 	t.Parallel()
 	types := []reflect.Type{
-		reflect.TypeOf(activev1alpha1.ActiveSubscriptionDatabaseInitParameters{}),
-		reflect.TypeOf(activev1alpha1.ActiveSubscriptionDatabaseParameters{}),
+		reflect.TypeOf(activev1beta1.ActiveSubscriptionDatabaseInitParameters{}),
+		reflect.TypeOf(activev1beta1.ActiveSubscriptionDatabaseParameters{}),
 	}
 	for _, typ := range types {
 		if problem := secretRefListProblem(typ, "ClientTLSCertificatesSecretRef"); problem != "" {
@@ -68,12 +68,12 @@ func TestSecretRefListProblemRejectsAPlainString(t *testing.T) {
 func TestDatabasesHaveNoSubscriptionIDRef(t *testing.T) {
 	t.Parallel()
 	for _, typ := range []reflect.Type{
-		reflect.TypeOf(subscriptionv1alpha1.DatabaseParameters{}),
-		reflect.TypeOf(subscriptionv1alpha1.DatabaseInitParameters{}),
-		reflect.TypeOf(essentialsv1alpha1.DatabaseParameters{}),
-		reflect.TypeOf(essentialsv1alpha1.DatabaseInitParameters{}),
-		reflect.TypeOf(activev1alpha1.ActiveSubscriptionDatabaseParameters{}),
-		reflect.TypeOf(activev1alpha1.ActiveSubscriptionDatabaseInitParameters{}),
+		reflect.TypeOf(subscriptionv1beta1.DatabaseParameters{}),
+		reflect.TypeOf(subscriptionv1beta1.DatabaseInitParameters{}),
+		reflect.TypeOf(essentialsv1beta1.DatabaseParameters{}),
+		reflect.TypeOf(essentialsv1beta1.DatabaseInitParameters{}),
+		reflect.TypeOf(activev1beta1.ActiveSubscriptionDatabaseParameters{}),
+		reflect.TypeOf(activev1beta1.ActiveSubscriptionDatabaseInitParameters{}),
 	} {
 		if _, ok := typ.FieldByName("SubscriptionIDRef"); ok {
 			t.Fatalf("%s has SubscriptionIDRef", typ.Name())
@@ -84,8 +84,8 @@ func TestDatabasesHaveNoSubscriptionIDRef(t *testing.T) {
 func TestStringChildrenKeepSubscriptionIDRef(t *testing.T) {
 	t.Parallel()
 	for _, typ := range []reflect.Type{
-		reflect.TypeOf(subscriptionv1alpha1.PeeringParameters{}),
-		reflect.TypeOf(subscriptionv1alpha1.PeeringInitParameters{}),
+		reflect.TypeOf(subscriptionv1beta1.PeeringParameters{}),
+		reflect.TypeOf(subscriptionv1beta1.PeeringInitParameters{}),
 	} {
 		field, ok := typ.FieldByName("SubscriptionIDRef")
 		if !ok {

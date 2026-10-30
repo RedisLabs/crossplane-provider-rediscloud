@@ -1,4 +1,4 @@
-apiVersion: private.redis.io/v1alpha1
+apiVersion: private.redis.io/v1beta1
 kind: Link
 metadata:
   name: example-private-link

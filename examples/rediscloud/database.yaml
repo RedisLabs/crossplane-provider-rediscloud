@@ -1,4 +1,4 @@
-apiVersion: subscription.redis.io/v1alpha1
+apiVersion: subscription.redis.io/v1beta1
 kind: Database
 metadata:
   name: example-database

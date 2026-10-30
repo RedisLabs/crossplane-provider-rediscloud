@@ -1,0 +1,67 @@
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscriptionDatabase
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activesubscriptiondatabase
+  labels:
+    testing.upbound.io/example-name: database-resource
+  name: database-resource
+spec:
+  forProvider:
+    datasetSizeInGb: 1
+    globalAlert:
+    - name: dataset-size
+      value: 1
+    globalDataPersistence: aof-every-1-second
+    globalPasswordSecretRef:
+      key: example-key
+      name: example-secret
+      namespace: upbound-system
+    globalSourceIps:
+    - 192.168.0.0/16
+    name: database-name
+    overrideRegion:
+    - name: us-east-2
+      overrideGlobalSourceIps:
+      - 192.10.0.0/16
+    - name: us-east-1
+      overrideGlobalAlert:
+      - name: dataset-size
+        value: 60
+      overrideGlobalDataPersistence: none
+      overrideGlobalPasswordSecretRef:
+        key: example-key
+        name: example-secret
+        namespace: upbound-system
+    subscriptionId: ${rediscloud_active_active_subscription.subscription-resource.id}
+    tags:
+      cost_center: "0700"
+      environment: production
+
+---
+
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscription
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activesubscriptiondatabase
+  labels:
+    testing.upbound.io/example-name: subscription-resource
+  name: subscription-resource
+spec:
+  forProvider:
+    cloudProvider: AWS
+    creationPlan:
+    - datasetSizeInGb: 1
+      quantity: 1
+      region:
+      - networkingDeploymentCidr: 192.168.0.0/24
+        readOperationsPerSecond: 1000
+        region: us-east-1
+        writeOperationsPerSecond: 1000
+      - networkingDeploymentCidr: 10.0.1.0/24
+        readOperationsPerSecond: 2000
+        region: us-east-2
+        writeOperationsPerSecond: 1000
+    name: subscription-name
+    paymentMethodId: ${data.rediscloud_payment_method.card.id}

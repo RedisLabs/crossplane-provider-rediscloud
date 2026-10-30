@@ -10,29 +10,29 @@ package apis
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	v1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/acl/v1alpha1"
-	v1alpha1active "github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1"
-	v1alpha1cloud "github.com/RedisLabs/provider-rediscloud/apis/cloud/v1alpha1"
-	v1alpha1essentials "github.com/RedisLabs/provider-rediscloud/apis/essentials/v1alpha1"
-	v1alpha1private "github.com/RedisLabs/provider-rediscloud/apis/private/v1alpha1"
-	v1alpha1rediscloud "github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1"
-	v1alpha1subscription "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1alpha1"
-	v1alpha1transit "github.com/RedisLabs/provider-rediscloud/apis/transit/v1alpha1"
-	v1beta1 "github.com/RedisLabs/provider-rediscloud/apis/v1beta1"
+	v1beta1 "github.com/RedisLabs/provider-rediscloud/apis/acl/v1beta1"
+	v1beta1active "github.com/RedisLabs/provider-rediscloud/apis/active/v1beta1"
+	v1beta1cloud "github.com/RedisLabs/provider-rediscloud/apis/cloud/v1beta1"
+	v1beta1essentials "github.com/RedisLabs/provider-rediscloud/apis/essentials/v1beta1"
+	v1beta1private "github.com/RedisLabs/provider-rediscloud/apis/private/v1beta1"
+	v1beta1rediscloud "github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1beta1"
+	v1beta1subscription "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1beta1"
+	v1beta1transit "github.com/RedisLabs/provider-rediscloud/apis/transit/v1beta1"
+	v1beta1apis "github.com/RedisLabs/provider-rediscloud/apis/v1beta1"
 )
 
 func init() {
 	// Register the types with the Scheme so the components can map objects to GroupVersionKinds and back
 	AddToSchemes = append(AddToSchemes,
-		v1alpha1.SchemeBuilder.AddToScheme,
-		v1alpha1active.SchemeBuilder.AddToScheme,
-		v1alpha1cloud.SchemeBuilder.AddToScheme,
-		v1alpha1essentials.SchemeBuilder.AddToScheme,
-		v1alpha1private.SchemeBuilder.AddToScheme,
-		v1alpha1rediscloud.SchemeBuilder.AddToScheme,
-		v1alpha1subscription.SchemeBuilder.AddToScheme,
-		v1alpha1transit.SchemeBuilder.AddToScheme,
 		v1beta1.SchemeBuilder.AddToScheme,
+		v1beta1active.SchemeBuilder.AddToScheme,
+		v1beta1cloud.SchemeBuilder.AddToScheme,
+		v1beta1essentials.SchemeBuilder.AddToScheme,
+		v1beta1private.SchemeBuilder.AddToScheme,
+		v1beta1rediscloud.SchemeBuilder.AddToScheme,
+		v1beta1subscription.SchemeBuilder.AddToScheme,
+		v1beta1transit.SchemeBuilder.AddToScheme,
+		v1beta1apis.SchemeBuilder.AddToScheme,
 	)
 }
 

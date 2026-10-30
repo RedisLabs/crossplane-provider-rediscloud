@@ -1,4 +1,4 @@
-apiVersion: acl.redis.io/v1alpha1
+apiVersion: acl.redis.io/v1beta1
 kind: Rule
 metadata:
   name: example-acl-rule

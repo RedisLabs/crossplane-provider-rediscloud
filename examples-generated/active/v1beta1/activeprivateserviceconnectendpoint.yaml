@@ -1,0 +1,99 @@
+apiVersion: active.redis.io/v1beta1
+kind: ActivePrivateServiceConnectEndpoint
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activeprivateserviceconnectendpoint
+  labels:
+    testing.upbound.io/example-name: endpoint
+  name: endpoint
+spec:
+  forProvider:
+    endpointConnectionName: redis-${rediscloud_active_active_subscription.subscription.id}
+    gcpProjectId: ${var.gcp_project_id}
+    gcpVpcName: ${var.gcp_vpc_name}
+    gcpVpcSubnetName: ${var.gcp_subnet_name}
+    privateServiceConnectServiceId: ${rediscloud_active_active_private_service_connect.service.private_service_connect_service_id}
+    regionId: ${local.region_id}
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription
+
+---
+
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscription
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activeprivateserviceconnectendpoint
+  labels:
+    testing.upbound.io/example-name: subscription
+  name: subscription
+spec:
+  forProvider:
+    cloudProvider: GCP
+    creationPlan:
+    - memoryLimitInGb: 1
+      quantity: 1
+      region:
+      - networkingDeploymentCidr: 192.168.0.0/24
+        readOperationsPerSecond: 1000
+        region: us-central1
+        writeOperationsPerSecond: 1000
+      - networkingDeploymentCidr: 10.0.1.0/24
+        readOperationsPerSecond: 1000
+        region: europe-west1
+        writeOperationsPerSecond: 1000
+    name: subscription-name
+    paymentMethodId: ${data.rediscloud_payment_method.card.id}
+
+---
+
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscriptionDatabase
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activeprivateserviceconnectendpoint
+  labels:
+    testing.upbound.io/example-name: database
+  name: database
+spec:
+  forProvider:
+    globalDataPersistence: aof-every-1-second
+    globalPasswordSecretRef:
+      key: example-key
+      name: example-secret
+      namespace: upbound-system
+    memoryLimitInGb: 1
+    name: db
+    subscriptionId: ${rediscloud_active_active_subscription.subscription.id}
+
+---
+
+apiVersion: active.redis.io/v1beta1
+kind: ActiveSubscriptionRegions
+metadata:
+  annotations:
+    meta.upbound.io/example-id: active/v1beta1/activeprivateserviceconnectendpoint
+  labels:
+    testing.upbound.io/example-name: regions
+  name: regions
+spec:
+  forProvider:
+    region:
+    - database:
+      - databaseId: ${rediscloud_active_active_subscription_database.database.db_id}
+        databaseName: db
+        localReadOperationsPerSecond: 1000
+        localWriteOperationsPerSecond: 1000
+      networkingDeploymentCidr: 192.168.0.0/24
+      region: us-central1
+    - database:
+      - databaseId: ${rediscloud_active_active_subscription_database.database.db_id}
+        databaseName: db
+        localReadOperationsPerSecond: 1000
+        localWriteOperationsPerSecond: 1000
+      networkingDeploymentCidr: 10.0.1.0/24
+      region: europe-west1
+    subscriptionIdSelector:
+      matchLabels:
+        testing.upbound.io/example-name: subscription

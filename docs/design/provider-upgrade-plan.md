@@ -66,7 +66,7 @@ A failed generate, a red guard test, or a QA resource that does not reach Ready 
 
 ### Step 2. Promote the APIs
 
-Branch from `main` after step 1 is merged. Move all 27 managed kinds from `v1alpha1` to `v1beta1`. Examples, the README, and `docs/terraform-alignment.md` follow. Stored objects get a conversion strategy, or the pull request states that `v1alpha1` is removed and lists the kinds. ProviderConfig stays `v1beta1` unless step 1 already had to change it.
+Branch from `main` after step 1 is merged. Move all 27 managed kinds from `v1alpha1` to `v1beta1`. Examples, the README, and `docs/terraform-alignment.md` follow. This step removes `v1alpha1` for those kinds and lists them in `docs/terraform-alignment.md`. Generate deletes the previous API packages, and this provider does not run a conversion webhook, so stored `v1alpha1` objects are not converted. ProviderConfig stays `v1beta1`. Lookups stay `v1alpha1`.
 
 Verify this step before merge:
 

@@ -1,0 +1,16 @@
+apiVersion: acl.redis.io/v1beta1
+kind: User
+metadata:
+  annotations:
+    meta.upbound.io/example-id: acl/v1beta1/user
+  labels:
+    testing.upbound.io/example-name: user-resource
+  name: user-resource
+spec:
+  forProvider:
+    name: my-user
+    passwordSecretRef:
+      key: example-key
+      name: example-secret
+      namespace: upbound-system
+    role: my-role

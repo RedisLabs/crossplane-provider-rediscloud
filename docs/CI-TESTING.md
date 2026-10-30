@@ -65,7 +65,7 @@ the connection-secret tests are in `config/`. The lookup tests are in
 3 minute timeout, if Active-Active `clientTlsCertificatesSecretRef` is no
 longer a secret-reference list, or if a database type grows
 `subscriptionIdRef`. String children such as peering keep that reference.
-Managed APIs stay `v1alpha1` until the Upjet line move.
+Managed APIs are `v1beta1`. Lookups stay `v1alpha1`.
 
 Run unit tests:
 ```bash

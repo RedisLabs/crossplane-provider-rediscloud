@@ -33,7 +33,7 @@ Numbering and the architecture diagrams were added on 22 October 2026. Evidence 
 | <a id="g3"></a>3. No cross-resource references<br>**severity:** 🟡<br>**Fix status:** partial | Open for databases<br>• **Fix detail:** String children have `subscriptionIdRef`.<br>• **Left unfixed:** for databases because `subscription_id` is a number and Crossplane references only write strings.<br>• **Plan:** No fix. Crossplane can write only a string into a reference, and the database subscription id is a number, so a database keeps copying `status.atProvider.id` by hand. That is not a planned code fix. |
 | <a id="g4"></a>4. Connection secret does not publish the endpoint<br>**severity:** 🟡<br>**Fix status:** partial | ✅ Fixed for the endpoints the live secret contained<br>• **Fix detail:** `databaseConnectionDetails` publishes `public_endpoint` and `private_endpoint`. The 27 October 2026 QA database secret had those two keys. `port` is an optional input in `config/schema.json`, not a computed attribute, so Terraform leaves it empty unless the manifest sets it. When Terraform state already contains `port`, that key is still published. Pro and Essentials endpoints are strings. An Active-Active endpoint is a region map, stored as `public_endpoint.<region>` and `private_endpoint.<region>`. A present `port` stays one number.<br>• **Left unfixed:** for a provider-generated password because the sensitive-field mapping already owns that key.<br>• **Plan:** No fix. The password already belongs to the sensitive-field mapping, so this provider will not write it a second time. |
 | <a id="g5"></a>5. One bad generated type<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** `initProvider.clientTlsCertificatesSecretRef` is a secret-reference list. |
-| <a id="g6"></a>6. Managed APIs are `v1alpha1`<br>**severity:** 🟡<br>**Fix status:** open | Open<br>• The README says the managed APIs are `v1alpha1`.<br>• **Left unfixed:** because managed resources stay `v1alpha1` for this refresh.<br>• **Plan:** No fix in this refresh. Promotion to `v1beta1` waits until the Upjet line move. |
+| <a id="g6"></a>6. Managed APIs are `v1alpha1`<br>**severity:** 🟡<br>**Fix status:** fixed | ✅ Fixed<br>• **Fix detail:** The 27 managed kinds are `v1beta1`. `v1alpha1` is removed for those kinds. Generate deletes the previous API packages, and this provider does not run a conversion webhook, so stored `v1alpha1` objects are not converted. ProviderConfig stays `v1beta1`. PaymentMethod, EssentialsPlan, and Regions stay `lookup.redis.io/v1alpha1`.<br>• **Removed kinds:** Role, Rule, and User (`acl.redis.io`); ActivePrivateLink, ActivePrivateServiceConnect, ActivePrivateServiceConnectEndpoint, ActivePrivateServiceConnectEndpointAccepter, ActiveSubscription, ActiveSubscriptionDatabase, ActiveSubscriptionPeering, ActiveSubscriptionRegions, ActiveTransitGatewayAttachment, ActiveTransitGatewayInvitationAcceptor, and ActiveTransitGatewayRoute (`active.redis.io`); Account (`cloud.redis.io`); Database and Subscription (`essentials.redis.io`); Link, ServiceConnect, ServiceConnectEndpoint, and ServiceConnectEndpointAccepter (`private.redis.io`); Subscription (`rediscloud.redis.io`); Database and Peering (`subscription.redis.io`); GatewayAttachment, GatewayInvitationAcceptor, and GatewayRoute (`transit.redis.io`).<br>• **Plan:** No further change for this gap. |
 | <a id="g7"></a>7. No proof of a real apply<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** ACL rules, a Pro subscription, and a Database custom resource were created, became Ready, and were deleted against a Redis Cloud account. The database copied the numeric subscription id, reached Cloud active and Kubernetes Ready, then both were deleted cleanly. |
 | <a id="g8"></a>8. Data-source lookups are manual<br>**severity:** 🔴<br>**Fix status:** partial | ✅ Fixed for payment method, Essentials plan, and region<br>• **Fix detail:** `PaymentMethod`, `EssentialsPlan`, and `Regions` are read-only cluster objects in `lookup.redis.io`. They read the ProviderConfig credentials, call the Redis Cloud API, and write the matched id to status. Delete does not change the account. Examples are in `examples/lookup`.<br>• **Left unfixed:** for the other 26 data sources. Callers keep pasting those IDs.<br>• **Plan:** No fix for the other 26 data sources. Callers keep pasting those IDs. |
 | <a id="g9"></a>9. Stay aligned with later Terraform provider releases<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** `.github/workflows/terraform-release.yaml` opens a pull request when `RedisLabs/terraform-provider-rediscloud` publishes a release newer than `TERRAFORM_PROVIDER_VERSION`. That pull request changes the pin and regenerates. It does not merge itself, and it does not bump Crossplane, Go, or Upjet. |
@@ -82,7 +82,7 @@ flowchart TB
   author["Author writes YAML"]
   k8s["Kubernetes API"]
   crd["27 CRDs\nmatch Terraform v2.19.2"]
-  alpha["Managed APIs are v1alpha1\n🟡 6"]
+  beta["Managed APIs are v1beta1\n🟡 ✅ 6"]
   pc["ProviderConfig\ncredentials JSON"]
   refs["String subscriptionIdRef\npeering, link, PSC, transit gateway"]
   dbref["Database subscriptionId\nis a number, so no Ref\n🟡 3"]
@@ -95,7 +95,7 @@ flowchart TB
   track["Workflow opens a pull request\nwhen a Terraform release is newer\n🟡 ✅ 9"]
 
   author --> k8s --> crd --> ctrl
-  alpha -.-> crd
+  beta -.-> crd
   pc --> ctrl
   refs --> ctrl
   dbref -.-> ctrl
@@ -104,8 +104,8 @@ flowchart TB
   proof -.-> cloud
   track -.-> plugin
 
-  class author,k8s,crd,pc,refs,ctrl,ws,plugin,cloud,lookup,track present
-  class alpha,dbref,proof medium
+  class author,k8s,crd,pc,refs,ctrl,ws,plugin,cloud,lookup,track,beta present
+  class dbref,proof medium
 ```
 
 The provider pod does not call Redis Cloud itself for managed resources. It runs Terraform, and Terraform runs the same plugin as the diagram above. The resource boxes match. Payment method, Essentials plan, and region lookups are read-only objects (🔴 ✅ [8](#g8)). The other data-source IDs stay pasted. 🟡 [3](#g3) stays yellow because string children already reference a subscription, and databases still cannot.
@@ -188,7 +188,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 | `rediscloud_transit_gateway_invitations`, `rediscloud_active_active_transit_gateway_invitations` | Input to the invitation-acceptor resources. |
 | `rediscloud_private_link_endpoint_script`, `rediscloud_active_active_private_link_endpoint_script` | Generated endpoint scripts. No managed resource creates these. |
 
-`PaymentMethod`, `EssentialsPlan`, and `Regions` in `lookup.redis.io` perform the first three lookups. A user still pastes IDs for the other data sources. There is no Crossplane reference from a numeric field, so an Essentials plan id and a database subscription id are copied from status by hand. Child resources whose `subscription_id` is a string now have `subscriptionIdRef`. `subscriptionId` on a Pro database is a number (`*float64` in `apis/subscription/v1alpha1/zz_database_types.go`), so that field has no reference. Terraform HCL can interpolate `${rediscloud_subscription.example.id}`. This provider cannot, for databases. That is a composition gap, not a missing resource.
+`PaymentMethod`, `EssentialsPlan`, and `Regions` in `lookup.redis.io` perform the first three lookups. A user still pastes IDs for the other data sources. There is no Crossplane reference from a numeric field, so an Essentials plan id and a database subscription id are copied from status by hand. Child resources whose `subscription_id` is a string now have `subscriptionIdRef`. `subscriptionId` on a Pro database is a number (`*float64` in `apis/subscription/v1beta1/zz_database_types.go`), so that field has no reference. Terraform HCL can interpolate `${rediscloud_subscription.example.id}`. This provider cannot, for databases. That is a composition gap, not a missing resource.
 
 ## What was run
 
