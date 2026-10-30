@@ -246,7 +246,7 @@ test_provider() {
 
     # Create a test essentials subscription (free tier)
     cat <<EOF | kubectl apply -f -
-apiVersion: essentials.redis.io/v1alpha1
+apiVersion: essentials.redis.io/v1beta1
 kind: Subscription
 metadata:
   name: test-subscription

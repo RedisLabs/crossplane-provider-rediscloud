@@ -31,6 +31,1031 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ActiveSubscriptionDatabase is the Schema for the ActiveSubscriptionDatabases
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ActiveSubscriptionDatabaseSpec defines the desired state
+              of ActiveSubscriptionDatabase
+            properties:
+              deletionPolicy:
+                default: Delete
+                description: |-
+                  DeletionPolicy specifies what will happen to the underlying external
+                  when this managed resource is deleted - either "Delete" or "Orphan" the
+                  external resource.
+                  This field is planned to be deprecated in favor of the ManagementPolicies
+                  field in a future release. Currently, both could be set independently and
+                  non-default values would be honored if the feature flag is enabled.
+                  See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
+                enum:
+                - Orphan
+                - Delete
+                type: string
+              forProvider:
+                properties:
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
+                  clientSslCertificateSecretRef:
+                    description: |-
+                      SSL certificate to authenticate user connections, conflicts with client_tls_certificates
+                      SSL certificate to authenticate user connections.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  clientTlsCertificatesSecretRef:
+                    description: |-
+                      A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
+                      TLS certificates to authenticate user connections
+                    items:
+                      description: A SecretKeySelector is a reference to a secret
+                        key in an arbitrary namespace.
+                      properties:
+                        key:
+                          description: The key to select.
+                          type: string
+                        name:
+                          description: Name of the secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the secret.
+                          type: string
+                      required:
+                      - key
+                      - name
+                      - namespace
+                      type: object
+                    type: array
+                  dataEviction:
+                    description: |-
+                      The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
+                      Data eviction items policy
+                    type: string
+                  datasetSizeInGb:
+                    description: |-
+                      is unset
+                      Maximum amount of data in the dataset for this specific database in GB
+                    type: number
+                  enableTls:
+                    description: |-
+                      Use TLS for authentication. Default: ‘false’
+                      Use TLS for authentication.
+                    type: boolean
+                  externalEndpointForOssClusterApi:
+                    description: |-
+                      Should use the external endpoint for open-source (OSS) Cluster API.
+                      Can only be enabled if OSS Cluster API support is enabled. Default: 'false'
+                      Should use the external endpoint for open-source (OSS) Cluster API
+                    type: boolean
+                  globalAlert:
+                    description: |-
+                      A block defining Redis database alert of regions that don't override global settings, documented below, can be specified multiple times. (either: 'dataset-size', 'datasets-size', 'throughput-higher-than', 'throughput-lower-than', 'latency', 'syncsource-error', 'syncsource-lag' or 'connections-limit')
+                      Set of alerts to enable on the database
+                    items:
+                      properties:
+                        name:
+                          description: |-
+                            Alert name
+                            Alert name
+                          type: string
+                        value:
+                          description: |-
+                            Alert value
+                            Alert value
+                          type: number
+                      type: object
+                    type: array
+                  globalDataPersistence:
+                    description: |-
+                      Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: 'none'
+                      Rate of database data persistence (in persistent storage)
+                    type: string
+                  globalEnableDefaultUser:
+                    description: |-
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+                    type: boolean
+                  globalEnablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+                      When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+                    type: boolean
+                  globalModules:
+                    description: |-
+                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
+                    items:
+                      type: string
+                    type: array
+                  globalPasswordSecretRef:
+                    description: |-
+                      Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
+                      Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  globalRespVersion:
+                    description: |-
+                      Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
+                      The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
+                    type: string
+                  globalSourceIps:
+                    description: |-
+                      List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
+                      Set of CIDR addresses to allow access to the database
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  memoryLimitInGb:
+                    description: |-
+                      Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of
+                      (Deprecated) Maximum memory usage for this specific database
+                    type: number
+                  name:
+                    description: |-
+                      A meaningful name to identify the database (maximum 40 characters).
+                      A meaningful name to identify the database
+                    type: string
+                  overrideRegion:
+                    description: |-
+                      Override region specific configuration, documented below
+                      Region-specific configuration parameters to override the global configuration
+                    items:
+                      properties:
+                        enableDefaultUser:
+                          description: |-
+                            Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+                            When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+                          type: boolean
+                        name:
+                          description: |-
+                            Region name.
+                            Region name
+                          type: string
+                        overrideGlobalAlert:
+                          description: |-
+                            A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
+                            Set of alerts to enable on the database in this region
+                          items:
+                            properties:
+                              name:
+                                description: |-
+                                  Alert name
+                                  Alert name
+                                type: string
+                              value:
+                                description: |-
+                                  Alert value
+                                  Alert value
+                                type: number
+                            type: object
+                          type: array
+                        overrideGlobalDataPersistence:
+                          description: |-
+                            Regional instance of an Active-Active database data persistence rate (in persistent storage)
+                            Rate of database data persistence (in persistent storage)
+                          type: string
+                        overrideGlobalEnablePasswordless:
+                          description: |-
+                            When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+                            When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+                          type: boolean
+                        overrideGlobalPasswordSecretRef:
+                          description: |-
+                            If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
+                            Password used to access the database. If left empty, the password will be generated automatically
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              description: Name of the secret.
+                              type: string
+                            namespace:
+                              description: Namespace of the secret.
+                              type: string
+                          required:
+                          - key
+                          - name
+                          - namespace
+                          type: object
+                        overrideGlobalSourceIps:
+                          description: |-
+                            List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
+                            Set of CIDR addresses to allow access to the database
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        remoteBackup:
+                          description: |-
+                            Specifies the backup options for the database in this region, documented below
+                            An object that specifies the backup options for the database in this region
+                          items:
+                            properties:
+                              interval:
+                                description: |-
+                                  Defines the interval between backups. Should be in the following format 'every-x-hours'. x is one of [24,12,6,4,2,1]. For example: 'every-4-hours'
+                                  Defines the frequency of the automatic backup
+                                type: string
+                              storagePath:
+                                description: |-
+                                  Defines a URI representing the backup storage location
+                                  Defines a URI representing the backup storage location
+                                type: string
+                              storageType:
+                                description: |-
+                                  Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
+                                  Defines the provider of the storage location
+                                type: string
+                              timeUtc:
+                                description: |-
+                                  Defines the hour automatic backups are made - only applicable when the interval is every-12-hours or every-24-hours. For example: '14:00'
+                                  Defines the hour automatic backups are made - only applicable when interval is `every-12-hours` or `every-24-hours`
+                                type: string
+                            type: object
+                          type: array
+                      type: object
+                    type: array
+                  port:
+                    description: |-
+                      TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.
+                      TCP port on which the database is available
+                    type: number
+                  redisVersion:
+                    description: |-
+                      The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
+                  subscriptionId:
+                    description: |-
+                      Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
+                      Identifier of the subscription
+                    type: number
+                  supportOssClusterApi:
+                    description: |-
+                      Support Redis open-source (OSS) Cluster API. Default: ‘false’
+                      Support Redis open-source (OSS) Cluster API
+                    type: boolean
+                  tags:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      A string/string map of tags to associate with this database. Note that all keys and values must be lowercase.
+                      Tags for database management
+                    type: object
+                    x-kubernetes-map-type: granular
+                type: object
+              initProvider:
+                description: |-
+                  THIS IS A BETA FIELD. It will be honored
+                  unless the Management Policies feature flag is disabled.
+                  InitProvider holds the same fields as ForProvider, with the exception
+                  of Identifier and other resource reference fields. The fields that are
+                  in InitProvider are merged into ForProvider when the resource is created.
+                  The same fields are also added to the terraform ignore_changes hook, to
+                  avoid updating them after creation. This is useful for fields that are
+                  required on creation, but we do not desire to update them after creation,
+                  for example because of an external controller is managing them, like an
+                  autoscaler.
+                properties:
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
+                  clientSslCertificateSecretRef:
+                    description: |-
+                      SSL certificate to authenticate user connections, conflicts with client_tls_certificates
+                      SSL certificate to authenticate user connections.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  clientTlsCertificatesSecretRef:
+                    items:
+                      description: A SecretKeySelector is a reference to a secret
+                        key in an arbitrary namespace.
+                      properties:
+                        key:
+                          description: The key to select.
+                          type: string
+                        name:
+                          description: Name of the secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the secret.
+                          type: string
+                      required:
+                      - key
+                      - name
+                      - namespace
+                      type: object
+                    type: array
+                  dataEviction:
+                    description: |-
+                      The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
+                      Data eviction items policy
+                    type: string
+                  datasetSizeInGb:
+                    description: |-
+                      is unset
+                      Maximum amount of data in the dataset for this specific database in GB
+                    type: number
+                  enableTls:
+                    description: |-
+                      Use TLS for authentication. Default: ‘false’
+                      Use TLS for authentication.
+                    type: boolean
+                  externalEndpointForOssClusterApi:
+                    description: |-
+                      Should use the external endpoint for open-source (OSS) Cluster API.
+                      Can only be enabled if OSS Cluster API support is enabled. Default: 'false'
+                      Should use the external endpoint for open-source (OSS) Cluster API
+                    type: boolean
+                  globalAlert:
+                    description: |-
+                      A block defining Redis database alert of regions that don't override global settings, documented below, can be specified multiple times. (either: 'dataset-size', 'datasets-size', 'throughput-higher-than', 'throughput-lower-than', 'latency', 'syncsource-error', 'syncsource-lag' or 'connections-limit')
+                      Set of alerts to enable on the database
+                    items:
+                      properties:
+                        name:
+                          description: |-
+                            Alert name
+                            Alert name
+                          type: string
+                        value:
+                          description: |-
+                            Alert value
+                            Alert value
+                          type: number
+                      type: object
+                    type: array
+                  globalDataPersistence:
+                    description: |-
+                      Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: 'none'
+                      Rate of database data persistence (in persistent storage)
+                    type: string
+                  globalEnableDefaultUser:
+                    description: |-
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+                    type: boolean
+                  globalEnablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+                      When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+                    type: boolean
+                  globalModules:
+                    description: |-
+                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
+                    items:
+                      type: string
+                    type: array
+                  globalPasswordSecretRef:
+                    description: |-
+                      Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
+                      Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  globalRespVersion:
+                    description: |-
+                      Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
+                      The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
+                    type: string
+                  globalSourceIps:
+                    description: |-
+                      List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
+                      Set of CIDR addresses to allow access to the database
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  memoryLimitInGb:
+                    description: |-
+                      Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of
+                      (Deprecated) Maximum memory usage for this specific database
+                    type: number
+                  name:
+                    description: |-
+                      A meaningful name to identify the database (maximum 40 characters).
+                      A meaningful name to identify the database
+                    type: string
+                  overrideRegion:
+                    description: |-
+                      Override region specific configuration, documented below
+                      Region-specific configuration parameters to override the global configuration
+                    items:
+                      properties:
+                        enableDefaultUser:
+                          description: |-
+                            Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+                            When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+                          type: boolean
+                        name:
+                          description: |-
+                            Region name.
+                            Region name
+                          type: string
+                        overrideGlobalAlert:
+                          description: |-
+                            A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
+                            Set of alerts to enable on the database in this region
+                          items:
+                            properties:
+                              name:
+                                description: |-
+                                  Alert name
+                                  Alert name
+                                type: string
+                              value:
+                                description: |-
+                                  Alert value
+                                  Alert value
+                                type: number
+                            type: object
+                          type: array
+                        overrideGlobalDataPersistence:
+                          description: |-
+                            Regional instance of an Active-Active database data persistence rate (in persistent storage)
+                            Rate of database data persistence (in persistent storage)
+                          type: string
+                        overrideGlobalEnablePasswordless:
+                          description: |-
+                            When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+                            When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+                          type: boolean
+                        overrideGlobalPasswordSecretRef:
+                          description: |-
+                            If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
+                            Password used to access the database. If left empty, the password will be generated automatically
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              description: Name of the secret.
+                              type: string
+                            namespace:
+                              description: Namespace of the secret.
+                              type: string
+                          required:
+                          - key
+                          - name
+                          - namespace
+                          type: object
+                        overrideGlobalSourceIps:
+                          description: |-
+                            List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
+                            Set of CIDR addresses to allow access to the database
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        remoteBackup:
+                          description: |-
+                            Specifies the backup options for the database in this region, documented below
+                            An object that specifies the backup options for the database in this region
+                          items:
+                            properties:
+                              interval:
+                                description: |-
+                                  Defines the interval between backups. Should be in the following format 'every-x-hours'. x is one of [24,12,6,4,2,1]. For example: 'every-4-hours'
+                                  Defines the frequency of the automatic backup
+                                type: string
+                              storagePath:
+                                description: |-
+                                  Defines a URI representing the backup storage location
+                                  Defines a URI representing the backup storage location
+                                type: string
+                              storageType:
+                                description: |-
+                                  Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
+                                  Defines the provider of the storage location
+                                type: string
+                              timeUtc:
+                                description: |-
+                                  Defines the hour automatic backups are made - only applicable when the interval is every-12-hours or every-24-hours. For example: '14:00'
+                                  Defines the hour automatic backups are made - only applicable when interval is `every-12-hours` or `every-24-hours`
+                                type: string
+                            type: object
+                          type: array
+                      type: object
+                    type: array
+                  port:
+                    description: |-
+                      TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.
+                      TCP port on which the database is available
+                    type: number
+                  redisVersion:
+                    description: |-
+                      The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
+                  subscriptionId:
+                    description: |-
+                      Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
+                      Identifier of the subscription
+                    type: number
+                  supportOssClusterApi:
+                    description: |-
+                      Support Redis open-source (OSS) Cluster API. Default: ‘false’
+                      Support Redis open-source (OSS) Cluster API
+                    type: boolean
+                  tags:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      A string/string map of tags to associate with this database. Note that all keys and values must be lowercase.
+                      Tags for database management
+                    type: object
+                    x-kubernetes-map-type: granular
+                type: object
+              managementPolicies:
+                default:
+                - '*'
+                description: |-
+                  THIS IS A BETA FIELD. It is on by default but can be opted out
+                  through a Crossplane feature flag.
+                  ManagementPolicies specify the array of actions Crossplane is allowed to
+                  take on the managed and external resources.
+                  This field is planned to replace the DeletionPolicy field in a future
+                  release. Currently, both could be set independently and non-default
+                  values would be honored if the feature flag is enabled. If both are
+                  custom, the DeletionPolicy field will be ignored.
+                  See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
+                  and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
+                items:
+                  description: |-
+                    A ManagementAction represents an action that the Crossplane controllers
+                    can take on an external resource.
+                  enum:
+                  - Observe
+                  - Create
+                  - Update
+                  - Delete
+                  - LateInitialize
+                  - '*'
+                  type: string
+                type: array
+              providerConfigRef:
+                default:
+                  name: default
+                description: |-
+                  ProviderConfigReference specifies how the provider that will be used to
+                  create, observe, update, and delete this managed resource should be
+                  configured.
+                properties:
+                  name:
+                    description: Name of the referenced object.
+                    type: string
+                  policy:
+                    description: Policies for referencing.
+                    properties:
+                      resolution:
+                        default: Required
+                        description: |-
+                          Resolution specifies whether resolution of this reference is required.
+                          The default is 'Required', which means the reconcile will fail if the
+                          reference cannot be resolved. 'Optional' means this reference will be
+                          a no-op if it cannot be resolved.
+                        enum:
+                        - Required
+                        - Optional
+                        type: string
+                      resolve:
+                        description: |-
+                          Resolve specifies when this reference should be resolved. The default
+                          is 'IfNotPresent', which will attempt to resolve the reference only when
+                          the corresponding field is not present. Use 'Always' to resolve the
+                          reference on every reconcile.
+                        enum:
+                        - Always
+                        - IfNotPresent
+                        type: string
+                    type: object
+                required:
+                - name
+                type: object
+              writeConnectionSecretToRef:
+                description: |-
+                  WriteConnectionSecretToReference specifies the namespace and name of a
+                  Secret to which any connection details for this managed resource should
+                  be written. Connection details frequently include the endpoint, username,
+                  and password required to connect to the managed resource.
+                properties:
+                  name:
+                    description: Name of the secret.
+                    type: string
+                  namespace:
+                    description: Namespace of the secret.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+            required:
+            - forProvider
+            type: object
+            x-kubernetes-validations:
+            - message: spec.forProvider.name is a required parameter
+              rule: '!(''*'' in self.managementPolicies || ''Create'' in self.managementPolicies
+                || ''Update'' in self.managementPolicies) || has(self.forProvider.name)
+                || (has(self.initProvider) && has(self.initProvider.name))'
+            - message: spec.forProvider.subscriptionId is a required parameter
+              rule: '!(''*'' in self.managementPolicies || ''Create'' in self.managementPolicies
+                || ''Update'' in self.managementPolicies) || has(self.forProvider.subscriptionId)
+                || (has(self.initProvider) && has(self.initProvider.subscriptionId))'
+          status:
+            description: ActiveSubscriptionDatabaseStatus defines the observed state
+              of ActiveSubscriptionDatabase.
+            properties:
+              atProvider:
+                properties:
+                  autoMinorVersionUpgrade:
+                    description: |-
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: true.
+                      Automatically upgrades the database to newer minor versions within the same major release. Applies to version 8.4 and above. Default: 'true'
+                    type: boolean
+                  dataEviction:
+                    description: |-
+                      The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
+                      Data eviction items policy
+                    type: string
+                  datasetSizeInGb:
+                    description: |-
+                      is unset
+                      Maximum amount of data in the dataset for this specific database in GB
+                    type: number
+                  dbId:
+                    description: |-
+                      Identifier of the database created
+                      Identifier of the database created
+                    type: number
+                  enableTls:
+                    description: |-
+                      Use TLS for authentication. Default: ‘false’
+                      Use TLS for authentication.
+                    type: boolean
+                  externalEndpointForOssClusterApi:
+                    description: |-
+                      Should use the external endpoint for open-source (OSS) Cluster API.
+                      Can only be enabled if OSS Cluster API support is enabled. Default: 'false'
+                      Should use the external endpoint for open-source (OSS) Cluster API
+                    type: boolean
+                  globalAlert:
+                    description: |-
+                      A block defining Redis database alert of regions that don't override global settings, documented below, can be specified multiple times. (either: 'dataset-size', 'datasets-size', 'throughput-higher-than', 'throughput-lower-than', 'latency', 'syncsource-error', 'syncsource-lag' or 'connections-limit')
+                      Set of alerts to enable on the database
+                    items:
+                      properties:
+                        name:
+                          description: |-
+                            Alert name
+                            Alert name
+                          type: string
+                        value:
+                          description: |-
+                            Alert value
+                            Alert value
+                          type: number
+                      type: object
+                    type: array
+                  globalDataPersistence:
+                    description: |-
+                      Global rate of database data persistence (in persistent storage) of regions that dont override global settings. Default: 'none'
+                      Rate of database data persistence (in persistent storage)
+                    type: string
+                  globalEnableDefaultUser:
+                    description: |-
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'. To disable, explicitly set to 'false'
+                      When 'true', enables connecting to the database with the 'default' user across all regions. Default: 'true'
+                    type: boolean
+                  globalEnablePasswordless:
+                    description: |-
+                      When true, the database is configured without a password. The API requires that the subscription has public_endpoint_access disabled. Cannot be true when global_password is set. Default: false
+                      When 'true', the database is configured without a password. The API requires that the subscription has 'public_endpoint_access' disabled. Cannot be 'true' when 'global_password' is set. Default: 'false'
+                    type: boolean
+                  globalModules:
+                    description: |-
+                      A list of modules to be enabled on all deployments of this database. Supported modules: RedisJSON, RediSearch. This attribute is only used when creating a new database - any changes after creation are ignored. Don't specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                      List of modules to enable on the database. This information is only used when creating a new database and any changes will be ignored after this.
+                    items:
+                      type: string
+                    type: array
+                  globalRespVersion:
+                    description: |-
+                      Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
+                      The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
+                    type: string
+                  globalSourceIps:
+                    description: |-
+                      List of source IP addresses or subnet masks that are allowed to connect to the database across all regions that don't override this setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. When not specified, the default behaviour depends on the subscription's public_endpoint_access setting: if false, defaults to RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10); if true, defaults to 0.0.0.0/0 (unrestricted public access)
+                      Set of CIDR addresses to allow access to the database
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  id:
+                    description: The ID of the subscription and database in the format
+                      {subscription_id}/{db_id}
+                    type: string
+                  memoryLimitInGb:
+                    description: |-
+                      Maximum memory usage for this specific database, including replication and other overhead Deprecated in favor of
+                      (Deprecated) Maximum memory usage for this specific database
+                    type: number
+                  name:
+                    description: |-
+                      A meaningful name to identify the database (maximum 40 characters).
+                      A meaningful name to identify the database
+                    type: string
+                  overrideRegion:
+                    description: |-
+                      Override region specific configuration, documented below
+                      Region-specific configuration parameters to override the global configuration
+                    items:
+                      properties:
+                        enableDefaultUser:
+                          description: |-
+                            Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting
+                            When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
+                          type: boolean
+                        name:
+                          description: |-
+                            Region name.
+                            Region name
+                          type: string
+                        overrideGlobalAlert:
+                          description: |-
+                            A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times
+                            Set of alerts to enable on the database in this region
+                          items:
+                            properties:
+                              name:
+                                description: |-
+                                  Alert name
+                                  Alert name
+                                type: string
+                              value:
+                                description: |-
+                                  Alert value
+                                  Alert value
+                                type: number
+                            type: object
+                          type: array
+                        overrideGlobalDataPersistence:
+                          description: |-
+                            Regional instance of an Active-Active database data persistence rate (in persistent storage)
+                            Rate of database data persistence (in persistent storage)
+                          type: string
+                        overrideGlobalEnablePasswordless:
+                          description: |-
+                            When true, the database in this region is configured without a password, overriding the global setting. Cannot be true when override_global_password is set
+                            When 'true', the database in this region is configured without a password, overriding the global setting. Cannot be 'true' when 'override_global_password' is set
+                          type: boolean
+                        overrideGlobalSourceIps:
+                          description: |-
+                            List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
+                            Set of CIDR addresses to allow access to the database
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        remoteBackup:
+                          description: |-
+                            Specifies the backup options for the database in this region, documented below
+                            An object that specifies the backup options for the database in this region
+                          items:
+                            properties:
+                              interval:
+                                description: |-
+                                  Defines the interval between backups. Should be in the following format 'every-x-hours'. x is one of [24,12,6,4,2,1]. For example: 'every-4-hours'
+                                  Defines the frequency of the automatic backup
+                                type: string
+                              storagePath:
+                                description: |-
+                                  Defines a URI representing the backup storage location
+                                  Defines a URI representing the backup storage location
+                                type: string
+                              storageType:
+                                description: |-
+                                  Defines the provider of the storage location. Valid values: 'ftp', 'aws-s3', 'azure-blob-storage', 'google-blob-storage'
+                                  Defines the provider of the storage location
+                                type: string
+                              timeUtc:
+                                description: |-
+                                  Defines the hour automatic backups are made - only applicable when the interval is every-12-hours or every-24-hours. For example: '14:00'
+                                  Defines the hour automatic backups are made - only applicable when interval is `every-12-hours` or `every-24-hours`
+                                type: string
+                            type: object
+                          type: array
+                      type: object
+                    type: array
+                  port:
+                    description: |-
+                      TCP port on which the database is available - must be between 10000 and 19999. Modifying this attribute will force creation of a new resource.
+                      TCP port on which the database is available
+                    type: number
+                  privateEndpoint:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      A map of which private endpoints can to access the database per region, uses region name as key.
+                      Region private endpoints to access the database
+                    type: object
+                    x-kubernetes-map-type: granular
+                  publicEndpoint:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      A map of which public endpoints can to access the database per region, uses region name as key.
+                      Region public endpoints to access the database
+                    type: object
+                    x-kubernetes-map-type: granular
+                  redisVersion:
+                    description: |-
+                      The Redis version of the database. If omitted, the Redis version will be the default. May differ if auto_minor_version_upgrade is set to true. Use redis_version_actual to fetch the Redis version used by the database.
+                      Defines the requested Redis database version. If omitted, the Redis version will be set to the default version. Use `redis_version_actual` to get the version on which the database is running.
+                    type: string
+                  redisVersionActual:
+                    description: |-
+                      The Redis version of the database. Can differ from redis_version if auto_minor_version_upgrade is set to true.
+                      The actual Redis database version
+                    type: string
+                  subscriptionId:
+                    description: |-
+                      Active subscription to create the database in. Modifying this attribute will force creation of a new resource.
+                      Identifier of the subscription
+                    type: number
+                  supportOssClusterApi:
+                    description: |-
+                      Support Redis open-source (OSS) Cluster API. Default: ‘false’
+                      Support Redis open-source (OSS) Cluster API
+                    type: boolean
+                  tags:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      A string/string map of tags to associate with this database. Note that all keys and values must be lowercase.
+                      Tags for database management
+                    type: object
+                    x-kubernetes-map-type: granular
+                type: object
+              conditions:
+                description: Conditions of the resource.
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time this condition transitioned from one
+                        status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        A Message containing details about this condition's last transition from
+                        one status to another, if any.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: |-
+                        Type of this condition. At most one of each condition type may apply to
+                        a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastHandledReconcileAt:
+                description: |-
+                  LastHandledReconcileAt holds the value of the most recent
+                  reconcile-requested-at annotation token that the controller has
+                  processed. Users can compare this to the annotation to determine
+                  whether a reconcile request has been handled.
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the latest metadata.generation
+                  which resulted in either a ready state, or stalled due to error
+                  it can not recover from without human intervention.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Synced')].status
+      name: SYNCED
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: READY
+      type: string
+    - jsonPath: .metadata.annotations.crossplane\.io/external-name
+      name: EXTERNAL-NAME
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
     name: v1beta1
     schema:
       openAPIV3Schema:

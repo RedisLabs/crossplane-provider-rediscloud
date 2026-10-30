@@ -31,6 +31,1048 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Subscription is the Schema for the Subscriptions API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SubscriptionSpec defines the desired state of Subscription
+            properties:
+              deletionPolicy:
+                default: Delete
+                description: |-
+                  DeletionPolicy specifies what will happen to the underlying external
+                  when this managed resource is deleted - either "Delete" or "Orphan" the
+                  external resource.
+                  This field is planned to be deprecated in favor of the ManagementPolicies
+                  field in a future release. Currently, both could be set independently and
+                  non-default values would be honored if the feature flag is enabled.
+                  See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
+                enum:
+                - Orphan
+                - Delete
+                type: string
+              forProvider:
+                properties:
+                  allowlist:
+                    description: |-
+                      An allowlist object, documented below
+                      An allowlist object
+                    items:
+                      properties:
+                        cidrs:
+                          description: |-
+                            Set of CIDR ranges that are allowed to access the databases associated with this subscription
+                            Set of CIDR ranges that are allowed to access the databases associated with this subscription
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        securityGroupIds:
+                          description: |-
+                            Set of security groups that are allowed to access the databases associated with this subscription
+                            Set of security groups that are allowed to access the databases associated with this subscription
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                      type: object
+                    type: array
+                  cloudProvider:
+                    description: |-
+                      A cloud provider object, documented below. Modifying this attribute will force creation of a new resource.
+                      A cloud provider object
+                    items:
+                      properties:
+                        cloudAccountId:
+                          description: |-
+                            Cloud account identifier. Default: Redis Labs internal cloud account. Modifying this attribute will force creation of a new resource.
+                            (using Cloud Account ID = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created
+                            only with Redis Labs internal cloud account
+                            Cloud account identifier. Default: Redis Labs internal cloud account (using Cloud Account Id = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created only with Redis Labs internal cloud account
+                          type: string
+                        provider:
+                          description: |-
+                            The cloud provider to use with the subscription, (either AWS or GCP). Default: ‘AWS’. Modifying this attribute will force creation of a new resource.
+                            The cloud provider to use with the subscription, (either `AWS` or `GCP`)
+                          type: string
+                        region:
+                          description: |-
+                            A region object, documented below. Modifying this attribute will force creation of a new resource.
+                            Cloud networking details, per region (single region or multiple regions for Active-Active cluster only)
+                          items:
+                            properties:
+                              multipleAvailabilityZones:
+                                description: |-
+                                  Support deployment on multiple availability zones within the selected region. Default: ‘false’. Modifying this attribute will force creation of a new resource.
+                                  Support deployment on multiple availability zones within the selected region
+                                type: boolean
+                              networkingDeploymentCidr:
+                                description: |-
+                                  Deployment CIDR mask for the generated
+                                  Deployment CIDR mask
+                                type: string
+                              networkingVpcId:
+                                description: |-
+                                  VPC id for the generated network
+                                  Either an existing VPC Id (already exists in the specific region) or create a new VPC (if no VPC is specified)
+                                type: string
+                              preferredAvailabilityZones:
+                                description: |-
+                                  Availability zones deployment preferences (for the selected provider & region). If multiple_availability_zones is set to 'true', select three availability zones from the list. If you don't want to specify preferred availability zones, set this attribute to an empty list ('[]'). Modifying this attribute will force creation of a new resource.
+                                  List of availability zones used
+                                items:
+                                  type: string
+                                type: array
+                              region:
+                                description: |-
+                                  Deployment region as defined by cloud provider. Modifying this attribute will force creation of a new resource.
+                                  Deployment region as defined by cloud provider
+                                type: string
+                            type: object
+                          type: array
+                        resourceTags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            A string/string map of tags to associate with this subscription's cloud resources.
+                            A map of tags to associate with this subscription.
+                          type: object
+                          x-kubernetes-map-type: granular
+                      type: object
+                    type: array
+                  creationPlan:
+                    description: |-
+                      A creation plan object, documented below.
+                      Information about the planned databases used to optimise the database infrastructure. This information is only used when creating a new subscription and any changes will be ignored after this.
+                    items:
+                      properties:
+                        averageItemSizeInBytes:
+                          description: |-
+                            Relevant only to ram-and-flash clusters
+                            Estimated average size (measured in bytes) of the items stored in the database. The value needs to
+                            be the maximum average item size defined in one of your databases.  Default: 1000.
+                            Deprecated: This attribute is deprecated. Configure
+                            (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+                          type: number
+                        datasetSizeInGb:
+                          description: |-
+                            instead
+                            Maximum amount of data in the dataset for this specific database in GB
+                          type: number
+                        memoryLimitInGb:
+                          description: |-
+                            Maximum memory usage that will be used for your largest planned database. You can not set both dataset_size_in_gb and memory_limit_in_gb. Deprecated: Use
+                            (Deprecated) Maximum memory usage for each database
+                          type: number
+                        modules:
+                          description: |-
+                            a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                            Modules that will be used by the databases in this subscription.
+                          items:
+                            type: string
+                          type: array
+                        quantity:
+                          description: |-
+                            The planned number of databases in the subscription
+                            The planned number of databases
+                          type: number
+                        queryPerformanceFactor:
+                          description: |-
+                            The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                            Query performance factor for this specific database
+                          type: string
+                        ramPercentage:
+                          description: |-
+                            instead. This attribute will be removed in the next major version of the provider.
+                            Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                          type: number
+                        replication:
+                          description: |-
+                            Databases replication. Default: ‘true’
+                            Databases replication
+                          type: boolean
+                        supportOssClusterApi:
+                          description: |-
+                            Support Redis open-source (OSS) Cluster API. Default: ‘false’
+                            Support Redis open-source (OSS) Cluster API
+                          type: boolean
+                        throughputMeasurementBy:
+                          description: |-
+                            Throughput measurement method that will be used by your databases. Either number-of-shards or operations-per-second. number-of-shards is deprecated and only supported for legacy deployments.
+                            Throughput measurement method, (either ‘number-of-shards’ or ‘operations-per-second’)
+                          type: string
+                        throughputMeasurementValue:
+                          description: |-
+                            Throughput value that will be used by your databases (as applies to selected measurement method). The value needs to be the maximum throughput measurement value defined in one of your databases
+                            Throughput value (as applies to selected measurement method)
+                          type: number
+                      type: object
+                    type: array
+                  customerManagedKey:
+                    description: |-
+                      The customer managed keys (CMK) to use for this subscription.
+                      CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+                    items:
+                      properties:
+                        resourceName:
+                          description: |-
+                            The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+                            Resource name of the customer managed key as defined by the cloud provider.
+                          type: string
+                      type: object
+                    type: array
+                  customerManagedKeyDeletionGracePeriod:
+                    description: |-
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                    type: string
+                  customerManagedKeyEnabled:
+                    description: |-
+                      Whether to enable the customer managed encryption key flow.
+                      Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+                    type: boolean
+                  maintenanceWindows:
+                    description: |-
+                      The subscription's maintenance window specification, documented below.
+                      Specify the subscription's maintenance windows
+                    items:
+                      properties:
+                        mode:
+                          description: |-
+                            Either automatic (Redis specified) or manual (User specified)
+                            Either automatic (Redis specified) or manual (User specified)
+                          type: string
+                        window:
+                          description: |-
+                            A list of windows (if manual mode)
+                            A list of maintenance windows for manual-mode
+                          items:
+                            properties:
+                              days:
+                                description: |-
+                                  A list of weekdays on which the window is open ('Monday', 'Tuesday' etc)
+                                  A list of days on which the window is open ('Monday', 'Tuesday' etc)
+                                items:
+                                  type: string
+                                type: array
+                              durationInHours:
+                                description: |-
+                                  How long the window is open (4-24 hours)
+                                  How long maintenance may take
+                                type: number
+                              startHour:
+                                description: |-
+                                  What hour in the day (0-23) the window opens
+                                  What hour in the day (0-23) may maintenance start
+                                type: number
+                            type: object
+                          type: array
+                      type: object
+                    type: array
+                  memoryStorage:
+                    description: |-
+                      Memory storage preference: either ‘ram’ or a combination of ‘ram-and-flash’. Default: ‘ram’. Modifying this attribute will force creation of a new resource.
+                      Memory storage preference: either ‘ram’ or a combination of 'ram-and-flash’
+                    type: string
+                  name:
+                    description: |-
+                      A meaningful name to identify the subscription
+                      A meaningful name to identify the subscription
+                    type: string
+                  paymentMethod:
+                    description: |-
+                      card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+                      Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
+                    type: string
+                  paymentMethodId:
+                    description: |-
+                      A valid payment method pre-defined in the current account. Only Required when payment_method is credit-card.
+                      A valid payment method pre-defined in the current account
+                    type: string
+                  publicEndpointAccess:
+                    description: |-
+                      Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+                      Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+                    type: boolean
+                  redisVersion:
+                    description: |-
+                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
+                      Version of Redis to create
+                    type: string
+                type: object
+              initProvider:
+                description: |-
+                  THIS IS A BETA FIELD. It will be honored
+                  unless the Management Policies feature flag is disabled.
+                  InitProvider holds the same fields as ForProvider, with the exception
+                  of Identifier and other resource reference fields. The fields that are
+                  in InitProvider are merged into ForProvider when the resource is created.
+                  The same fields are also added to the terraform ignore_changes hook, to
+                  avoid updating them after creation. This is useful for fields that are
+                  required on creation, but we do not desire to update them after creation,
+                  for example because of an external controller is managing them, like an
+                  autoscaler.
+                properties:
+                  allowlist:
+                    description: |-
+                      An allowlist object, documented below
+                      An allowlist object
+                    items:
+                      properties:
+                        cidrs:
+                          description: |-
+                            Set of CIDR ranges that are allowed to access the databases associated with this subscription
+                            Set of CIDR ranges that are allowed to access the databases associated with this subscription
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        securityGroupIds:
+                          description: |-
+                            Set of security groups that are allowed to access the databases associated with this subscription
+                            Set of security groups that are allowed to access the databases associated with this subscription
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                      type: object
+                    type: array
+                  cloudProvider:
+                    description: |-
+                      A cloud provider object, documented below. Modifying this attribute will force creation of a new resource.
+                      A cloud provider object
+                    items:
+                      properties:
+                        cloudAccountId:
+                          description: |-
+                            Cloud account identifier. Default: Redis Labs internal cloud account. Modifying this attribute will force creation of a new resource.
+                            (using Cloud Account ID = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created
+                            only with Redis Labs internal cloud account
+                            Cloud account identifier. Default: Redis Labs internal cloud account (using Cloud Account Id = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created only with Redis Labs internal cloud account
+                          type: string
+                        provider:
+                          description: |-
+                            The cloud provider to use with the subscription, (either AWS or GCP). Default: ‘AWS’. Modifying this attribute will force creation of a new resource.
+                            The cloud provider to use with the subscription, (either `AWS` or `GCP`)
+                          type: string
+                        region:
+                          description: |-
+                            A region object, documented below. Modifying this attribute will force creation of a new resource.
+                            Cloud networking details, per region (single region or multiple regions for Active-Active cluster only)
+                          items:
+                            properties:
+                              multipleAvailabilityZones:
+                                description: |-
+                                  Support deployment on multiple availability zones within the selected region. Default: ‘false’. Modifying this attribute will force creation of a new resource.
+                                  Support deployment on multiple availability zones within the selected region
+                                type: boolean
+                              networkingDeploymentCidr:
+                                description: |-
+                                  Deployment CIDR mask for the generated
+                                  Deployment CIDR mask
+                                type: string
+                              networkingVpcId:
+                                description: |-
+                                  VPC id for the generated network
+                                  Either an existing VPC Id (already exists in the specific region) or create a new VPC (if no VPC is specified)
+                                type: string
+                              preferredAvailabilityZones:
+                                description: |-
+                                  Availability zones deployment preferences (for the selected provider & region). If multiple_availability_zones is set to 'true', select three availability zones from the list. If you don't want to specify preferred availability zones, set this attribute to an empty list ('[]'). Modifying this attribute will force creation of a new resource.
+                                  List of availability zones used
+                                items:
+                                  type: string
+                                type: array
+                              region:
+                                description: |-
+                                  Deployment region as defined by cloud provider. Modifying this attribute will force creation of a new resource.
+                                  Deployment region as defined by cloud provider
+                                type: string
+                            type: object
+                          type: array
+                        resourceTags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            A string/string map of tags to associate with this subscription's cloud resources.
+                            A map of tags to associate with this subscription.
+                          type: object
+                          x-kubernetes-map-type: granular
+                      type: object
+                    type: array
+                  creationPlan:
+                    description: |-
+                      A creation plan object, documented below.
+                      Information about the planned databases used to optimise the database infrastructure. This information is only used when creating a new subscription and any changes will be ignored after this.
+                    items:
+                      properties:
+                        averageItemSizeInBytes:
+                          description: |-
+                            Relevant only to ram-and-flash clusters
+                            Estimated average size (measured in bytes) of the items stored in the database. The value needs to
+                            be the maximum average item size defined in one of your databases.  Default: 1000.
+                            Deprecated: This attribute is deprecated. Configure
+                            (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+                          type: number
+                        datasetSizeInGb:
+                          description: |-
+                            instead
+                            Maximum amount of data in the dataset for this specific database in GB
+                          type: number
+                        memoryLimitInGb:
+                          description: |-
+                            Maximum memory usage that will be used for your largest planned database. You can not set both dataset_size_in_gb and memory_limit_in_gb. Deprecated: Use
+                            (Deprecated) Maximum memory usage for each database
+                          type: number
+                        modules:
+                          description: |-
+                            a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                            Modules that will be used by the databases in this subscription.
+                          items:
+                            type: string
+                          type: array
+                        quantity:
+                          description: |-
+                            The planned number of databases in the subscription
+                            The planned number of databases
+                          type: number
+                        queryPerformanceFactor:
+                          description: |-
+                            The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                            Query performance factor for this specific database
+                          type: string
+                        ramPercentage:
+                          description: |-
+                            instead. This attribute will be removed in the next major version of the provider.
+                            Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                          type: number
+                        replication:
+                          description: |-
+                            Databases replication. Default: ‘true’
+                            Databases replication
+                          type: boolean
+                        supportOssClusterApi:
+                          description: |-
+                            Support Redis open-source (OSS) Cluster API. Default: ‘false’
+                            Support Redis open-source (OSS) Cluster API
+                          type: boolean
+                        throughputMeasurementBy:
+                          description: |-
+                            Throughput measurement method that will be used by your databases. Either number-of-shards or operations-per-second. number-of-shards is deprecated and only supported for legacy deployments.
+                            Throughput measurement method, (either ‘number-of-shards’ or ‘operations-per-second’)
+                          type: string
+                        throughputMeasurementValue:
+                          description: |-
+                            Throughput value that will be used by your databases (as applies to selected measurement method). The value needs to be the maximum throughput measurement value defined in one of your databases
+                            Throughput value (as applies to selected measurement method)
+                          type: number
+                      type: object
+                    type: array
+                  customerManagedKey:
+                    description: |-
+                      The customer managed keys (CMK) to use for this subscription.
+                      CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+                    items:
+                      properties:
+                        resourceName:
+                          description: |-
+                            The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+                            Resource name of the customer managed key as defined by the cloud provider.
+                          type: string
+                      type: object
+                    type: array
+                  customerManagedKeyDeletionGracePeriod:
+                    description: |-
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                    type: string
+                  customerManagedKeyEnabled:
+                    description: |-
+                      Whether to enable the customer managed encryption key flow.
+                      Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+                    type: boolean
+                  maintenanceWindows:
+                    description: |-
+                      The subscription's maintenance window specification, documented below.
+                      Specify the subscription's maintenance windows
+                    items:
+                      properties:
+                        mode:
+                          description: |-
+                            Either automatic (Redis specified) or manual (User specified)
+                            Either automatic (Redis specified) or manual (User specified)
+                          type: string
+                        window:
+                          description: |-
+                            A list of windows (if manual mode)
+                            A list of maintenance windows for manual-mode
+                          items:
+                            properties:
+                              days:
+                                description: |-
+                                  A list of weekdays on which the window is open ('Monday', 'Tuesday' etc)
+                                  A list of days on which the window is open ('Monday', 'Tuesday' etc)
+                                items:
+                                  type: string
+                                type: array
+                              durationInHours:
+                                description: |-
+                                  How long the window is open (4-24 hours)
+                                  How long maintenance may take
+                                type: number
+                              startHour:
+                                description: |-
+                                  What hour in the day (0-23) the window opens
+                                  What hour in the day (0-23) may maintenance start
+                                type: number
+                            type: object
+                          type: array
+                      type: object
+                    type: array
+                  memoryStorage:
+                    description: |-
+                      Memory storage preference: either ‘ram’ or a combination of ‘ram-and-flash’. Default: ‘ram’. Modifying this attribute will force creation of a new resource.
+                      Memory storage preference: either ‘ram’ or a combination of 'ram-and-flash’
+                    type: string
+                  name:
+                    description: |-
+                      A meaningful name to identify the subscription
+                      A meaningful name to identify the subscription
+                    type: string
+                  paymentMethod:
+                    description: |-
+                      card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+                      Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
+                    type: string
+                  paymentMethodId:
+                    description: |-
+                      A valid payment method pre-defined in the current account. Only Required when payment_method is credit-card.
+                      A valid payment method pre-defined in the current account
+                    type: string
+                  publicEndpointAccess:
+                    description: |-
+                      Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+                      Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+                    type: boolean
+                  redisVersion:
+                    description: |-
+                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
+                      Version of Redis to create
+                    type: string
+                type: object
+              managementPolicies:
+                default:
+                - '*'
+                description: |-
+                  THIS IS A BETA FIELD. It is on by default but can be opted out
+                  through a Crossplane feature flag.
+                  ManagementPolicies specify the array of actions Crossplane is allowed to
+                  take on the managed and external resources.
+                  This field is planned to replace the DeletionPolicy field in a future
+                  release. Currently, both could be set independently and non-default
+                  values would be honored if the feature flag is enabled. If both are
+                  custom, the DeletionPolicy field will be ignored.
+                  See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
+                  and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
+                items:
+                  description: |-
+                    A ManagementAction represents an action that the Crossplane controllers
+                    can take on an external resource.
+                  enum:
+                  - Observe
+                  - Create
+                  - Update
+                  - Delete
+                  - LateInitialize
+                  - '*'
+                  type: string
+                type: array
+              providerConfigRef:
+                default:
+                  name: default
+                description: |-
+                  ProviderConfigReference specifies how the provider that will be used to
+                  create, observe, update, and delete this managed resource should be
+                  configured.
+                properties:
+                  name:
+                    description: Name of the referenced object.
+                    type: string
+                  policy:
+                    description: Policies for referencing.
+                    properties:
+                      resolution:
+                        default: Required
+                        description: |-
+                          Resolution specifies whether resolution of this reference is required.
+                          The default is 'Required', which means the reconcile will fail if the
+                          reference cannot be resolved. 'Optional' means this reference will be
+                          a no-op if it cannot be resolved.
+                        enum:
+                        - Required
+                        - Optional
+                        type: string
+                      resolve:
+                        description: |-
+                          Resolve specifies when this reference should be resolved. The default
+                          is 'IfNotPresent', which will attempt to resolve the reference only when
+                          the corresponding field is not present. Use 'Always' to resolve the
+                          reference on every reconcile.
+                        enum:
+                        - Always
+                        - IfNotPresent
+                        type: string
+                    type: object
+                required:
+                - name
+                type: object
+              writeConnectionSecretToRef:
+                description: |-
+                  WriteConnectionSecretToReference specifies the namespace and name of a
+                  Secret to which any connection details for this managed resource should
+                  be written. Connection details frequently include the endpoint, username,
+                  and password required to connect to the managed resource.
+                properties:
+                  name:
+                    description: Name of the secret.
+                    type: string
+                  namespace:
+                    description: Namespace of the secret.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+            required:
+            - forProvider
+            type: object
+            x-kubernetes-validations:
+            - message: spec.forProvider.cloudProvider is a required parameter
+              rule: '!(''*'' in self.managementPolicies || ''Create'' in self.managementPolicies
+                || ''Update'' in self.managementPolicies) || has(self.forProvider.cloudProvider)
+                || (has(self.initProvider) && has(self.initProvider.cloudProvider))'
+          status:
+            description: SubscriptionStatus defines the observed state of Subscription.
+            properties:
+              atProvider:
+                properties:
+                  allowlist:
+                    description: |-
+                      An allowlist object, documented below
+                      An allowlist object
+                    items:
+                      properties:
+                        cidrs:
+                          description: |-
+                            Set of CIDR ranges that are allowed to access the databases associated with this subscription
+                            Set of CIDR ranges that are allowed to access the databases associated with this subscription
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        securityGroupIds:
+                          description: |-
+                            Set of security groups that are allowed to access the databases associated with this subscription
+                            Set of security groups that are allowed to access the databases associated with this subscription
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                      type: object
+                    type: array
+                  cloudProvider:
+                    description: |-
+                      A cloud provider object, documented below. Modifying this attribute will force creation of a new resource.
+                      A cloud provider object
+                    items:
+                      properties:
+                        awsAccountId:
+                          description: |-
+                            AWS account ID that the subscription is deployed in (AWS subscriptions only).
+                            AWS account ID associated with the subscription (only applicable for AWS subscriptions)
+                          type: string
+                        cloudAccountId:
+                          description: |-
+                            Cloud account identifier. Default: Redis Labs internal cloud account. Modifying this attribute will force creation of a new resource.
+                            (using Cloud Account ID = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created
+                            only with Redis Labs internal cloud account
+                            Cloud account identifier. Default: Redis Labs internal cloud account (using Cloud Account Id = 1 implies using Redis Labs internal cloud account). Note that a GCP subscription can be created only with Redis Labs internal cloud account
+                          type: string
+                        provider:
+                          description: |-
+                            The cloud provider to use with the subscription, (either AWS or GCP). Default: ‘AWS’. Modifying this attribute will force creation of a new resource.
+                            The cloud provider to use with the subscription, (either `AWS` or `GCP`)
+                          type: string
+                        region:
+                          description: |-
+                            A region object, documented below. Modifying this attribute will force creation of a new resource.
+                            Cloud networking details, per region (single region or multiple regions for Active-Active cluster only)
+                          items:
+                            properties:
+                              multipleAvailabilityZones:
+                                description: |-
+                                  Support deployment on multiple availability zones within the selected region. Default: ‘false’. Modifying this attribute will force creation of a new resource.
+                                  Support deployment on multiple availability zones within the selected region
+                                type: boolean
+                              networkingDeploymentCidr:
+                                description: |-
+                                  Deployment CIDR mask for the generated
+                                  Deployment CIDR mask
+                                type: string
+                              networkingVpcId:
+                                description: |-
+                                  VPC id for the generated network
+                                  Either an existing VPC Id (already exists in the specific region) or create a new VPC (if no VPC is specified)
+                                type: string
+                              networks:
+                                description: |-
+                                  List of generated network configuration
+                                  List of networks used
+                                items:
+                                  properties:
+                                    networkingDeploymentCidr:
+                                      description: Deployment CIDR mask for the generated
+                                      type: string
+                                    networkingSubnetId:
+                                      description: The subnet that the subscription
+                                        deploys into
+                                      type: string
+                                    networkingVpcId:
+                                      description: VPC id for the generated network
+                                      type: string
+                                  type: object
+                                type: array
+                              preferredAvailabilityZones:
+                                description: |-
+                                  Availability zones deployment preferences (for the selected provider & region). If multiple_availability_zones is set to 'true', select three availability zones from the list. If you don't want to specify preferred availability zones, set this attribute to an empty list ('[]'). Modifying this attribute will force creation of a new resource.
+                                  List of availability zones used
+                                items:
+                                  type: string
+                                type: array
+                              region:
+                                description: |-
+                                  Deployment region as defined by cloud provider. Modifying this attribute will force creation of a new resource.
+                                  Deployment region as defined by cloud provider
+                                type: string
+                            type: object
+                          type: array
+                        resourceTags:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            A string/string map of tags to associate with this subscription's cloud resources.
+                            A map of tags to associate with this subscription.
+                          type: object
+                          x-kubernetes-map-type: granular
+                      type: object
+                    type: array
+                  creationPlan:
+                    description: |-
+                      A creation plan object, documented below.
+                      Information about the planned databases used to optimise the database infrastructure. This information is only used when creating a new subscription and any changes will be ignored after this.
+                    items:
+                      properties:
+                        averageItemSizeInBytes:
+                          description: |-
+                            Relevant only to ram-and-flash clusters
+                            Estimated average size (measured in bytes) of the items stored in the database. The value needs to
+                            be the maximum average item size defined in one of your databases.  Default: 1000.
+                            Deprecated: This attribute is deprecated. Configure
+                            (Deprecated) Relevant only to ram-and-flash clusters. Estimated average size (measured in bytes) of the items stored in the database
+                          type: number
+                        datasetSizeInGb:
+                          description: |-
+                            instead
+                            Maximum amount of data in the dataset for this specific database in GB
+                          type: number
+                        memoryLimitInGb:
+                          description: |-
+                            Maximum memory usage that will be used for your largest planned database. You can not set both dataset_size_in_gb and memory_limit_in_gb. Deprecated: Use
+                            (Deprecated) Maximum memory usage for each database
+                          type: number
+                        modules:
+                          description: |-
+                            a list of modules that will be used by the databases in this subscription. Don’t specify modules for DB versions 8 and above. All capabilities are bundled in the DB by default.
+                            Modules that will be used by the databases in this subscription.
+                          items:
+                            type: string
+                          type: array
+                        quantity:
+                          description: |-
+                            The planned number of databases in the subscription
+                            The planned number of databases
+                          type: number
+                        queryPerformanceFactor:
+                          description: |-
+                            The query performance factor adds extra compute power specifically for search and query databases. You can increase your queries per second by the selected factor. Valid values are "Standard" or multiples of 2, e.g. 2x, 4x, 6x, 8x.
+                            Query performance factor for this specific database
+                          type: string
+                        ramPercentage:
+                          description: |-
+                            instead. This attribute will be removed in the next major version of the provider.
+                            Relevant only to ram-and-flash subscriptions. The percentage of data to be stored in RAM
+                          type: number
+                        replication:
+                          description: |-
+                            Databases replication. Default: ‘true’
+                            Databases replication
+                          type: boolean
+                        supportOssClusterApi:
+                          description: |-
+                            Support Redis open-source (OSS) Cluster API. Default: ‘false’
+                            Support Redis open-source (OSS) Cluster API
+                          type: boolean
+                        throughputMeasurementBy:
+                          description: |-
+                            Throughput measurement method that will be used by your databases. Either number-of-shards or operations-per-second. number-of-shards is deprecated and only supported for legacy deployments.
+                            Throughput measurement method, (either ‘number-of-shards’ or ‘operations-per-second’)
+                          type: string
+                        throughputMeasurementValue:
+                          description: |-
+                            Throughput value that will be used by your databases (as applies to selected measurement method). The value needs to be the maximum throughput measurement value defined in one of your databases
+                            Throughput value (as applies to selected measurement method)
+                          type: number
+                      type: object
+                    type: array
+                  customerManagedKey:
+                    description: |-
+                      The customer managed keys (CMK) to use for this subscription.
+                      CMK resources used to encrypt the databases in this subscription. Ignored if `customer_managed_key_enabled` set to false. Supply after the database has been put into database pending state. See documentation for CMK flow.
+                    items:
+                      properties:
+                        resourceName:
+                          description: |-
+                            The resource name of the customer managed key as defined by the cloud provider, e.g. projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME
+                            Resource name of the customer managed key as defined by the cloud provider.
+                          type: string
+                      type: object
+                    type: array
+                  customerManagedKeyAwsRoleArn:
+                    description: |-
+                      The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy. Only set for AWS subscriptions with CMK enabled.
+                      The ARN of the IAM role used by the subscription to access the AWS KMS customer managed key. Grant this role access to your KMS key via key policy
+                    type: string
+                  customerManagedKeyDeletionGracePeriod:
+                    description: |-
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                      The grace period for deleting the subscription. If not set, will default to immediate deletion grace period.
+                    type: string
+                  customerManagedKeyEnabled:
+                    description: |-
+                      Whether to enable the customer managed encryption key flow.
+                      Whether to enable CMK (customer managed key) for the subscription. If this is true, then the subscription will be put in a pending state until you supply the CMEK. See documentation for further details on this process. Defaults to false.
+                    type: boolean
+                  customerManagedKeyRedisServiceAccount:
+                    description: |-
+                      Outputs the ID of the GCP service account associated with the subscription. Useful as part of the CMK flow for GCP subscriptions.
+                      The principal of the Redis service account that the subscription is created in. This is used by the user to give access to their customer managed key
+                    type: string
+                  id:
+                    type: string
+                  maintenanceWindows:
+                    description: |-
+                      The subscription's maintenance window specification, documented below.
+                      Specify the subscription's maintenance windows
+                    items:
+                      properties:
+                        mode:
+                          description: |-
+                            Either automatic (Redis specified) or manual (User specified)
+                            Either automatic (Redis specified) or manual (User specified)
+                          type: string
+                        window:
+                          description: |-
+                            A list of windows (if manual mode)
+                            A list of maintenance windows for manual-mode
+                          items:
+                            properties:
+                              days:
+                                description: |-
+                                  A list of weekdays on which the window is open ('Monday', 'Tuesday' etc)
+                                  A list of days on which the window is open ('Monday', 'Tuesday' etc)
+                                items:
+                                  type: string
+                                type: array
+                              durationInHours:
+                                description: |-
+                                  How long the window is open (4-24 hours)
+                                  How long maintenance may take
+                                type: number
+                              startHour:
+                                description: |-
+                                  What hour in the day (0-23) the window opens
+                                  What hour in the day (0-23) may maintenance start
+                                type: number
+                            type: object
+                          type: array
+                      type: object
+                    type: array
+                  memoryStorage:
+                    description: |-
+                      Memory storage preference: either ‘ram’ or a combination of ‘ram-and-flash’. Default: ‘ram’. Modifying this attribute will force creation of a new resource.
+                      Memory storage preference: either ‘ram’ or a combination of 'ram-and-flash’
+                    type: string
+                  name:
+                    description: |-
+                      A meaningful name to identify the subscription
+                      A meaningful name to identify the subscription
+                    type: string
+                  paymentMethod:
+                    description: |-
+                      card or marketplace). Must not be set for direct contracts. If credit-card is specified, payment_method_id must be defined. Default: 'credit-card'. (Changes to) this attribute are ignored after creation.
+                      Payment method for the requested subscription. If credit card is specified, the payment method id must be defined. This information is only used when creating a new subscription and any changes will be ignored after this.
+                    type: string
+                  paymentMethodId:
+                    description: |-
+                      A valid payment method pre-defined in the current account. Only Required when payment_method is credit-card.
+                      A valid payment method pre-defined in the current account
+                    type: string
+                  pricing:
+                    description: Pricing details totalled over this Subscription
+                    items:
+                      properties:
+                        databaseName:
+                          description: A meaningful name to identify the subscription
+                          type: string
+                        priceCurrency:
+                          type: string
+                        pricePerUnit:
+                          type: number
+                        pricePeriod:
+                          type: string
+                        quantity:
+                          description: Self-explanatory.
+                          type: number
+                        quantityMeasurement:
+                          type: string
+                        region:
+                          description: Deployment region as defined by cloud provider.
+                            Modifying this attribute will force creation of a new
+                            resource.
+                          type: string
+                        type:
+                          description: The type of cost. E.g. 'Shards'.
+                          type: string
+                        typeDetails:
+                          type: string
+                      type: object
+                    type: array
+                  prometheusEndpoint:
+                    description: |-
+                      The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.
+                      The Prometheus scrape endpoint for databases in this subscription. Use this to configure your Prometheus server to scrape metrics from your Redis Cloud databases.
+                    type: string
+                  publicEndpointAccess:
+                    description: |-
+                      Allow public access to databases within this subscription. When set to false, database access is restricted to private IP ranges only. Default: true.
+                      Whether databases in the subscription should have public endpoints. When set to false, databases will only have private endpoints. Defaults to true.
+                    type: boolean
+                  redisVersion:
+                    description: |-
+                      The Redis version of the databases in the subscription. If omitted, the Redis version will be the default.  Deprecated: This attribute is deprecated on the subscriptions level. Please specify
+                      Version of Redis to create
+                    type: string
+                type: object
+              conditions:
+                description: Conditions of the resource.
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time this condition transitioned from one
+                        status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        A Message containing details about this condition's last transition from
+                        one status to another, if any.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: |-
+                        Type of this condition. At most one of each condition type may apply to
+                        a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastHandledReconcileAt:
+                description: |-
+                  LastHandledReconcileAt holds the value of the most recent
+                  reconcile-requested-at annotation token that the controller has
+                  processed. Users can compare this to the annotation to determine
+                  whether a reconcile request has been handled.
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the latest metadata.generation
+                  which resulted in either a ready state, or stalled due to error
+                  it can not recover from without human intervention.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Synced')].status
+      name: SYNCED
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: READY
+      type: string
+    - jsonPath: .metadata.annotations.crossplane\.io/external-name
+      name: EXTERNAL-NAME
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
     name: v1beta1
     schema:
       openAPIV3Schema:
