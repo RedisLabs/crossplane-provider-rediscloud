@@ -38,6 +38,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/RedisLabs/provider-rediscloud/apis"
+	lookupv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/lookup/v1alpha1"
 	"github.com/RedisLabs/provider-rediscloud/config"
 	"github.com/RedisLabs/provider-rediscloud/internal/clients"
 	"github.com/RedisLabs/provider-rediscloud/internal/controller"
@@ -116,9 +117,6 @@ func main() {
 	}
 
 	kingpin.FatalIfError(setupControllers(mgr, o, log), "Cannot setup RedisCloud controllers")
-	kingpin.FatalIfError(lookupcontroller.SetupPaymentMethod(mgr), "Cannot setup payment method lookup")
-	kingpin.FatalIfError(lookupcontroller.SetupEssentialsPlan(mgr), "Cannot setup Essentials plan lookup")
-	kingpin.FatalIfError(lookupcontroller.SetupRegions(mgr), "Cannot setup region lookup")
 	kingpin.FatalIfError(mgr.Start(ctrl.SetupSignalHandler()), "Cannot start controller manager")
 }
 
@@ -162,10 +160,43 @@ func setupControllers(mgr manager.Manager, o tjcontroller.Options, log logging.L
 		}); err != nil {
 			return errors.Wrap(err, "Cannot setup CRD gate")
 		}
-		return controller.SetupGated(mgr, o)
+		if err := controller.SetupGated(mgr, o); err != nil {
+			return err
+		}
+		return setupLookups(mgr, crdGate)
 	}
 	log.Info("Provider has missing RBAC permissions for watching CRDs, controller SafeStart capability will be disabled")
-	return controller.Setup(mgr, o)
+	if err := controller.Setup(mgr, o); err != nil {
+		return err
+	}
+	return setupLookups(mgr, nil)
+}
+
+func setupLookups(mgr manager.Manager, g *gate.Gate[schema.GroupVersionKind]) error {
+	setups := []struct {
+		kind string
+		fn   func(manager.Manager) error
+	}{
+		{kind: "PaymentMethod", fn: lookupcontroller.SetupPaymentMethod},
+		{kind: "EssentialsPlan", fn: lookupcontroller.SetupEssentialsPlan},
+		{kind: "Regions", fn: lookupcontroller.SetupRegions},
+	}
+	for _, setup := range setups {
+		if g == nil {
+			if err := setup.fn(mgr); err != nil {
+				return errors.Wrapf(err, "cannot setup %s lookup", setup.kind)
+			}
+			continue
+		}
+		kind := setup.kind
+		fn := setup.fn
+		g.Register(func() {
+			if err := fn(mgr); err != nil {
+				mgr.GetLogger().Error(err, "unable to setup lookup", "kind", kind)
+			}
+		}, lookupv1alpha1.CRDGroupVersion.WithKind(kind))
+	}
+	return nil
 }
 
 func canWatchCRD(ctx context.Context, mgr manager.Manager) (bool, error) {
