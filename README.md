@@ -142,6 +142,7 @@ make local-deploy
 ## Documentation
 
 - [Terraform Alignment](docs/terraform-alignment.md) - Alignment with Redis Cloud Terraform provider v2.19.2
+- [Architecture decisions](docs/adr/ADR-index.md) - Why the provider follows Upjet v2
 - [Testing Guide](TESTING.md) - Instructions for testing the provider
 - [API Reference](https://doc.crds.dev/github.com/RedisLabs/provider-rediscloud) - Generated CRD documentation
 

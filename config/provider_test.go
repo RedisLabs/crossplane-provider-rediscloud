@@ -43,8 +43,8 @@ func TestProviderResources(t *testing.T) {
 
 	// Test that external name configurations exist for key resources
 	expectedResources := []string{
-		"rediscloud_subscription",
-		"rediscloud_subscription_database",
+		tfSubscription,
+		tfSubscriptionDatabase,
 		"rediscloud_subscription_peering",
 	}
 

@@ -42,13 +42,13 @@ def write_fixture_files(repo: Path, pin: str = "2.19.2") -> None:
             [
                 "module github.com/RedisLabs/provider-rediscloud",
                 "",
-                "go 1.24.0",
+                "go 1.26.8",
                 "",
-                "toolchain go1.24.11",
+                "toolchain go1.26.10",
                 "",
                 "require (",
-                "\tgithub.com/crossplane/crossplane-runtime v1.16.0",
-                "\tgithub.com/crossplane/upjet v1.4.1",
+                "\tgithub.com/crossplane/crossplane-runtime/v2 v2.4.0",
+                "\tgithub.com/crossplane/upjet/v2 v2.5.1",
                 ")",
                 "",
             ]
@@ -231,13 +231,13 @@ class TrackReleaseTest(unittest.TestCase):
 
     def test_protected_snapshot_reads_current_tree(self) -> None:
         snap = track.protected_snapshot(REPO)
-        self.assertEqual(snap["CROSSPLANE_VERSION"], "1.16.0")
+        self.assertEqual(snap["CROSSPLANE_VERSION"], "2.4.3")
         self.assertEqual(snap["TERRAFORM_VERSION"], "1.5.7")
-        self.assertEqual(snap["go"], "1.24.0")
-        self.assertEqual(snap["toolchain"], "go1.24.11")
-        self.assertEqual(snap["upjet"], "v1.4.1")
-        self.assertEqual(snap["crossplane-runtime"], "v1.16.0")
-        self.assertEqual(snap["ci.GO_VERSION"], "1.24")
+        self.assertEqual(snap["go"], "1.26.8")
+        self.assertEqual(snap["toolchain"], "go1.26.10")
+        self.assertEqual(snap["upjet"], "v2.5.1")
+        self.assertEqual(snap["crossplane-runtime"], "v2.4.0")
+        self.assertEqual(snap["ci.GO_VERSION"], "1.26")
         uptest = (REPO / ".github/workflows/uptest-trigger.yaml").read_text()
         self.assertEqual(snap["uptest.GO_VERSION"], track.workflow_env(uptest, "GO_VERSION"))
 

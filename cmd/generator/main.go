@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/crossplane/upjet/pkg/pipeline"
+	"github.com/crossplane/upjet/v2/pkg/pipeline"
 
 	"github.com/RedisLabs/provider-rediscloud/config"
 )
@@ -24,5 +24,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("cannot calculate the absolute path with %s", rootDir))
 	}
-	pipeline.Run(config.GetProvider(), absRootDir)
+	// The second provider is nil so generation stays cluster-scoped.
+	// Upjet v2 can also emit namespaced copies. This line move does not.
+	pipeline.Run(config.GetProvider(), nil, absRootDir)
 }

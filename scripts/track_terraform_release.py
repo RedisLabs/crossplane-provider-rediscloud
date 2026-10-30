@@ -112,9 +112,9 @@ def protected_snapshot(root: Path) -> dict[str, str]:
         "TERRAFORM_VERSION": assignment(makefile, "TERRAFORM_VERSION"),
         "go": directive(gomod, "go"),
         "toolchain": directive(gomod, "toolchain"),
-        "upjet": module_version(gomod, "github.com/crossplane/upjet"),
+        "upjet": module_version(gomod, "github.com/crossplane/upjet/v2"),
         "crossplane-runtime": module_version(
-            gomod, "github.com/crossplane/crossplane-runtime"
+            gomod, "github.com/crossplane/crossplane-runtime/v2"
         ),
         "ci.GO_VERSION": workflow_env(ci, "GO_VERSION"),
     }

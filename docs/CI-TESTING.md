@@ -153,7 +153,7 @@ When submitting PRs:
 
 ## Dependencies
 
-- Go 1.24, matching `.github/workflows/ci.yml`
+- Go 1.26, matching `.github/workflows/ci.yml`
 - Python 3.x (for check-examples.py)
 - PyYAML (`pip install pyyaml`)
 - Docker (for local deployment)

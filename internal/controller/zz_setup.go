@@ -7,7 +7,7 @@ package controller
 import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/crossplane/upjet/pkg/controller"
+	"github.com/crossplane/upjet/v2/pkg/controller"
 
 	role "github.com/RedisLabs/provider-rediscloud/internal/controller/acl/role"
 	rule "github.com/RedisLabs/provider-rediscloud/internal/controller/acl/rule"
@@ -73,6 +73,85 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		gatewayroute.Setup,
 	} {
 		if err := setup(mgr, o); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetupGated creates all controllers with the supplied logger and adds them to
+// the supplied manager gated.
+func SetupGated(mgr ctrl.Manager, o controller.Options) error {
+	for _, setup := range []func(ctrl.Manager, controller.Options) error{
+		role.SetupGated,
+		rule.SetupGated,
+		user.SetupGated,
+		activeprivatelink.SetupGated,
+		activeprivateserviceconnect.SetupGated,
+		activeprivateserviceconnectendpoint.SetupGated,
+		activeprivateserviceconnectendpointaccepter.SetupGated,
+		activesubscription.SetupGated,
+		activesubscriptiondatabase.SetupGated,
+		activesubscriptionpeering.SetupGated,
+		activesubscriptionregions.SetupGated,
+		activetransitgatewayattachment.SetupGated,
+		activetransitgatewayinvitationacceptor.SetupGated,
+		activetransitgatewayroute.SetupGated,
+		account.SetupGated,
+		database.SetupGated,
+		subscription.SetupGated,
+		link.SetupGated,
+		serviceconnect.SetupGated,
+		serviceconnectendpoint.SetupGated,
+		serviceconnectendpointaccepter.SetupGated,
+		providerconfig.SetupGated,
+		subscriptionrediscloud.SetupGated,
+		databasesubscription.SetupGated,
+		peering.SetupGated,
+		gatewayattachment.SetupGated,
+		gatewayinvitationacceptor.SetupGated,
+		gatewayroute.SetupGated,
+	} {
+		if err := setup(mgr, o); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetupWebhookWithManager registers conversion webhooks for all resource kinds in the group.
+func SetupWebhookWithManager(mgr ctrl.Manager) error {
+	for _, setup := range []func(ctrl.Manager) error{
+		role.SetupWebhookWithManager,
+		rule.SetupWebhookWithManager,
+		user.SetupWebhookWithManager,
+		activeprivatelink.SetupWebhookWithManager,
+		activeprivateserviceconnect.SetupWebhookWithManager,
+		activeprivateserviceconnectendpoint.SetupWebhookWithManager,
+		activeprivateserviceconnectendpointaccepter.SetupWebhookWithManager,
+		activesubscription.SetupWebhookWithManager,
+		activesubscriptiondatabase.SetupWebhookWithManager,
+		activesubscriptionpeering.SetupWebhookWithManager,
+		activesubscriptionregions.SetupWebhookWithManager,
+		activetransitgatewayattachment.SetupWebhookWithManager,
+		activetransitgatewayinvitationacceptor.SetupWebhookWithManager,
+		activetransitgatewayroute.SetupWebhookWithManager,
+		account.SetupWebhookWithManager,
+		database.SetupWebhookWithManager,
+		subscription.SetupWebhookWithManager,
+		link.SetupWebhookWithManager,
+		serviceconnect.SetupWebhookWithManager,
+		serviceconnectendpoint.SetupWebhookWithManager,
+		serviceconnectendpointaccepter.SetupWebhookWithManager,
+		providerconfig.SetupWebhookWithManager,
+		subscriptionrediscloud.SetupWebhookWithManager,
+		databasesubscription.SetupWebhookWithManager,
+		peering.SetupWebhookWithManager,
+		gatewayattachment.SetupWebhookWithManager,
+		gatewayinvitationacceptor.SetupWebhookWithManager,
+		gatewayroute.SetupWebhookWithManager,
+	} {
+		if err := setup(mgr); err != nil {
 			return err
 		}
 	}

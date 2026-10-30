@@ -11,29 +11,34 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/crossplane/crossplane-runtime/pkg/certificates"
-
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	xpcontroller "github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/feature"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/statemetrics"
-	tjcontroller "github.com/crossplane/upjet/pkg/controller"
-	"github.com/crossplane/upjet/pkg/terraform"
-	"gopkg.in/alecthomas/kingpin.v2"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/alecthomas/kingpin/v2"
+	xpcontroller "github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/errors"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/gate"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/customresourcesgate"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/statemetrics"
+	tjcontroller "github.com/crossplane/upjet/v2/pkg/controller"
+	"github.com/crossplane/upjet/v2/pkg/terraform"
+	authv1 "k8s.io/api/authorization/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/RedisLabs/provider-rediscloud/apis"
-	"github.com/RedisLabs/provider-rediscloud/apis/v1alpha1"
+	lookupv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/lookup/v1alpha1"
 	"github.com/RedisLabs/provider-rediscloud/config"
 	"github.com/RedisLabs/provider-rediscloud/internal/clients"
 	"github.com/RedisLabs/provider-rediscloud/internal/controller"
@@ -50,15 +55,13 @@ func main() {
 		pollStateMetricInterval = app.Flag("poll-state-metric", "State metric recording interval").Default("5s").Duration()
 		leaderElection          = app.Flag("leader-election", "Use leader election for the controller manager.").Short('l').Default("false").OverrideDefaultFromEnvar("LEADER_ELECTION").Bool()
 		maxReconcileRate        = app.Flag("max-reconcile-rate", "The global maximum rate per second at which resources may be checked for drift from the desired state.").Default("10").Int()
+		metricsBindAddress      = app.Flag("metrics-bind-address", "The address the metrics server listens on").Default(":8080").Envar("METRICS_BIND_ADDRESS").String()
 
 		terraformVersion = app.Flag("terraform-version", "Terraform version.").Required().Envar("TERRAFORM_VERSION").String()
 		providerSource   = app.Flag("terraform-provider-source", "Terraform provider source.").Required().Envar("TERRAFORM_PROVIDER_SOURCE").String()
 		providerVersion  = app.Flag("terraform-provider-version", "Terraform provider version.").Required().Envar("TERRAFORM_PROVIDER_VERSION").String()
 
-		namespace                  = app.Flag("namespace", "Namespace used to set as default scope in default secret store config.").Default("crossplane-system").Envar("POD_NAMESPACE").String()
-		enableExternalSecretStores = app.Flag("enable-external-secret-stores", "Enable support for ExternalSecretStores.").Default("false").Envar("ENABLE_EXTERNAL_SECRET_STORES").Bool()
-		enableManagementPolicies   = app.Flag("enable-management-policies", "Enable support for Management Policies.").Default("true").Envar("ENABLE_MANAGEMENT_POLICIES").Bool()
-		essTLSCertsPath            = app.Flag("ess-tls-cert-dir", "Path of ESS TLS certificates.").Envar("ESS_TLS_CERTS_DIR").String()
+		enableManagementPolicies = app.Flag("enable-management-policies", "Enable support for Management Policies.").Default("true").Envar("ENABLE_MANAGEMENT_POLICIES").Bool()
 	)
 
 	kingpin.MustParse(app.Parse(os.Args[1:]))
@@ -77,11 +80,26 @@ func main() {
 	cfg, err := ctrl.GetConfig()
 	kingpin.FatalIfError(err, "Cannot get API server rest config")
 
+	scheme := runtime.NewScheme()
+	kingpin.FatalIfError(clientgoscheme.AddToScheme(scheme), "Cannot add client-go scheme")
+	kingpin.FatalIfError(apis.AddToScheme(scheme), "Cannot add RedisCloud APIs to scheme")
+	kingpin.FatalIfError(apiextensionsv1.AddToScheme(scheme), "Cannot add CustomResourceDefinition to scheme")
+	kingpin.FatalIfError(authv1.AddToScheme(scheme), "Cannot add authorization APIs to scheme")
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:           scheme,
 		LeaderElection:   *leaderElection,
 		LeaderElectionID: "crossplane-leader-election-provider-rediscloud",
 		Cache: cache.Options{
 			SyncPeriod: syncPeriod,
+			ByObject: map[client.Object]cache.ByObject{
+				&apiextensionsv1.CustomResourceDefinition{}: {
+					Transform: customresourcesgate.TransformStripCRDSchema,
+				},
+			},
+		},
+		Metrics: metricsserver.Options{
+			BindAddress: *metricsBindAddress,
 		},
 		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
 		LeaseDuration:              func() *time.Duration { d := 60 * time.Second; return &d }(),
@@ -89,14 +107,26 @@ func main() {
 	})
 	kingpin.FatalIfError(err, "Cannot create controller manager")
 	kingpin.FatalIfError(apis.AddToScheme(mgr.GetScheme()), "Cannot add RedisCloud APIs to scheme")
+	kingpin.FatalIfError(apiextensionsv1.AddToScheme(mgr.GetScheme()), "Cannot add api-extensions APIs to scheme")
+	kingpin.FatalIfError(authv1.AddToScheme(mgr.GetScheme()), "Cannot add k8s authorization APIs to scheme")
 
+	o := controllerOptions(log, pollInterval, pollStateMetricInterval, maxReconcileRate, terraformVersion, providerSource, providerVersion)
+	if *enableManagementPolicies {
+		o.Features.Enable(features.EnableBetaManagementPolicies)
+		log.Info("Beta feature enabled", "flag", features.EnableBetaManagementPolicies)
+	}
+
+	kingpin.FatalIfError(setupControllers(mgr, o, log), "Cannot setup RedisCloud controllers")
+	kingpin.FatalIfError(mgr.Start(ctrl.SetupSignalHandler()), "Cannot start controller manager")
+}
+
+func controllerOptions(log logging.Logger, pollInterval, pollStateMetricInterval *time.Duration, maxReconcileRate *int, terraformVersion, providerSource, providerVersion *string) tjcontroller.Options {
 	metricRecorder := managed.NewMRMetricRecorder()
 	stateMetrics := statemetrics.NewMRStateMetrics()
-
 	metrics.Registry.MustRegister(metricRecorder)
 	metrics.Registry.MustRegister(stateMetrics)
 
-	o := tjcontroller.Options{
+	return tjcontroller.Options{
 		Options: xpcontroller.Options{
 			Logger:                  log,
 			GlobalRateLimiter:       ratelimiter.NewGlobal(*maxReconcileRate),
@@ -109,50 +139,87 @@ func main() {
 				MRStateMetrics:          stateMetrics,
 			},
 		},
-		Provider: config.GetProvider(),
-		// use the following WorkspaceStoreOption to enable the shared gRPC mode
-		// terraform.WithProviderRunner(terraform.NewSharedProvider(log, os.Getenv("TERRAFORM_NATIVE_PROVIDER_PATH"), terraform.WithNativeProviderArgs("-debuggable")))
+		Provider:       config.GetProvider(),
 		WorkspaceStore: terraform.NewWorkspaceStore(log),
 		SetupFn:        clients.TerraformSetupBuilder(*terraformVersion, *providerSource, *providerVersion),
 	}
+}
 
-	if *enableExternalSecretStores {
-		o.Features.Enable(features.EnableAlphaExternalSecretStores)
-		o.SecretStoreConfigGVK = &v1alpha1.StoreConfigGroupVersionKind
-		log.Info("Alpha feature enabled", "flag", features.EnableAlphaExternalSecretStores)
-
-		o.ESSOptions = &tjcontroller.ESSOptions{}
-		if *essTLSCertsPath != "" {
-			log.Info("ESS TLS certificates path is set. Loading mTLS configuration.")
-			tCfg, err := certificates.LoadMTLSConfig(filepath.Join(*essTLSCertsPath, "ca.crt"), filepath.Join(*essTLSCertsPath, "tls.crt"), filepath.Join(*essTLSCertsPath, "tls.key"), false)
-			kingpin.FatalIfError(err, "Cannot load ESS TLS config.")
-
-			o.ESSOptions.TLSConfig = tCfg
+func setupControllers(mgr manager.Manager, o tjcontroller.Options, log logging.Logger) error {
+	canSafeStart, err := canWatchCRD(context.TODO(), mgr)
+	if err != nil {
+		return errors.Wrap(err, "SafeStart precheck failed")
+	}
+	if canSafeStart {
+		crdGate := new(gate.Gate[schema.GroupVersionKind])
+		o.Gate = crdGate
+		if err := customresourcesgate.Setup(mgr, xpcontroller.Options{
+			Logger:                  log,
+			Gate:                    crdGate,
+			MaxConcurrentReconciles: 1,
+		}); err != nil {
+			return errors.Wrap(err, "Cannot setup CRD gate")
 		}
+		if err := controller.SetupGated(mgr, o); err != nil {
+			return err
+		}
+		return setupLookups(mgr, crdGate)
+	}
+	log.Info("Provider has missing RBAC permissions for watching CRDs, controller SafeStart capability will be disabled")
+	if err := controller.Setup(mgr, o); err != nil {
+		return err
+	}
+	return setupLookups(mgr, nil)
+}
 
-		// Ensure default store config exists.
-		kingpin.FatalIfError(resource.Ignore(kerrors.IsAlreadyExists, mgr.GetClient().Create(context.Background(), &v1alpha1.StoreConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "default",
-			},
-			Spec: v1alpha1.StoreConfigSpec{
-				// NOTE(turkenh): We only set required spec and expect optional
-				// ones to properly be initialized with CRD level default values.
-				SecretStoreConfig: xpv1.SecretStoreConfig{
-					DefaultScope: *namespace,
+func setupLookups(mgr manager.Manager, g *gate.Gate[schema.GroupVersionKind]) error {
+	setups := []struct {
+		kind string
+		fn   func(manager.Manager) error
+	}{
+		{kind: "PaymentMethod", fn: lookupcontroller.SetupPaymentMethod},
+		{kind: "EssentialsPlan", fn: lookupcontroller.SetupEssentialsPlan},
+		{kind: "Regions", fn: lookupcontroller.SetupRegions},
+	}
+	for _, setup := range setups {
+		if g == nil {
+			if err := setup.fn(mgr); err != nil {
+				return errors.Wrapf(err, "cannot setup %s lookup", setup.kind)
+			}
+			continue
+		}
+		kind := setup.kind
+		fn := setup.fn
+		g.Register(func() {
+			if err := fn(mgr); err != nil {
+				mgr.GetLogger().Error(err, "unable to setup lookup", "kind", kind)
+			}
+		}, lookupv1alpha1.CRDGroupVersion.WithKind(kind))
+	}
+	return nil
+}
+
+func canWatchCRD(ctx context.Context, mgr manager.Manager) (bool, error) {
+	if err := authv1.AddToScheme(mgr.GetScheme()); err != nil {
+		return false, err
+	}
+	verbs := []string{"get", "list", "watch"}
+	for _, verb := range verbs {
+		sar := &authv1.SelfSubjectAccessReview{
+			Spec: authv1.SelfSubjectAccessReviewSpec{
+				ResourceAttributes: &authv1.ResourceAttributes{
+					Group:    "apiextensions.k8s.io",
+					Resource: "customresourcedefinitions",
+					Verb:     verb,
 				},
 			},
-		})), "cannot create default store config")
+		}
+		if err := mgr.GetClient().Create(ctx, sar); err != nil {
+			return false, errors.Wrapf(err, "unable to perform RBAC check for verb %s on CustomResourceDefinitions", verb)
+		}
+		if !sar.Status.Allowed {
+			return false, nil
+		}
 	}
-
-	if *enableManagementPolicies {
-		o.Features.Enable(features.EnableBetaManagementPolicies)
-		log.Info("Beta feature enabled", "flag", features.EnableBetaManagementPolicies)
-	}
-
-	kingpin.FatalIfError(controller.Setup(mgr, o), "Cannot setup RedisCloud controllers")
-	kingpin.FatalIfError(lookupcontroller.SetupPaymentMethod(mgr), "Cannot setup payment method lookup")
-	kingpin.FatalIfError(lookupcontroller.SetupEssentialsPlan(mgr), "Cannot setup Essentials plan lookup")
-	kingpin.FatalIfError(lookupcontroller.SetupRegions(mgr), "Cannot setup region lookup")
-	kingpin.FatalIfError(mgr.Start(ctrl.SetupSignalHandler()), "Cannot start controller manager")
+	return true, nil
 }

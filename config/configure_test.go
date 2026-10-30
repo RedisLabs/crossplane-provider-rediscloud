@@ -23,7 +23,7 @@ func TestSubscriptionReferences(t *testing.T) {
 		}
 	}
 	for _, name := range []string{
-		"rediscloud_subscription_database",
+		tfSubscriptionDatabase,
 		"rediscloud_essentials_database",
 		"rediscloud_active_active_subscription_database",
 	} {

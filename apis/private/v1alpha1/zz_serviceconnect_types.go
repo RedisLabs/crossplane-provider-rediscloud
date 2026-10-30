@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type ServiceConnectInitParameters struct {
@@ -22,11 +22,11 @@ type ServiceConnectInitParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ServiceConnectObservation struct {
@@ -51,17 +51,17 @@ type ServiceConnectParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 // ServiceConnectSpec defines the desired state of ServiceConnect
 type ServiceConnectSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     ServiceConnectParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   ServiceConnectParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -77,8 +77,8 @@ type ServiceConnectSpec struct {
 
 // ServiceConnectStatus defines the observed state of ServiceConnect.
 type ServiceConnectStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        ServiceConnectObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               ServiceConnectObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

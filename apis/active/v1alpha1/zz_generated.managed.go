@@ -6,664 +6,554 @@
 
 package v1alpha1
 
-import xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+import xpv2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 
 // GetCondition of this ActivePrivateLink.
-func (mg *ActivePrivateLink) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActivePrivateLink) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActivePrivateLink.
-func (mg *ActivePrivateLink) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActivePrivateLink) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActivePrivateLink.
-func (mg *ActivePrivateLink) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActivePrivateLink) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActivePrivateLink.
-func (mg *ActivePrivateLink) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActivePrivateLink) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActivePrivateLink.
-func (mg *ActivePrivateLink) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActivePrivateLink.
-func (mg *ActivePrivateLink) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActivePrivateLink) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActivePrivateLink.
-func (mg *ActivePrivateLink) SetConditions(c ...xpv1.Condition) {
+func (mg *ActivePrivateLink) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActivePrivateLink.
-func (mg *ActivePrivateLink) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActivePrivateLink) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActivePrivateLink.
-func (mg *ActivePrivateLink) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActivePrivateLink) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActivePrivateLink.
-func (mg *ActivePrivateLink) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActivePrivateLink) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActivePrivateLink.
-func (mg *ActivePrivateLink) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActivePrivateLink.
-func (mg *ActivePrivateLink) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActivePrivateLink) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActivePrivateServiceConnect) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActivePrivateServiceConnect) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActivePrivateServiceConnect) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActivePrivateServiceConnect) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActivePrivateServiceConnect) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) SetConditions(c ...xpv1.Condition) {
+func (mg *ActivePrivateServiceConnect) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActivePrivateServiceConnect) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActivePrivateServiceConnect) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActivePrivateServiceConnect) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActivePrivateServiceConnect.
-func (mg *ActivePrivateServiceConnect) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActivePrivateServiceConnect) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActivePrivateServiceConnectEndpoint) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActivePrivateServiceConnectEndpoint) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActivePrivateServiceConnectEndpoint) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActivePrivateServiceConnectEndpoint) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActivePrivateServiceConnectEndpoint) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) SetConditions(c ...xpv1.Condition) {
+func (mg *ActivePrivateServiceConnectEndpoint) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActivePrivateServiceConnectEndpoint) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActivePrivateServiceConnectEndpoint) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActivePrivateServiceConnectEndpoint) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActivePrivateServiceConnectEndpoint.
-func (mg *ActivePrivateServiceConnectEndpoint) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActivePrivateServiceConnectEndpoint) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) SetConditions(c ...xpv1.Condition) {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActivePrivateServiceConnectEndpointAccepter.
-func (mg *ActivePrivateServiceConnectEndpointAccepter) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActivePrivateServiceConnectEndpointAccepter) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveSubscription.
-func (mg *ActiveSubscription) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveSubscription) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveSubscription.
-func (mg *ActiveSubscription) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveSubscription) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveSubscription.
-func (mg *ActiveSubscription) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveSubscription) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveSubscription.
-func (mg *ActiveSubscription) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveSubscription) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveSubscription.
-func (mg *ActiveSubscription) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveSubscription.
-func (mg *ActiveSubscription) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveSubscription) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveSubscription.
-func (mg *ActiveSubscription) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveSubscription) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveSubscription.
-func (mg *ActiveSubscription) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveSubscription) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveSubscription.
-func (mg *ActiveSubscription) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveSubscription) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveSubscription.
-func (mg *ActiveSubscription) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveSubscription) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveSubscription.
-func (mg *ActiveSubscription) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveSubscription.
-func (mg *ActiveSubscription) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveSubscription) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveSubscriptionDatabase) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveSubscriptionDatabase) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveSubscriptionDatabase) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveSubscriptionDatabase) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveSubscriptionDatabase) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveSubscriptionDatabase) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveSubscriptionDatabase) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveSubscriptionDatabase) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveSubscriptionDatabase) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveSubscriptionDatabase.
-func (mg *ActiveSubscriptionDatabase) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveSubscriptionDatabase) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveSubscriptionPeering) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveSubscriptionPeering) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveSubscriptionPeering) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveSubscriptionPeering) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveSubscriptionPeering) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveSubscriptionPeering) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveSubscriptionPeering) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveSubscriptionPeering) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveSubscriptionPeering) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveSubscriptionPeering.
-func (mg *ActiveSubscriptionPeering) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveSubscriptionPeering) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveSubscriptionRegions) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveSubscriptionRegions) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveSubscriptionRegions) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveSubscriptionRegions) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveSubscriptionRegions) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveSubscriptionRegions) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveSubscriptionRegions) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveSubscriptionRegions) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveSubscriptionRegions) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveSubscriptionRegions.
-func (mg *ActiveSubscriptionRegions) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveSubscriptionRegions) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveTransitGatewayAttachment) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveTransitGatewayAttachment) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveTransitGatewayAttachment) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveTransitGatewayAttachment) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveTransitGatewayAttachment) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveTransitGatewayAttachment) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveTransitGatewayAttachment) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveTransitGatewayAttachment) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveTransitGatewayAttachment) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveTransitGatewayAttachment.
-func (mg *ActiveTransitGatewayAttachment) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveTransitGatewayAttachment) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveTransitGatewayInvitationAcceptor) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveTransitGatewayInvitationAcceptor.
-func (mg *ActiveTransitGatewayInvitationAcceptor) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveTransitGatewayInvitationAcceptor) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 
 // GetCondition of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
+func (mg *ActiveTransitGatewayRoute) GetCondition(ct xpv2.ConditionType) xpv2.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
 // GetDeletionPolicy of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) GetDeletionPolicy() xpv1.DeletionPolicy {
+func (mg *ActiveTransitGatewayRoute) GetDeletionPolicy() xpv2.DeletionPolicy {
 	return mg.Spec.DeletionPolicy
 }
 
 // GetManagementPolicies of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) GetManagementPolicies() xpv1.ManagementPolicies {
+func (mg *ActiveTransitGatewayRoute) GetManagementPolicies() xpv2.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) GetProviderConfigReference() *xpv1.Reference {
+func (mg *ActiveTransitGatewayRoute) GetProviderConfigReference() *xpv2.Reference {
 	return mg.Spec.ProviderConfigReference
 }
 
-// GetPublishConnectionDetailsTo of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) GetPublishConnectionDetailsTo() *xpv1.PublishConnectionDetailsTo {
-	return mg.Spec.PublishConnectionDetailsTo
-}
-
 // GetWriteConnectionSecretToReference of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *ActiveTransitGatewayRoute) GetWriteConnectionSecretToReference() *xpv2.SecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
 // SetConditions of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) SetConditions(c ...xpv1.Condition) {
+func (mg *ActiveTransitGatewayRoute) SetConditions(c ...xpv2.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
 // SetDeletionPolicy of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) SetDeletionPolicy(r xpv1.DeletionPolicy) {
+func (mg *ActiveTransitGatewayRoute) SetDeletionPolicy(r xpv2.DeletionPolicy) {
 	mg.Spec.DeletionPolicy = r
 }
 
 // SetManagementPolicies of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) SetManagementPolicies(r xpv1.ManagementPolicies) {
+func (mg *ActiveTransitGatewayRoute) SetManagementPolicies(r xpv2.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *ActiveTransitGatewayRoute) SetProviderConfigReference(r *xpv2.Reference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
-// SetPublishConnectionDetailsTo of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) SetPublishConnectionDetailsTo(r *xpv1.PublishConnectionDetailsTo) {
-	mg.Spec.PublishConnectionDetailsTo = r
-}
-
 // SetWriteConnectionSecretToReference of this ActiveTransitGatewayRoute.
-func (mg *ActiveTransitGatewayRoute) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *ActiveTransitGatewayRoute) SetWriteConnectionSecretToReference(r *xpv2.SecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }

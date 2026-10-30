@@ -10,7 +10,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TARGET = ROOT / "apis/active/v1alpha1/zz_activesubscriptiondatabase_types.go"
 OLD_TLS = 'ClientTLSCertificates []*string `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`'
-NEW_TLS = 'ClientTLSCertificatesSecretRef *[]v1.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`'
+NEW_TLS = 'ClientTLSCertificatesSecretRef *[]v2.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`'
 
 
 def fix_tls_type() -> int:

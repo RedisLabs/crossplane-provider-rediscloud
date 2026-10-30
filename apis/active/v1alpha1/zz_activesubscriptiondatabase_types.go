@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type ActiveSubscriptionDatabaseInitParameters struct {
@@ -21,9 +21,9 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 
 	// SSL certificate to authenticate user connections, conflicts with client_tls_certificates
 	// SSL certificate to authenticate user connections.
-	ClientSSLCertificateSecretRef *v1.SecretKeySelector `json:"clientSslCertificateSecretRef,omitempty" tf:"-"`
+	ClientSSLCertificateSecretRef *v2.SecretKeySelector `json:"clientSslCertificateSecretRef,omitempty" tf:"-"`
 
-	ClientTLSCertificatesSecretRef *[]v1.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`
+	ClientTLSCertificatesSecretRef *[]v2.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`
 
 	// The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
 	// Data eviction items policy
@@ -64,7 +64,7 @@ type ActiveSubscriptionDatabaseInitParameters struct {
 
 	// Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
 	// Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
-	GlobalPasswordSecretRef *v1.SecretKeySelector `json:"globalPasswordSecretRef,omitempty" tf:"-"`
+	GlobalPasswordSecretRef *v2.SecretKeySelector `json:"globalPasswordSecretRef,omitempty" tf:"-"`
 
 	// Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
 	// The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
@@ -226,12 +226,12 @@ type ActiveSubscriptionDatabaseParameters struct {
 	// SSL certificate to authenticate user connections, conflicts with client_tls_certificates
 	// SSL certificate to authenticate user connections.
 	// +kubebuilder:validation:Optional
-	ClientSSLCertificateSecretRef *v1.SecretKeySelector `json:"clientSslCertificateSecretRef,omitempty" tf:"-"`
+	ClientSSLCertificateSecretRef *v2.SecretKeySelector `json:"clientSslCertificateSecretRef,omitempty" tf:"-"`
 
 	// A list of TLS certificates to authenticate user connections, conflicts with client_ssl_certificate
 	// TLS certificates to authenticate user connections
 	// +kubebuilder:validation:Optional
-	ClientTLSCertificatesSecretRef *[]v1.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`
+	ClientTLSCertificatesSecretRef *[]v2.SecretKeySelector `json:"clientTlsCertificatesSecretRef,omitempty" tf:"-"`
 
 	// The data items eviction policy (either: 'allkeys-lru', 'allkeys-lfu', 'allkeys-random', 'volatile-lru', 'volatile-lfu', 'volatile-random', 'volatile-ttl' or 'noeviction'. Default: 'volatile-lru')
 	// Data eviction items policy
@@ -282,7 +282,7 @@ type ActiveSubscriptionDatabaseParameters struct {
 	// Password to access the database of regions that don't override global settings. If left empty, the password will be generated automatically. Cannot be set when global_enable_passwordless is true
 	// Password used to access the database. If left empty, the password will be generated automatically. Cannot be set when 'global_enable_passwordless' is 'true'
 	// +kubebuilder:validation:Optional
-	GlobalPasswordSecretRef *v1.SecretKeySelector `json:"globalPasswordSecretRef,omitempty" tf:"-"`
+	GlobalPasswordSecretRef *v2.SecretKeySelector `json:"globalPasswordSecretRef,omitempty" tf:"-"`
 
 	// Either 'resp2' or 'resp3'. RESP version for CRDB databases within the Active-Active database. Must be compatible with Redis version. This attribute is only used when creating a new database - any changes after creation are ignored.
 	// The initial RESP version for all databases provisioned under this AA database. This information is only used when creating a new database and any changes will be ignored after this.
@@ -431,7 +431,7 @@ type OverrideRegionInitParameters struct {
 
 	// If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
 	// Password used to access the database. If left empty, the password will be generated automatically
-	OverrideGlobalPasswordSecretRef *v1.SecretKeySelector `json:"overrideGlobalPasswordSecretRef,omitempty" tf:"-"`
+	OverrideGlobalPasswordSecretRef *v2.SecretKeySelector `json:"overrideGlobalPasswordSecretRef,omitempty" tf:"-"`
 
 	// List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
 	// Set of CIDR addresses to allow access to the database
@@ -505,7 +505,7 @@ type OverrideRegionParameters struct {
 	// If specified, this regional instance of an Active-Active database password will be used to access the database. Cannot be set when override_global_enable_passwordless is true
 	// Password used to access the database. If left empty, the password will be generated automatically
 	// +kubebuilder:validation:Optional
-	OverrideGlobalPasswordSecretRef *v1.SecretKeySelector `json:"overrideGlobalPasswordSecretRef,omitempty" tf:"-"`
+	OverrideGlobalPasswordSecretRef *v2.SecretKeySelector `json:"overrideGlobalPasswordSecretRef,omitempty" tf:"-"`
 
 	// List of source IP addresses or subnet masks that are allowed to connect to the database in this specific region, overriding the global global_source_ips setting (example: ['192.168.10.0/32', '192.168.12.0/24']). If specified, must contain at least one item. If not specified, the global global_source_ips setting applies to this region
 	// Set of CIDR addresses to allow access to the database
@@ -582,8 +582,8 @@ type RemoteBackupParameters struct {
 
 // ActiveSubscriptionDatabaseSpec defines the desired state of ActiveSubscriptionDatabase
 type ActiveSubscriptionDatabaseSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     ActiveSubscriptionDatabaseParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   ActiveSubscriptionDatabaseParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -599,8 +599,8 @@ type ActiveSubscriptionDatabaseSpec struct {
 
 // ActiveSubscriptionDatabaseStatus defines the observed state of ActiveSubscriptionDatabase.
 type ActiveSubscriptionDatabaseStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        ActiveSubscriptionDatabaseObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               ActiveSubscriptionDatabaseObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

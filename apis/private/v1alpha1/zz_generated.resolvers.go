@@ -9,7 +9,7 @@ package v1alpha1
 import (
 	"context"
 	v1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1"
-	reference "github.com/crossplane/crossplane-runtime/pkg/reference"
+	reference "github.com/crossplane/crossplane-runtime/v2/pkg/reference"
 	errors "github.com/pkg/errors"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -24,6 +24,7 @@ func (mg *Link) ResolveReferences(ctx context.Context, c client.Reader) error {
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -40,6 +41,7 @@ func (mg *Link) ResolveReferences(ctx context.Context, c client.Reader) error {
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -66,6 +68,7 @@ func (mg *ServiceConnect) ResolveReferences(ctx context.Context, c client.Reader
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -82,6 +85,7 @@ func (mg *ServiceConnect) ResolveReferences(ctx context.Context, c client.Reader
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -108,6 +112,7 @@ func (mg *ServiceConnectEndpoint) ResolveReferences(ctx context.Context, c clien
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -124,6 +129,7 @@ func (mg *ServiceConnectEndpoint) ResolveReferences(ctx context.Context, c clien
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -150,6 +156,7 @@ func (mg *ServiceConnectEndpointAccepter) ResolveReferences(ctx context.Context,
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.ForProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.ForProvider.SubscriptionIDSelector,
 		To: reference.To{
@@ -166,6 +173,7 @@ func (mg *ServiceConnectEndpointAccepter) ResolveReferences(ctx context.Context,
 	rsp, err = r.Resolve(ctx, reference.ResolutionRequest{
 		CurrentValue: reference.FromPtrValue(mg.Spec.InitProvider.SubscriptionID),
 		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
 		Reference:    mg.Spec.InitProvider.SubscriptionIDRef,
 		Selector:     mg.Spec.InitProvider.SubscriptionIDSelector,
 		To: reference.To{

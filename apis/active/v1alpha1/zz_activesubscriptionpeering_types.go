@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type ActiveSubscriptionPeeringInitParameters struct {
@@ -46,11 +46,11 @@ type ActiveSubscriptionPeeringInitParameters struct {
 
 	// Reference to a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// CIDR range of the VPC to be peered. Either this or vpc_cidrs must be specified. Modifying this attribute will force creation of a new resource.
 	// CIDR range of the VPC to be peered
@@ -172,11 +172,11 @@ type ActiveSubscriptionPeeringParameters struct {
 
 	// Reference to a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a ActiveSubscription in active to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 
 	// CIDR range of the VPC to be peered. Either this or vpc_cidrs must be specified. Modifying this attribute will force creation of a new resource.
 	// CIDR range of the VPC to be peered
@@ -197,8 +197,8 @@ type ActiveSubscriptionPeeringParameters struct {
 
 // ActiveSubscriptionPeeringSpec defines the desired state of ActiveSubscriptionPeering
 type ActiveSubscriptionPeeringSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     ActiveSubscriptionPeeringParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   ActiveSubscriptionPeeringParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -214,8 +214,8 @@ type ActiveSubscriptionPeeringSpec struct {
 
 // ActiveSubscriptionPeeringStatus defines the observed state of ActiveSubscriptionPeering.
 type ActiveSubscriptionPeeringStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        ActiveSubscriptionPeeringObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               ActiveSubscriptionPeeringObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

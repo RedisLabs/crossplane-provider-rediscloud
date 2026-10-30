@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	ujconfig "github.com/crossplane/upjet/pkg/config"
+	ujconfig "github.com/crossplane/upjet/v2/pkg/config"
 )
 
 // subscriptionReferenceParents are resources whose subscription_id is a
@@ -11,29 +11,29 @@ import (
 // resolution only assigns strings, so those resources are intentionally
 // omitted.
 var subscriptionReferenceParents = map[string]string{
-	"rediscloud_active_active_private_link":                              "rediscloud_active_active_subscription",
-	"rediscloud_active_active_private_service_connect":                   "rediscloud_active_active_subscription",
-	"rediscloud_active_active_private_service_connect_endpoint":          "rediscloud_active_active_subscription",
-	"rediscloud_active_active_private_service_connect_endpoint_accepter": "rediscloud_active_active_subscription",
-	"rediscloud_active_active_subscription_peering":                      "rediscloud_active_active_subscription",
-	"rediscloud_active_active_subscription_regions":                      "rediscloud_active_active_subscription",
-	"rediscloud_active_active_transit_gateway_attachment":                "rediscloud_active_active_subscription",
-	"rediscloud_active_active_transit_gateway_invitation_acceptor":       "rediscloud_active_active_subscription",
-	"rediscloud_active_active_transit_gateway_route":                     "rediscloud_active_active_subscription",
-	"rediscloud_private_link":                                            "rediscloud_subscription",
-	"rediscloud_private_service_connect":                                 "rediscloud_subscription",
-	"rediscloud_private_service_connect_endpoint":                        "rediscloud_subscription",
-	"rediscloud_private_service_connect_endpoint_accepter":               "rediscloud_subscription",
-	"rediscloud_subscription_peering":                                    "rediscloud_subscription",
-	"rediscloud_transit_gateway_attachment":                              "rediscloud_subscription",
-	"rediscloud_transit_gateway_invitation_acceptor":                     "rediscloud_subscription",
-	"rediscloud_transit_gateway_route":                                   "rediscloud_subscription",
+	"rediscloud_active_active_private_link":                              tfActiveActiveSubscription,
+	"rediscloud_active_active_private_service_connect":                   tfActiveActiveSubscription,
+	"rediscloud_active_active_private_service_connect_endpoint":          tfActiveActiveSubscription,
+	"rediscloud_active_active_private_service_connect_endpoint_accepter": tfActiveActiveSubscription,
+	"rediscloud_active_active_subscription_peering":                      tfActiveActiveSubscription,
+	"rediscloud_active_active_subscription_regions":                      tfActiveActiveSubscription,
+	"rediscloud_active_active_transit_gateway_attachment":                tfActiveActiveSubscription,
+	"rediscloud_active_active_transit_gateway_invitation_acceptor":       tfActiveActiveSubscription,
+	"rediscloud_active_active_transit_gateway_route":                     tfActiveActiveSubscription,
+	"rediscloud_private_link":                                            tfSubscription,
+	"rediscloud_private_service_connect":                                 tfSubscription,
+	"rediscloud_private_service_connect_endpoint":                        tfSubscription,
+	"rediscloud_private_service_connect_endpoint_accepter":               tfSubscription,
+	"rediscloud_subscription_peering":                                    tfSubscription,
+	"rediscloud_transit_gateway_attachment":                              tfSubscription,
+	"rediscloud_transit_gateway_invitation_acceptor":                     tfSubscription,
+	"rediscloud_transit_gateway_route":                                   tfSubscription,
 }
 
 var databaseResources = []string{
 	"rediscloud_active_active_subscription_database",
 	"rediscloud_essentials_database",
-	"rediscloud_subscription_database",
+	tfSubscriptionDatabase,
 }
 
 func configure(p *ujconfig.Provider) {

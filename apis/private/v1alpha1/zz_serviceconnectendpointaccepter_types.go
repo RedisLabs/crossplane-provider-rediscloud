@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	v1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	v2 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 type ServiceConnectEndpointAccepterInitParameters struct {
@@ -34,11 +34,11 @@ type ServiceConnectEndpointAccepterInitParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 type ServiceConnectEndpointAccepterObservation struct {
@@ -87,17 +87,17 @@ type ServiceConnectEndpointAccepterParameters struct {
 
 	// Reference to a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDRef *v1.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
+	SubscriptionIDRef *v2.Reference `json:"subscriptionIdRef,omitempty" tf:"-"`
 
 	// Selector for a Subscription in rediscloud to populate subscriptionId.
 	// +kubebuilder:validation:Optional
-	SubscriptionIDSelector *v1.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
+	SubscriptionIDSelector *v2.Selector `json:"subscriptionIdSelector,omitempty" tf:"-"`
 }
 
 // ServiceConnectEndpointAccepterSpec defines the desired state of ServiceConnectEndpointAccepter
 type ServiceConnectEndpointAccepterSpec struct {
-	v1.ResourceSpec `json:",inline"`
-	ForProvider     ServiceConnectEndpointAccepterParameters `json:"forProvider"`
+	v2.ClusterManagedResourceSpec `json:",inline"`
+	ForProvider                   ServiceConnectEndpointAccepterParameters `json:"forProvider"`
 	// THIS IS A BETA FIELD. It will be honored
 	// unless the Management Policies feature flag is disabled.
 	// InitProvider holds the same fields as ForProvider, with the exception
@@ -113,8 +113,8 @@ type ServiceConnectEndpointAccepterSpec struct {
 
 // ServiceConnectEndpointAccepterStatus defines the observed state of ServiceConnectEndpointAccepter.
 type ServiceConnectEndpointAccepterStatus struct {
-	v1.ResourceStatus `json:",inline"`
-	AtProvider        ServiceConnectEndpointAccepterObservation `json:"atProvider,omitempty"`
+	v2.ManagedResourceStatus `json:",inline"`
+	AtProvider               ServiceConnectEndpointAccepterObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true

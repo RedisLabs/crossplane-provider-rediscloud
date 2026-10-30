@@ -1,4 +1,4 @@
-# Copyright 2022 The Upbound Authors. All rights reserved.
+# Copyright 2025 The Crossplane Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,13 +17,6 @@
 
 ifeq ($(origin XPKG_DIR),undefined)
 XPKG_DIR := $(ROOT_DIR)/package
-endif
-
-# xref https://github.com/upbound/provider-aws/pull/647, https://github.com/upbound/up/pull/309
-# in up v0.16.0, support for ProviderConfig documentation via object annotations was added.
-# by convention, we will assume the extensions file resides in the package directory.
-ifeq ($(origin XPKG_AUTH_EXT),undefined)
-XPKG_AUTH_EXT := $(XPKG_DIR)/auth.yaml
 endif
 
 ifeq ($(origin XPKG_EXAMPLES_DIR),undefined)
@@ -53,34 +46,44 @@ ifeq ($(origin BUILD_REGISTRY), undefined)
 BUILD_REGISTRY := build-$(shell echo $(HOSTNAME)-$(ROOT_DIR) | $(SHA256SUM) | cut -c1-8)
 endif
 
-XPKG_REG_ORGS ?= xpkg.upbound.io/crossplane
-XPKG_REG_ORGS_NO_PROMOTE ?= xpkg.upbound.io/crossplane
+XPKG_REG_ORGS ?= xpkg.crossplane.io/crossplane
+XPKG_REG_ORGS_NO_PROMOTE ?= xpkg.crossplane.io/crossplane
 XPKG_LINUX_PLATFORMS := $(filter linux_%,$(PLATFORMS))
 XPKG_ARCHS := $(subst linux_,,$(filter linux_%,$(PLATFORMS)))
 XPKG_PLATFORMS := $(subst _,/,$(subst $(SPACE),$(COMMA),$(filter linux_%,$(PLATFORMS))))
 XPKG_PLATFORMS_LIST := $(subst _,/,$(filter linux_%,$(PLATFORMS)))
 XPKG_PLATFORM := $(subst _,/,$(PLATFORM))
 
-# TODO(negz): Update these targets to use the crossplane CLI, not up.
-UP ?= up
+XPKG_CLEANUP_EXAMPLES_ENABLED ?= false
+XPKG_CLEANUP_EXAMPLES_VERSION ?= v0.12.1
+XPKG_PROCESSED_EXAMPLES_DIR=$(XPKG_EXAMPLES_DIR)
+ifeq ($(XPKG_CLEANUP_EXAMPLES_ENABLED),true)
+	XPKG_PROCESSED_EXAMPLES_DIR=$(WORK_DIR)/xpkg-cleaned-examples
+endif
 
 # =====================================================================================
 # XPKG Targets
 
 # 1: xpkg
 define xpkg.build.targets
-xpkg.build.$(1):
+xpkg.build.$(1): $(CROSSPLANE_CLI)
+ifeq ($(XPKG_CLEANUP_EXAMPLES_ENABLED),true)
+	@rm -rf $(WORK_DIR)/xpkg-cleaned-examples
+	@GOOS=$(HOSTOS) GOARCH=$(TARGETARCH) go run github.com/upbound/uptest/cmd/cleanupexamples@$(XPKG_CLEANUP_EXAMPLES_VERSION) $(XPKG_EXAMPLES_DIR) $(XPKG_PROCESSED_EXAMPLES_DIR) || $(FAIL)
+endif
 	@$(INFO) Building package $(1)-$(VERSION).xpkg for $(PLATFORM)
 	@mkdir -p $(OUTPUT_DIR)/xpkg/$(PLATFORM)
-	@controller_arg=$$$$(grep -E '^kind:\s+Provider\s*$$$$' $(XPKG_DIR)/crossplane.yaml > /dev/null && echo "--controller $(BUILD_REGISTRY)/$(1)-$(ARCH)"); \
-	$(UP) xpkg build \
+	@controller_arg=$$$$(grep -E '^kind:\s+Provider\s*$$$$' $(XPKG_DIR)/crossplane.yaml > /dev/null && echo "--embed-runtime-image $(BUILD_REGISTRY)/$(1)-$(ARCH)"); \
+	$(CROSSPLANE_CLI) xpkg build \
 		$$$${controller_arg} \
 		--package-root $(XPKG_DIR) \
-		--auth-ext $(XPKG_AUTH_EXT) \
-		--examples-root $(XPKG_EXAMPLES_DIR) \
+		--examples-root $(XPKG_PROCESSED_EXAMPLES_DIR) \
 		--ignore $(XPKG_IGNORE) \
-		--output $(XPKG_OUTPUT_DIR)/$(PLATFORM)/$(1)-$(VERSION).xpkg || $(FAIL)
+		--package-file $(XPKG_OUTPUT_DIR)/$(PLATFORM)/$(1)-$(VERSION).xpkg || $(FAIL)
 	@$(OK) Built package $(1)-$(VERSION).xpkg for $(PLATFORM)
+ifeq ($(XPKG_CLEANUP_EXAMPLES_ENABLED),true)
+	@rm -rf $(WORK_DIR)/xpkg-cleaned-examples
+endif
 xpkg.build: xpkg.build.$(1)
 endef
 $(foreach x,$(XPKGS),$(eval $(call xpkg.build.targets,$(x))))
@@ -89,8 +92,8 @@ $(foreach x,$(XPKGS),$(eval $(call xpkg.build.targets,$(x))))
 define xpkg.release.targets
 xpkg.release.publish.$(1).$(2):
 	@$(INFO) Pushing package $(1)/$(2):$(VERSION)
-	@$(UP) xpkg push \
-		$(foreach p,$(XPKG_LINUX_PLATFORMS),--package $(XPKG_OUTPUT_DIR)/$(p)/$(2)-$(VERSION).xpkg ) \
+	@$(CROSSPLANE_CLI) xpkg push \
+		$(foreach p,$(XPKG_LINUX_PLATFORMS),--package-files $(XPKG_OUTPUT_DIR)/$(p)/$(2)-$(VERSION).xpkg ) \
 		$(1)/$(2):$(VERSION) || $(FAIL)
 	@$(OK) Pushed package $(1)/$(2):$(VERSION)
 xpkg.release.publish: xpkg.release.publish.$(1).$(2)
@@ -117,9 +120,9 @@ else
 build.artifacts.platform: do.skip.xpkgs
 endif
 
-# only publish package for main / master and release branches
-# TODO(hasheddan): remove master and support overriding
-ifneq ($(filter main master release-%,$(BRANCH_NAME)),)
+# only publish package for main / master and release branches by default
+RELEASE_BRANCH_FILTER ?= main master release-%
+ifneq ($(filter $(RELEASE_BRANCH_FILTER),$(BRANCH_NAME)),)
 publish.artifacts: $(foreach r,$(XPKG_REG_ORGS), $(foreach x,$(XPKGS),xpkg.release.publish.$(r).$(x)))
 endif
 

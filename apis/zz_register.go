@@ -18,7 +18,6 @@ import (
 	v1alpha1rediscloud "github.com/RedisLabs/provider-rediscloud/apis/rediscloud/v1alpha1"
 	v1alpha1subscription "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1alpha1"
 	v1alpha1transit "github.com/RedisLabs/provider-rediscloud/apis/transit/v1alpha1"
-	v1alpha1apis "github.com/RedisLabs/provider-rediscloud/apis/v1alpha1"
 	v1beta1 "github.com/RedisLabs/provider-rediscloud/apis/v1beta1"
 )
 
@@ -33,7 +32,6 @@ func init() {
 		v1alpha1rediscloud.SchemeBuilder.AddToScheme,
 		v1alpha1subscription.SchemeBuilder.AddToScheme,
 		v1alpha1transit.SchemeBuilder.AddToScheme,
-		v1alpha1apis.SchemeBuilder.AddToScheme,
 		v1beta1.SchemeBuilder.AddToScheme,
 	)
 }

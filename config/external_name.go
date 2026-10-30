@@ -5,7 +5,13 @@ Copyright 2022 Upbound Inc.
 // Package config contains the provider configuration logic.
 package config
 
-import "github.com/crossplane/upjet/pkg/config"
+import "github.com/crossplane/upjet/v2/pkg/config"
+
+const (
+	tfActiveActiveSubscription = "rediscloud_active_active_subscription"
+	tfSubscription             = "rediscloud_subscription"
+	tfSubscriptionDatabase     = "rediscloud_subscription_database"
+)
 
 // ExternalNameConfigs contains all external name configurations for this
 // provider.
@@ -17,7 +23,7 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 
 	// Active-Active Resources
 	"rediscloud_active_active_private_link":                              config.IdentifierFromProvider,
-	"rediscloud_active_active_subscription":                              config.IdentifierFromProvider,
+	tfActiveActiveSubscription:                                           config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription_database":                     config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription_peering":                      config.IdentifierFromProvider,
 	"rediscloud_active_active_subscription_regions":                      config.IdentifierFromProvider,
@@ -44,9 +50,9 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 	"rediscloud_private_service_connect_endpoint_accepter": config.IdentifierFromProvider,
 
 	// Pro Subscription Resources
-	"rediscloud_subscription":          config.IdentifierFromProvider,
-	"rediscloud_subscription_database": config.IdentifierFromProvider,
-	"rediscloud_subscription_peering":  config.IdentifierFromProvider,
+	tfSubscription:                    config.IdentifierFromProvider,
+	tfSubscriptionDatabase:            config.IdentifierFromProvider,
+	"rediscloud_subscription_peering": config.IdentifierFromProvider,
 
 	// Transit Gateway Resources
 	"rediscloud_transit_gateway_attachment":          config.IdentifierFromProvider,
