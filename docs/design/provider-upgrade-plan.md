@@ -80,7 +80,7 @@ A resource that becomes Ready only as `v1alpha1` fails this step.
 
 ### Step 3. Add govulncheck
 
-Branch from `main` after step 2 is merged. Run `govulncheck` in CI with the Go version from step 1. A fixable finding in a module this repository can bump, without leaving the Upjet line, fails CI. Terraform provider bumps stay in the release-tracking workflow.
+Branch from `main` after step 2 is merged. Run `govulncheck` v1.9.0 in CI with Go 1.26. The job fails when called code is affected by a vulnerability this repository can fix without leaving the Upjet line. The first scan's called findings were `golang.org/x/net` v0.59.0, bumped to v0.60.0. Two imported findings have no fixed version and are not called, so they do not fail the job. Terraform provider bumps stay in the release-tracking workflow.
 
 Verify this step before merge:
 
