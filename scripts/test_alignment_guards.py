@@ -54,6 +54,13 @@ class CheckExamplesTests(unittest.TestCase):
             self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
 
 
+class GenerateCleanupTests(unittest.TestCase):
+    def test_generate_keeps_served_versions(self) -> None:
+        text = (REPO / "apis" / "generate.go").read_text()
+        self.assertIn("-not -path '*/v1alpha1/*'", text)
+        self.assertIn("-not -path '*/v1beta1/*'", text)
+
+
 class GoVersionTests(unittest.TestCase):
     def test_workflows_and_makefile_use_go_1_26(self) -> None:
         ci = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
