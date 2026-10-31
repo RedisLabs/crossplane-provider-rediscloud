@@ -720,6 +720,156 @@ class TrackReleaseTest(unittest.TestCase):
                 else:
                     os.environ["RUNNER_TEMP"] = old_runner
 
+    def test_publish_allows_the_untracked_bundle_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            runner = Path(tmp) / "runner"
+            runner.mkdir()
+            old_runner = os.environ.get("RUNNER_TEMP")
+            os.environ["RUNNER_TEMP"] = str(runner)
+            previous = os.getcwd()
+            try:
+                with fake_gh(), redirect_stdout(io.StringIO()):
+                    code = track.main(
+                        [
+                            "--prepare-only",
+                            "--skip-generate",
+                            "--tag",
+                            "v2.20.0",
+                            "--repo-root",
+                            str(repo),
+                            "--github-repo",
+                            "local/test",
+                        ]
+                    )
+                self.assertEqual(code, 0)
+                git(repo, "checkout", "main")
+                downloaded = repo / "track-release-artifact" / "track-release.bundle"
+                downloaded.parent.mkdir()
+                downloaded.write_bytes((runner / "track-release.bundle").read_bytes())
+                status = git(repo, "status", "--porcelain").stdout
+                self.assertIn("?? track-release-artifact/", status)
+                with self.assertRaises(SystemExit) as prepared:
+                    track.prepare_release(
+                        repo,
+                        "2.20.1",
+                        github_repo="local/test",
+                        skip_generate=True,
+                    )
+                self.assertIn("working tree is not clean", str(prepared.exception))
+                with self.assertRaises(SystemExit) as opened:
+                    track.open_pull_request(
+                        repo,
+                        "2.20.1",
+                        github_repo="local/test",
+                        skip_generate=True,
+                    )
+                self.assertIn("working tree is not clean", str(opened.exception))
+                os.chdir(repo)
+                output = io.StringIO()
+                with fake_gh() as log, redirect_stdout(output):
+                    code = track.main(
+                        [
+                            "--publish-only",
+                            "--tag",
+                            "v2.20.0",
+                            "--bundle",
+                            "track-release-artifact/track-release.bundle",
+                            "--repo-root",
+                            str(repo),
+                            "--github-repo",
+                            "local/test",
+                        ]
+                    )
+                self.assertEqual(code, 0)
+                self.assertIn("decision=opened", output.getvalue())
+                self.assertEqual(log.calls[-1]["argv"][:2], ["pr", "create"])
+                self.assertNotIn("merge", log.calls[-1]["argv"])
+                self.assertIn(
+                    "export TERRAFORM_PROVIDER_VERSION ?= 2.19.2",
+                    (repo / "Makefile").read_text(),
+                )
+                remote = git(
+                    repo,
+                    "ls-remote",
+                    "origin",
+                    "refs/heads/track/terraform-provider-2.20.0",
+                ).stdout
+                self.assertIn("refs/heads/track/terraform-provider-2.20.0", remote)
+            finally:
+                os.chdir(previous)
+                if old_runner is None:
+                    os.environ.pop("RUNNER_TEMP", None)
+                else:
+                    os.environ["RUNNER_TEMP"] = old_runner
+
+    def test_publish_refuses_a_modified_tracked_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            bundle = repo / "track-release-artifact" / "track-release.bundle"
+            bundle.parent.mkdir()
+            bundle.write_bytes(b"bundle")
+            makefile = repo / "Makefile"
+            makefile.write_text(makefile.read_text() + "# dirty\n")
+            with fake_gh() as log:
+                with self.assertRaises(SystemExit) as caught:
+                    track.publish_release(
+                        repo,
+                        "2.20.0",
+                        github_repo="local/test",
+                        reuse=False,
+                        bundle=bundle,
+                    )
+            self.assertIn("working tree is not clean", str(caught.exception))
+            self.assertEqual(log.calls, [])
+            self.assertEqual(
+                git(
+                    repo,
+                    "ls-remote",
+                    "origin",
+                    "refs/heads/track/terraform-provider-2.20.0",
+                ).stdout.strip(),
+                "",
+            )
+
+    def test_publish_refuses_an_unrelated_untracked_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init_repo(repo)
+            bundle = repo / "track-release-artifact" / "track-release.bundle"
+            bundle.parent.mkdir()
+            bundle.write_bytes(b"bundle")
+            (repo / "notes.txt").write_text("leave this out\n")
+            with fake_gh() as log:
+                with self.assertRaises(SystemExit) as caught:
+                    track.publish_release(
+                        repo,
+                        "2.20.0",
+                        github_repo="local/test",
+                        reuse=False,
+                        bundle=bundle,
+                    )
+            self.assertIn("working tree is not clean", str(caught.exception))
+            self.assertEqual(log.calls, [])
+            self.assertEqual(
+                git(
+                    repo,
+                    "ls-remote",
+                    "origin",
+                    "refs/heads/track/terraform-provider-2.20.0",
+                ).stdout.strip(),
+                "",
+            )
+            self.assertIn(
+                "export TERRAFORM_PROVIDER_VERSION ?= 2.19.2",
+                (repo / "Makefile").read_text(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
