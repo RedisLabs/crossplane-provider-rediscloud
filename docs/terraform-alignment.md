@@ -1,13 +1,12 @@
-# Alignment with Terraform Provider v2.19.2
+# Alignment with Terraform Provider v2.19.3
 
-Date: 21 October 2026.
-Branch checked: `spike/tf-2.19.2-generate`.
-Terraform provider compared: `RedisLabs/terraform-provider-rediscloud` v2.19.2.
-Crossplane generator: Upjet v1.4.1, schema taken from `terraform providers schema -json` for that Terraform provider.
+Current main: `a2b716c`.
+Terraform provider pin: `RedisLabs/terraform-provider-rediscloud` v2.19.3. That is the newest release, published 28 October 2026.
+Crossplane generator: Upjet v2.5.1. `config/schema.json` on this commit matches `terraform providers schema -json` from Terraform CLI 1.5.7 for v2.19.3.
 
-This document tracks the alignment between this Crossplane provider and the official Redis Cloud Terraform provider v2.19.2.
+This document tracks the alignment between this Crossplane provider and the official Redis Cloud Terraform provider. Parity is current through v2.19.3. A recount on 31 October 2026 found 27 managed resources and 29 data sources. Top-level resource fields are on the generated CRDs. Sensitive values are Kubernetes secret references. The Terraform `timeouts` block is provider meta and is not a CRD field. v2.19.3 added no managed resource and no managed field. On the `rediscloud_subscription` and `rediscloud_active_active_subscription` data sources, `maintenance_windows` and `pricing` are attributes rather than blocks, and `cloud_provider` is an attribute on the Pro subscription data source. Those data sources stay pasted IDs.
 
-Numbering and the architecture diagrams were added on 22 October 2026. Evidence dates remain 21 October 2026. Gaps are numbered in one sequence from 1 through 9.
+The original comparison, dated 21 October 2026, used branch `spike/tf-2.19.2-generate`, Terraform provider v2.19.2, and Upjet v1.4.1. Numbering and the architecture diagrams were added on 22 October 2026. Evidence dates for that comparison remain 21 October 2026. GitHub main at `6128cb7` in the tables below is that earlier main, before the alignment merge. Gaps 3, 4, and 8 stay as written. Gaps are numbered in one sequence from 1 through 9.
 
 ## Index
 
@@ -40,9 +39,9 @@ Numbering and the architecture diagrams were added on 22 October 2026. Evidence 
 
 ## Architectures
 
-The first diagram is Terraform provider v2.19.2, which is the baseline this provider is aligned against. The second is this Crossplane provider. Red boxes are 🔴 high. Yellow boxes are 🟡 medium. Green boxes are the path already on this branch. Gap labels use the same circles, with no red X.
+The first diagram is Terraform provider v2.19.3, which is the baseline this provider is aligned against. The second is this Crossplane provider. Red boxes are 🔴 high. Yellow boxes are 🟡 medium. Green boxes are the path already on main. Gap labels use the same circles, with no red X.
 
-### Terraform provider v2.19.2
+### Terraform provider v2.19.3
 
 ```mermaid
 flowchart TB
@@ -54,7 +53,7 @@ flowchart TB
   ds["29 data sources\npayment method, plan, regions,\ninvitations, endpoint scripts"]
   res["27 managed resources\nsubscription, database, peering,\nACL, private link, transit gateway"]
   link["Interpolation\nsubscription.id flows into\ndatabase.subscription_id"]
-  plugin["terraform-provider-rediscloud\nv2.19.2 plugin"]
+  plugin["terraform-provider-rediscloud\nv2.19.3 plugin"]
   cloud["Redis Cloud API"]
 
   author --> cli --> cfg
@@ -71,7 +70,7 @@ flowchart TB
 
 A released Terraform provider already looks up IDs through data sources and passes a subscription id into a database. Payment method, plan, and region lookups are 🔴 ✅ [8](#g8). The database subscription id stays 🟡 [3](#g3) because that field is a number.
 
-### Crossplane provider on this branch
+### Crossplane provider on main
 
 ```mermaid
 flowchart TB
@@ -81,7 +80,7 @@ flowchart TB
 
   author["Author writes YAML"]
   k8s["Kubernetes API"]
-  crd["27 CRDs\nmatch Terraform v2.19.2"]
+  crd["27 CRDs\nmatch Terraform v2.19.3"]
   beta["Managed APIs are v1beta1\n🟡 ✅ 6"]
   pc["ProviderConfig\ncredentials JSON"]
   refs["String subscriptionIdRef\npeering, link, PSC, transit gateway"]
@@ -89,7 +88,7 @@ flowchart TB
   lookup["PaymentMethod, EssentialsPlan, Regions\nlookup.redis.io\n🔴 ✅ 8"]
   ctrl["27 Upjet controllers\nasync apply, 30m timeout\n🟣 ✅ 2"]
   ws["Terraform workspace\ninside the provider pod"]
-  plugin["Same terraform-provider-rediscloud\nv2.19.2 plugin"]
+  plugin["Same terraform-provider-rediscloud\nv2.19.3 plugin"]
   cloud["Redis Cloud API"]
   proof["ACL rules, Pro subscription,\nand Database CR created and deleted\n🟡 ✅ 7"]
   track["Workflow opens a pull request\nwhen a Terraform release is newer\n🟡 ✅ 9"]
@@ -112,51 +111,51 @@ The provider pod does not call Redis Cloud itself for managed resources. It runs
 
 ## Result
 
-On this branch, managed-resource coverage matches the Terraform provider.
+On main `a2b716c`, managed-resource coverage matches Terraform provider v2.19.3.
 
-| Surface | Terraform v2.19.2 | This branch | GitHub `main` (`6128cb7`) |
+| Surface | Terraform v2.19.3 | Main `a2b716c` | Main before alignment (`6128cb7`) |
 | --- | --- | --- | --- |
 | Managed resources | 27 | 27, all generated | 21, schema frozen at Terraform v2.1.5 |
 | Data sources | 29 | 3 read-only lookup CRDs; the other 26 stay pasted IDs | 0 CRDs |
 | Provider settings | `api_key`, `secret_key`, `url` | `ProviderConfig` | `ProviderConfig` |
 
-The `6128cb7` column is GitHub main before the alignment merge. That merge is now on main. This pull request adds the three lookups.
+The `6128cb7` column is GitHub main before the alignment merge. Current main is `a2b716c`, and `TERRAFORM_PROVIDER_VERSION` is v2.19.3.
 
-No managed resource from Terraform v2.19.2 is missing on this branch. Nothing extra was generated. A second pass re-counted the schema, the external-name list, and the generated controllers, and that count held. The numbered gaps run from 1 through 9. **severity:** 🔴 is high, 🟡 is medium, and 🟣 is minor. ✅ on **Status:** means this branch fixed that gap.
+No managed resource from Terraform v2.19.3 is missing on main. Nothing extra was generated. A recount on 31 October 2026 compared the published v2.19.3 schema with the generated CRDs, and that count held. The numbered gaps run from 1 through 9. **severity:** 🔴 is high, 🟡 is medium, and 🟣 is minor. ✅ on **Status:** means this provider fixed that gap.
 
 ## Resource map
 
-All 27 Terraform resources have a generated kind, CRD, and controller. On GitHub main at `6128cb7`, before the alignment merge, ✅ means the resource was already there and ❌ means it was not. Six were ❌. Those six are on main after the alignment merge.
+All 27 Terraform resources have a generated kind, CRD, and controller on main `a2b716c`. The `On 6128cb7` column is GitHub main before the alignment merge: ✅ means the resource was already there and ❌ means it was not. Six were ❌. The `On main a2b716c` column is the current provider, and every row there is ✅.
 
-| Terraform resource | Kind | API group | On GitHub `main` |
-| --- | --- | --- | --- |
-| `rediscloud_acl_role` | Role | `acl.redis.io` | ✅ |
-| `rediscloud_acl_rule` | Rule | `acl.redis.io` | ✅ |
-| `rediscloud_acl_user` | User | `acl.redis.io` | ✅ |
-| `rediscloud_active_active_private_link` | ActivePrivateLink | `active.redis.io` | ❌ |
-| `rediscloud_active_active_private_service_connect` | ActivePrivateServiceConnect | `active.redis.io` | ✅ |
-| `rediscloud_active_active_private_service_connect_endpoint` | ActivePrivateServiceConnectEndpoint | `active.redis.io` | ✅ |
-| `rediscloud_active_active_private_service_connect_endpoint_accepter` | ActivePrivateServiceConnectEndpointAccepter | `active.redis.io` | ✅ |
-| `rediscloud_active_active_subscription` | ActiveSubscription | `active.redis.io` | ✅ |
-| `rediscloud_active_active_subscription_database` | ActiveSubscriptionDatabase | `active.redis.io` | ✅ |
-| `rediscloud_active_active_subscription_peering` | ActiveSubscriptionPeering | `active.redis.io` | ✅ |
-| `rediscloud_active_active_subscription_regions` | ActiveSubscriptionRegions | `active.redis.io` | ✅ |
-| `rediscloud_active_active_transit_gateway_attachment` | ActiveTransitGatewayAttachment | `active.redis.io` | ✅ |
-| `rediscloud_active_active_transit_gateway_invitation_acceptor` | ActiveTransitGatewayInvitationAcceptor | `active.redis.io` | ❌ |
-| `rediscloud_active_active_transit_gateway_route` | ActiveTransitGatewayRoute | `active.redis.io` | ❌ |
-| `rediscloud_cloud_account` | Account | `cloud.redis.io` | ✅ |
-| `rediscloud_essentials_database` | Database | `essentials.redis.io` | ✅ |
-| `rediscloud_essentials_subscription` | Subscription | `essentials.redis.io` | ✅ |
-| `rediscloud_private_link` | Link | `private.redis.io` | ❌ |
-| `rediscloud_private_service_connect` | ServiceConnect | `private.redis.io` | ✅ |
-| `rediscloud_private_service_connect_endpoint` | ServiceConnectEndpoint | `private.redis.io` | ✅ |
-| `rediscloud_private_service_connect_endpoint_accepter` | ServiceConnectEndpointAccepter | `private.redis.io` | ✅ |
-| `rediscloud_subscription` | Subscription | `rediscloud.redis.io` | ✅ |
-| `rediscloud_subscription_database` | Database | `subscription.redis.io` | ✅ |
-| `rediscloud_subscription_peering` | Peering | `subscription.redis.io` | ✅ |
-| `rediscloud_transit_gateway_attachment` | GatewayAttachment | `transit.redis.io` | ✅ |
-| `rediscloud_transit_gateway_invitation_acceptor` | GatewayInvitationAcceptor | `transit.redis.io` | ❌ |
-| `rediscloud_transit_gateway_route` | GatewayRoute | `transit.redis.io` | ❌ |
+| Terraform resource | Kind | API group | On `6128cb7` | On main `a2b716c` |
+| --- | --- | --- | --- | --- |
+| `rediscloud_acl_role` | Role | `acl.redis.io` | ✅ | ✅ |
+| `rediscloud_acl_rule` | Rule | `acl.redis.io` | ✅ | ✅ |
+| `rediscloud_acl_user` | User | `acl.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_private_link` | ActivePrivateLink | `active.redis.io` | ❌ | ✅ |
+| `rediscloud_active_active_private_service_connect` | ActivePrivateServiceConnect | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_private_service_connect_endpoint` | ActivePrivateServiceConnectEndpoint | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_private_service_connect_endpoint_accepter` | ActivePrivateServiceConnectEndpointAccepter | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_subscription` | ActiveSubscription | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_subscription_database` | ActiveSubscriptionDatabase | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_subscription_peering` | ActiveSubscriptionPeering | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_subscription_regions` | ActiveSubscriptionRegions | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_transit_gateway_attachment` | ActiveTransitGatewayAttachment | `active.redis.io` | ✅ | ✅ |
+| `rediscloud_active_active_transit_gateway_invitation_acceptor` | ActiveTransitGatewayInvitationAcceptor | `active.redis.io` | ❌ | ✅ |
+| `rediscloud_active_active_transit_gateway_route` | ActiveTransitGatewayRoute | `active.redis.io` | ❌ | ✅ |
+| `rediscloud_cloud_account` | Account | `cloud.redis.io` | ✅ | ✅ |
+| `rediscloud_essentials_database` | Database | `essentials.redis.io` | ✅ | ✅ |
+| `rediscloud_essentials_subscription` | Subscription | `essentials.redis.io` | ✅ | ✅ |
+| `rediscloud_private_link` | Link | `private.redis.io` | ❌ | ✅ |
+| `rediscloud_private_service_connect` | ServiceConnect | `private.redis.io` | ✅ | ✅ |
+| `rediscloud_private_service_connect_endpoint` | ServiceConnectEndpoint | `private.redis.io` | ✅ | ✅ |
+| `rediscloud_private_service_connect_endpoint_accepter` | ServiceConnectEndpointAccepter | `private.redis.io` | ✅ | ✅ |
+| `rediscloud_subscription` | Subscription | `rediscloud.redis.io` | ✅ | ✅ |
+| `rediscloud_subscription_database` | Database | `subscription.redis.io` | ✅ | ✅ |
+| `rediscloud_subscription_peering` | Peering | `subscription.redis.io` | ✅ | ✅ |
+| `rediscloud_transit_gateway_attachment` | GatewayAttachment | `transit.redis.io` | ✅ | ✅ |
+| `rediscloud_transit_gateway_invitation_acceptor` | GatewayInvitationAcceptor | `transit.redis.io` | ❌ | ✅ |
+| `rediscloud_transit_gateway_route` | GatewayRoute | `transit.redis.io` | ❌ | ✅ |
 
 `rediscloud_cloud_account` and `rediscloud_active_active_subscription_database` are Terraform Plugin Framework resources. Both generated.
 
@@ -176,7 +175,7 @@ Resources that already existed on GitHub `main` were regenerated from v2.19.2, s
 
 ## Data sources
 
-Terraform data sources are read-only lookups. Upjet does not turn them into managed resources. That is expected. There are 29 data sources in v2.19.2. The ones a user cannot proceed without, because the CRD wants an ID the data source would have looked up, are:
+Terraform data sources are read-only lookups. Upjet does not turn them into managed resources. That is expected. There are 29 data sources in v2.19.3, the same count as v2.19.2. The ones a user cannot proceed without, because the CRD wants an ID the data source would have looked up, are:
 
 | Data source | Why it matters |
 | --- | --- |
@@ -195,6 +194,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 | Check | Result |
 | --- | --- |
 | `terraform providers schema -json` for v2.19.2 | Succeeded during `make generate`. 27 resources, 29 data sources. |
+| Recount on main `a2b716c`, 31 October 2026 | Terraform CLI 1.5.7 `providers schema -json` for v2.19.3 matches `config/schema.json`. 27 managed resources, 29 data sources. Top-level managed fields are on the `v1beta1` CRDs. Sensitive fields are secret references. v2.19.3 is the newest release. |
 | `make generate` with Go 1.24.11 | Succeeded. `Generated 27 resources!` |
 | `go test ./config/... ./cmd/... ./apis/... ./internal/...` | Passed on 21 October 2026. The only test files then were in `config`. |
 | Alignment guard tests, 28 October 2026 | Passed locally. The Go test requires the 30 minute controller timeout, the Active-Active TLS secret-reference list, and no `subscriptionIdRef` on database types. The Python test rejects an unknown `forProvider` field and accepts the example again after that field is removed. |
@@ -213,6 +213,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 ## What this branch already removes from the gap
 
 - Terraform pin moved from v2.1.5 to v2.19.2.
+- Main `a2b716c` pins `TERRAFORM_PROVIDER_VERSION` at v2.19.3. That release added no managed resource.
 - The six resources added after v2.1.5 are generated.
 - Fields added on existing resources through v2.19.2 are on the CRDs.
 - Both Plugin Framework resources generate, and all 27 controllers are registered in `internal/controller/zz_setup.go`.
@@ -230,7 +231,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 ## What not to treat as a gap
 
 - Missing data-source CRDs, except where an install flow has no other way to learn an ID. The data-source table names those.
-- Breaking changes in CRD schemas against unreleased historical snapshots (schema reflects Terraform v2.19.2).
+- Breaking changes in CRD schemas against unreleased historical snapshots (schema reflects Terraform v2.19.3).
 
 ## What was checked for a public repository
 
