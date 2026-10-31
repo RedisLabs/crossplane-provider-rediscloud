@@ -3,6 +3,17 @@
 Repository vocabulary for `crossplane-provider-rediscloud`. Meanings only.
 Scope for Terraform provider alignment is in `docs/terraform-alignment.md`.
 
+## acceptance
+
+A test that creates real Redis Cloud resources. The Terraform provider
+names these `TestAcc`. In this provider the live acceptance run is Nightly
+QA, and it is not part of pull-request CI.
+
+Not to be confused with CI, which does not call Redis Cloud.
+
+Source: `docs/design/test-suites.md`. Terraform workflow
+`.github/workflows/terraform_provider_pr.yml`.
+
 ## Active-Active
 
 Redis Cloud multi-region subscriptions. Terraform resource names start with
@@ -20,6 +31,14 @@ Redis Cloud running in the customer's cloud account. Covered here only where
 Alias: BYOC.
 
 Source: confirmed by Shay, 2026-10-21. See `docs/terraform-alignment.md`.
+
+## CRUDI
+
+Terraform's name for one acceptance test that creates, reads, updates,
+deletes, and imports a resource. This provider's nightly smoke creates and
+deletes. It does not update or import.
+
+Source: `docs/design/test-suites.md`. Terraform acceptance test names.
 
 ## Essentials
 
@@ -83,6 +102,17 @@ Aliases: crossplane-provider-rediscloud, the Crossplane provider.
 
 Source: confirmed by Shay, 2026-10-21. See `docs/terraform-alignment.md`.
 
+## smoke
+
+The short acceptance slice. The Terraform provider runs it on code pull
+requests. This provider runs a smaller smoke nightly: one ACL rule, one Pro
+subscription, and one Pro database.
+
+Not to be confused with Uptest, which runs only when a pull request comment
+asks for one example path.
+
+Source: `docs/design/test-suites.md`.
+
 ## storage version
 
 The CRD version Kubernetes persists for a kind. For the 27 managed kinds
@@ -108,3 +138,14 @@ Crossplane generator that turns a Terraform provider schema into managed
 resources and controllers. This repository is an Upjet provider.
 
 Source: repository README. Confirmed by Shay, 2026-10-21.
+
+## Uptest
+
+The Crossplane end-to-end runner. In this repository it applies the YAML
+named by a `/test-examples` comment on a pull request, waits until those
+objects are Ready, then deletes them. It is not a required check.
+
+Not to be confused with Nightly QA (`scripts/qa_live.py`), which creates
+one ACL rule, one Pro subscription, and one database on a schedule.
+
+Source: `.github/workflows/uptest-trigger.yaml`. See `docs/CI-TESTING.md`.
