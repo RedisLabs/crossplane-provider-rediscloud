@@ -95,9 +95,9 @@ What each example is for, and what blocks a real pass:
 - `examples/rediscloud/acl-user.yaml` creates an ACL user. The password comes from a Secret named `redis-user-password`, which the example does not create.
 - `examples/rediscloud/cloud-account.yaml` registers a cloud account. It needs real cloud access keys in a Secret.
 - `examples/rediscloud/subscription-peering.yaml` creates a VPC peering. It references a subscription named `example-subscription` and needs a real AWS account, VPC id, and CIDR.
-- `examples/private/link.yaml` and `examples/active/private-link.yaml` create a private link. Each file only sets `subscriptionIdRef`. A pass needs the parent subscription and an AWS setup.
-- `examples/transit/gateway-invitation-acceptor.yaml`, `examples/transit/gateway-route.yaml`, and the Active-Active copies under `examples/active/` accept an invitation or set CIDR routes. A pass needs the parent subscription and an invitation that already exists in AWS.
-- `examples/providerconfig/providerconfig.yaml` is the credential object. It is applied with the other manifests. It is not a Redis Cloud resource.
+- `examples/private/link.yaml` and `examples/active/private-link.yaml` create a private link. The API server accepts the files. Terraform still requires `shareName` and one `principal` (`principal` and `principalType`). Active-Active also requires `regionId`. A parent subscription and an AWS setup are not enough until those values are filled in.
+- `examples/transit/gateway-invitation-acceptor.yaml`, `examples/transit/gateway-route.yaml`, and the Active-Active copies under `examples/active/` accept an invitation or set CIDR routes. The API server accepts the files. Terraform still requires `action` and `tgwInvitationId` on the acceptor, and `cidrs` and `tgwId` on the route. Active-Active also requires `regionId`. A pass needs those values, the parent subscription, and an invitation that already exists in AWS.
+- `examples/providerconfig/providerconfig.yaml` is a sample credential object. Leave it out of an Uptest path. `cluster/test/setup.sh` already creates `ProviderConfig` `default` from the Secret `upbound-system/provider-secret`. This file replaces that object and points it at `crossplane-system/example-creds`, which the run does not create. The companion `secret.yaml.tmpl` is not applied, because the workflow only selects `*.yaml`.
 
 A comment can name one of those paths. The workflow does not run the whole `examples/` tree by itself.
 
