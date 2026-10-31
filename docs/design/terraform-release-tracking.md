@@ -1,6 +1,6 @@
 # Track Terraform provider releases
 
-Date: 26 October 2026. Updated 27 October 2026 for the review fixes.
+Date: 26 October 2026. Updated 27 October 2026 for the review fixes, and 31 October 2026 for the publish checkout.
 Status: Proposed. Implementation matches this design.
 Owner: Shay Berman.
 Ticket: none.
@@ -40,7 +40,7 @@ When the candidate is newer and this is not a dry run, the script continues only
 
 Otherwise it updates only `TERRAFORM_PROVIDER_VERSION`, runs `make generate`, and checks every `zz_controller.go` for `30 * time.Minute`. A controller that still has the 3 minute timeout stops the job before a pull request is opened. The same stop happens if generate changes `CROSSPLANE_VERSION`, `TERRAFORM_VERSION`, the Go or toolchain lines, the Upjet module, crossplane-runtime, or the Go version in CI.
 
-The workflow is two jobs. `prepare` can read the repository and list pull requests. It cannot push. Before `make generate`, the script removes `GH_TOKEN`, `GITHUB_TOKEN`, and `GITHUB_ENTERPRISE_TOKEN` from the environment, and `make` starts with that environment. `publish` is the only job that can push and open a pull request, and it does not run `make generate`. The script then commits in `prepare`, and `publish` pushes `track/terraform-provider-<version>` and opens a pull request against `main`. It never calls `gh pr merge`.
+The workflow is two jobs. `prepare` can read the repository and list pull requests. It cannot push. Before `make generate`, the script removes `GH_TOKEN`, `GITHUB_TOKEN`, and `GITHUB_ENTERPRISE_TOKEN` from the environment, and `make` starts with that environment. `publish` is the only job that can push and open a pull request, and it does not run `make generate`. The publish checkout may contain the downloaded bundle. That untracked bundle directory is not a source change. A modified tracked file, or an untracked file outside that directory, still stops publish. Prepare and the single-job open path still require a clean worktree. The script commits in `prepare`, and `publish` pushes `track/terraform-provider-<version>` and opens a pull request against `main`. It never calls `gh pr merge`.
 
 `make generate` already runs `scripts/fix_generated_types.py`, which is what rewrites the 3 minute timeout. The check after generate is the guard that the rewrite happened. Generation installs `goimports` and keeps `zz_*` files under `v1beta1` and `v1alpha1`. `v1beta1` is storage. `v1alpha1` stays served.
 
@@ -57,6 +57,7 @@ GitHub does not start CI for a pull request that this workflow opens with `GITHU
 - A generate step that changes `CROSSPLANE_VERSION` does not open a pull request.
 - A remote branch that already has the candidate pin opens a pull request without another commit.
 - A remote branch with a different commit is updated with `--force-with-lease`.
+- Publish continues when the checkout contains only the untracked downloaded bundle directory. A modified tracked file, or an untracked file outside that directory, does not publish.
 - `make generate` does not see `GH_TOKEN` or `GITHUB_TOKEN`.
 - The live dry run follows the current pin and the published release. A newer published release prints `decision=would-open`. The same version prints `decision=none`.
 

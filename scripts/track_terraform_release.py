@@ -382,6 +382,48 @@ def require_clean_main(root: Path) -> None:
         raise SystemExit("working tree is not clean; refusing to open a pull request")
 
 
+def bundle_location(root: Path, bundle: Path) -> Path:
+    if bundle.is_absolute():
+        return bundle.resolve()
+    return (root / bundle).resolve()
+
+
+def untracked_bundle_entry(line: str, root: Path, bundle_file: Path) -> bool:
+    if not line.startswith("?? "):
+        return False
+    raw = line[3:].strip()
+    if len(raw) >= 2 and raw.startswith('"') and raw.endswith('"'):
+        raw = raw[1:-1]
+    raw = raw.rstrip("/")
+    if raw == "" or raw.startswith("/") or raw.startswith("../") or "/../" in raw:
+        return False
+    entry = (root / raw).resolve()
+    bundle_dir = bundle_file.parent
+    if entry == bundle_file:
+        return True
+    try:
+        entry.relative_to(bundle_dir)
+    except ValueError:
+        return False
+    return True
+
+
+def require_clean_publish(root: Path, bundle: Path | None) -> None:
+    assert_head_is_main(root)
+    status = run(["git", "status", "--porcelain"], root)
+    if not status.strip():
+        return
+    if bundle is None:
+        raise SystemExit("working tree is not clean; refusing to open a pull request")
+    bundle_file = bundle_location(root, bundle)
+    for line in status.splitlines():
+        if not line.strip():
+            continue
+        if untracked_bundle_entry(line, root, bundle_file):
+            continue
+        raise SystemExit("working tree is not clean; refusing to open a pull request")
+
+
 def generate_and_commit(
     root: Path,
     candidate: str,
@@ -542,7 +584,7 @@ def publish_release(
     root = root.resolve()
     github_repo = validate_repo(github_repo)
     candidate = normalize_version(candidate)
-    require_clean_main(root)
+    require_clean_publish(root, bundle)
     branch = branch_name(candidate)
     if existing_pull_request(root, github_repo, branch):
         print(
