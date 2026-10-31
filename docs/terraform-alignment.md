@@ -17,7 +17,7 @@ The original comparison, dated 21 October 2026, used branch `spike/tf-2.19.2-gen
 - [Resource map](#resource-map)
 - [Data sources](#data-sources)
 - [What was run](#what-was-run)
-- [What this branch already removes from the gap](#what-this-branch-already-removes-from-the-gap)
+- [What main already includes](#what-main-already-includes)
 - [What not to treat as a gap](#what-not-to-treat-as-a-gap)
 - [What was checked for a public repository](#what-was-checked-for-a-public-repository)
 
@@ -210,7 +210,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 
 `scripts/test-provider.sh` was not used. It builds a new kind cluster with podman, and this test used an existing test cluster. `.envrc` still has placeholder keys. The credentials used for the live calls stayed outside the repository.
 
-## What this branch already removes from the gap
+## What main already includes
 
 - Terraform pin moved from v2.1.5 to v2.19.2.
 - Main `a2b716c` pins `TERRAFORM_PROVIDER_VERSION` at v2.19.3. That release added no managed resource.
