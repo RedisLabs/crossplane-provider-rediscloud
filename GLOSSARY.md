@@ -83,6 +83,18 @@ Aliases: crossplane-provider-rediscloud, the Crossplane provider.
 
 Source: confirmed by Shay, 2026-10-21. See `docs/terraform-alignment.md`.
 
+## storage version
+
+The CRD version Kubernetes persists for a kind. For the 27 managed kinds
+that is `v1beta1`. `v1alpha1` stays served while a cluster CRD
+`status.storedVersions` still lists it. Generation keeps the `zz_*` files
+for both.
+
+Not to be confused with ProviderConfig, which is `v1beta1` and has no served
+`v1alpha1`, or with lookups, which stay `lookup.redis.io/v1alpha1`.
+
+Source: `docs/terraform-alignment.md` gap 6. Confirmed by Shay, 2026-10-31.
+
 ## Ultra
 
 A different control plane from current Redis Cloud. Out of scope. This

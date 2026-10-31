@@ -133,7 +133,19 @@ pull-docs:
 	fi
 	@git -C "$(WORK_DIR)/$(TERRAFORM_PROVIDER_SOURCE)" sparse-checkout set "$(TERRAFORM_DOCS_PATH)"
 
-generate.init: $(TERRAFORM_PROVIDER_SCHEMA) pull-docs
+# Upjet shells out to goimports. Match the golang.org/x/tools version in go.mod.
+GOIMPORTS_VERSION ?= 0.51.0
+GOIMPORTS := $(TOOLS_HOST_DIR)/goimports
+
+$(GOIMPORTS):
+	@$(INFO) installing goimports $(GOIMPORTS_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR)
+	@GOBIN=$(abspath $(TOOLS_HOST_DIR)) $(GO) install golang.org/x/tools/cmd/goimports@v$(GOIMPORTS_VERSION)
+	@$(OK) installing goimports $(GOIMPORTS_VERSION)
+
+export PATH := $(abspath $(TOOLS_HOST_DIR)):$(PATH)
+
+generate.init: $(TERRAFORM_PROVIDER_SCHEMA) pull-docs $(GOIMPORTS)
 
 .PHONY: $(TERRAFORM_PROVIDER_SCHEMA) pull-docs check-terraform-version
 # ====================================================================================

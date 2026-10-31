@@ -11,9 +11,12 @@ Copyright 2021 Upbound Inc.
 // Remove existing CRDs
 //go:generate rm -rf ../package/crds
 
-// Remove generated files, including methodset files, but keep v1alpha1.
-// Those packages stay on disk so the CRD can keep serving the stored version.
-//go:generate bash -c "find . -iname 'zz_*' -not -path '*/v1alpha1/*' -delete"
+// Remove generated files, including methodset files, but keep both served
+// versions. v1beta1 is storage. v1alpha1 stays so a cluster whose CRD
+// status.storedVersions still lists it can accept the package. Go generate
+// lists package files before these directives run, so deleting
+// zz_generated.deepcopy.go makes the next package fail to open it.
+//go:generate bash -c "find . -iname 'zz_*' -not -path '*/v1alpha1/*' -not -path '*/v1beta1/*' -delete"
 //go:generate bash -c "find . -type d -empty -delete"
 //go:generate bash -c "find ../internal/controller -iname 'zz_*' -delete"
 //go:generate bash -c "find ../internal/controller -type d -empty -delete"
