@@ -48,6 +48,20 @@ Not to be confused with this Upjet provider.
 
 Source: confirmed by Shay, 2026-10-21. See `docs/terraform-alignment.md`.
 
+## passwordless
+
+On the Pro database, `spec.forProvider.enablePasswordless` is the generated
+field for the Terraform attribute `enable_passwordless` on
+`rediscloud_subscription_database`. True asks that provider to write an empty
+password. Omitting the field leaves the password key out of the Terraform
+parameters.
+
+Not to be confused with a Cloud API boolean, or with Active-Active
+`globalEnablePasswordless`.
+
+Source: pinned Terraform schema. Confirmed by Shay, 2026-10-30. See
+`docs/design/RED-223310.md`.
+
 ## Pro
 
 Redis Cloud dedicated tier. Public Terraform names remain

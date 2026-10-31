@@ -172,7 +172,7 @@ Top-level Terraform attributes and blocks were compared with the generated `tf:`
 | cloud account `access_secret_key` | `accessSecretKeySecretRef` |
 | cloud account `console_password` | `consolePasswordSecretRef` |
 
-Resources that already existed on GitHub `main` were regenerated from v2.19.2, so fields added after v2.1.5 are on the CRDs. On the generated types, Pro subscription has `resourceTags`, `prometheusEndpoint`, and customer-managed key fields. Active-Active database has `redisVersion`, `redisVersionActual`, `autoMinorVersionUpgrade`, and `globalEnablePasswordless`.
+Resources that already existed on GitHub `main` were regenerated from v2.19.2, so fields added after v2.1.5 are on the CRDs. On the generated types, Pro subscription has `resourceTags`, `prometheusEndpoint`, and customer-managed key fields. Active-Active database has `redisVersion`, `redisVersionActual`, `autoMinorVersionUpgrade`, and `globalEnablePasswordless`. Pro database has `enablePasswordless` for Terraform `enable_passwordless`. See `docs/design/RED-223310.md`.
 
 ## Data sources
 
