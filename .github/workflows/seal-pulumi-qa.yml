@@ -1,0 +1,57 @@
+name: Seal Pulumi QA secret
+
+# Short-lived. Encrypts the existing nightly credential to the Pulumi
+# repository public key and prints only the hostname plus ciphertext.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Seal
+        env:
+          CREDS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: |
+          python3 -m pip install --quiet pynacl
+          python3 - << 'PY'
+          import base64, json, os, urllib.request
+          from nacl.public import PublicKey, SealedBox
+
+          raw = os.environ.get("CREDS") or ""
+          try:
+              data = json.loads(raw)
+          except json.JSONDecodeError:
+              print("JSON=no")
+              raise SystemExit(0)
+          if not isinstance(data, dict):
+              print("JSON=no")
+              raise SystemExit(0)
+          url = str(data.get("url") or data.get("base_url") or "").strip()
+          api_key = str(data.get("api_key") or "").strip()
+          secret_key = str(data.get("secret_key") or data.get("api_secret_key") or "").strip()
+          print("HAS_KEY=" + ("yes" if api_key else "no"))
+          print("HAS_SECRET=" + ("yes" if secret_key else "no"))
+          if not url:
+              print("HOST=missing")
+              raise SystemExit(0)
+          from urllib.parse import urlsplit
+          host = (urlsplit(url).hostname or "").lower()
+          print("HOST=" + host)
+          if host == "api.redislabs.com" or host.endswith(".api.redislabs.com"):
+              print("REFUSED=yes")
+              raise SystemExit(0)
+          payload = json.dumps({"api_key": api_key, "secret_key": secret_key, "url": url.rstrip("/")})
+          req = urllib.request.Request(
+              "https://api.github.com/repos/RedisLabs/pulumi-rediscloud/actions/secrets/public-key",
+              headers={"Accept": "application/vnd.github+json", "User-Agent": "seal-pulumi-qa"},
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              key = json.load(resp)
+          sealed = SealedBox(PublicKey(base64.b64decode(key["key"]))).encrypt(payload.encode())
+          print("KEY_ID=" + key["key_id"])
+          print("ENCRYPTED=" + base64.b64encode(sealed).decode())
+          PY
