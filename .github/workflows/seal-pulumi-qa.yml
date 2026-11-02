@@ -45,13 +45,9 @@ jobs:
               print("REFUSED=yes")
               raise SystemExit(0)
           payload = json.dumps({"api_key": api_key, "secret_key": secret_key, "url": url.rstrip("/")})
-          req = urllib.request.Request(
-              "https://api.github.com/repos/RedisLabs/pulumi-rediscloud/actions/secrets/public-key",
-              headers={"Accept": "application/vnd.github+json", "User-Agent": "seal-pulumi-qa"},
-          )
-          with urllib.request.urlopen(req, timeout=30) as resp:
-              key = json.load(resp)
-          sealed = SealedBox(PublicKey(base64.b64decode(key["key"]))).encrypt(payload.encode())
-          print("KEY_ID=" + key["key_id"])
+          key_b64 = "c98cL+WJ/fjf6NN+IBKSQsQRXA5UK81zyTBL/YKv23M="
+          key_id = "3380204578043523366"
+          sealed = SealedBox(PublicKey(base64.b64decode(key_b64))).encrypt(payload.encode())
+          print("KEY_ID=" + key_id)
           print("ENCRYPTED=" + base64.b64encode(sealed).decode())
           PY
