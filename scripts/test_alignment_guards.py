@@ -74,6 +74,14 @@ class GoVersionTests(unittest.TestCase):
         self.assertEqual(trigger, "1.26")
         self.assertIn("GO_REQUIRED_VERSION ?= 1.26", makefile)
 
+    def test_workflows_do_not_reference_upbound_standard_runners(self) -> None:
+        workflows_dir = REPO / ".github" / "workflows"
+        self.assertFalse((workflows_dir / "e2e.yaml").exists())
+        for path in sorted(workflows_dir.glob("*.y*ml")):
+            text = path.read_text()
+            self.assertNotIn("upbound/official-providers-ci", text, path.name)
+            self.assertNotIn("@standard-runners", text, path.name)
+
 
 if __name__ == "__main__":
     unittest.main()
