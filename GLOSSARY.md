@@ -105,8 +105,9 @@ Source: confirmed by Shay, 2026-10-21. See `docs/terraform-alignment.md`.
 ## smoke
 
 The short acceptance slice. The Terraform provider runs it on code pull
-requests. This provider runs a smaller smoke nightly: one ACL rule, one Pro
-subscription, and one Pro database.
+requests. This provider runs a smaller smoke nightly: one ACL rule, role,
+and user, one Pro subscription and database, and one Essentials subscription
+and database.
 
 Not to be confused with Uptest, which runs only when a pull request comment
 asks for one example path.
@@ -146,6 +147,6 @@ named by a `/test-examples` comment on a pull request, waits until those
 objects are Ready, then deletes them. It is not a required check.
 
 Not to be confused with Nightly QA (`scripts/qa_live.py`), which creates
-one ACL rule, one Pro subscription, and one database on a schedule.
+and deletes the QA-account objects on a schedule.
 
 Source: `.github/workflows/uptest-trigger.yaml`. See `docs/CI-TESTING.md`.
