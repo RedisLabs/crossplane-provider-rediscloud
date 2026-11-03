@@ -35,7 +35,7 @@ It runs on every pull request and on pushes to `main`. It does not call Redis Cl
 - A database connection secret publishes `public_endpoint` and `private_endpoint`. `port` is published only when Terraform already returned it.
 - An omitted `enablePasswordless` sends no password key. An explicit `true` sends only `enable_passwordless`.
 - Payment method, Essentials plan, and region lookups match an id. The payment-method reconciler writes that id and hides HTML error bodies.
-- `scripts/test_qa_live.py` checks the Nightly QA script with a fake API: it refuses to create while an `xp-ci-` subscription exists, deletes the subscription when the database step fails, requires Cloud `active`, the two secret key names, and HTTP 404 after delete, and the workflow file has no pull-request trigger.
+- `scripts/test_qa_live.py` checks the Nightly QA script with a fake API: it refuses to create while an `xp-ci-` subscription or Essentials subscription exists, deletes the subscription when the database step fails, creates and deletes the ACL role, ACL user, and Essentials subscription and database, requires Cloud `active`, the two secret key names, and HTTP 404 after delete, and the workflow file has no pull-request trigger.
 - `scripts/test_ci_success.py` checks that a failed or cancelled job fails `ci-success`, a skipped job does not, and `ci-success` does not depend on Nightly QA or uptest.
 - `scripts/test_alignment_guards.py` rejects an unknown `forProvider` field and checks that generation keeps both served versions and that workflows use Go 1.26.
 - `scripts/test_track_terraform_release.py` checks the release-tracking workflow: the same pin opens nothing, a newer tag would bump only `TERRAFORM_PROVIDER_VERSION`, a 3 minute timeout does not open a pull request, and the generate job does not see a GitHub token.
@@ -50,16 +50,19 @@ It runs at 06:17 UTC, and from Actions → Run workflow. It does not run on pull
 
 Live cases, in order, on the QA Redis Cloud account:
 
-1. Refuse to start when any subscription name begins with `xp-ci-`.
+1. Refuse to start when a subscription, Essentials subscription, ACL rule, ACL role, or ACL user name begins with `xp-ci-`.
 2. Payment method, Essentials plan, and region lookups each become Ready. They only read.
-3. Create one ACL rule named `xp-ci-<run id>` with rule text `+@read ~*`. Wait until Ready, confirm Cloud status `active`, delete it, and confirm that name is gone.
+3. Create one ACL rule named `xp-ci-<run id>` with rule text `+@read ~*`. Wait until Ready and Cloud status `active`. Leave it in place.
 4. Create one Pro subscription named `xp-ci-<run id>` with a fresh CIDR, `paymentMethodId` from the lookup, a dataset size, and `operations-per-second`. Wait until Cloud status is `active` and the Crossplane resource is Ready.
 5. Copy `status.atProvider.id` into the database `subscriptionId`. Create one database. Wait until Cloud status is `active` and Ready.
-6. Read the connection secret key names. Require `public_endpoint` and `private_endpoint`. `port` is not required.
-7. Delete the database. The database request returns HTTP 404.
-8. Delete the subscription. The subscription request returns HTTP 404.
+6. Create one ACL role bound to that rule and database, then one ACL user with a generated password in a Secret. Wait until each is Ready and Cloud status `active`. Delete the user, then the role. The password is not written to the log.
+7. Delete the ACL rule and confirm that name is gone.
+8. Read the connection secret key names. Require `public_endpoint` and `private_endpoint`. `port` is not required.
+9. Delete the database. The database request returns HTTP 404.
+10. Delete the subscription. The subscription request returns HTTP 404.
+11. Create one Essentials subscription from the Essentials plan lookup and the same payment method, then one Essentials database with `dataPersistence` `none` and `replication` false. Delete the database, then the subscription. Both requests return HTTP 404. Redis Cloud allows one Essentials subscription on the account. If one is already there, this step stops before creating another.
 
-A failed later step still deletes the subscription and the database. The next run deletes a leftover `xp-ci-` name before it creates another. Peering, transit gateway, private link, Private Service Connect, Active-Active, and Essentials are not in this script.
+A failed later step still deletes what that run created. The next run deletes a leftover `xp-ci-` name before it creates another. Peering, transit gateway, private link, Private Service Connect, and Active-Active are not in this script. Redis 8 upgrade, block public endpoints, and passwordless are not in this script.
 
 ### Uptest
 
@@ -69,7 +72,7 @@ What the name means: apply the YAML you name, wait until each object is Ready, t
 
 Why it is here:
 
-- Nightly QA always runs the same three objects: one ACL rule, one Pro subscription, and one database.
+- Nightly QA always runs the same QA-account objects: one ACL rule, role, and user, one Pro subscription and database, and one Essentials subscription and database.
 - A pull request that changes a different example can ask Uptest to apply that example on a real cluster.
 - Uptest is not a required check. `ci-success` does not wait for it. A merge does not need an `Uptest-` status.
 
@@ -147,7 +150,7 @@ A manual run can set `dry_run` to print the decision without opening a pull requ
 
 ### Nightly QA (`.github/workflows/qa-live.yaml`)
 
-Runs at 06:17 UTC, and from Actions → Run workflow. It does not run on pull requests. The job builds the provider on a kind cluster and runs `scripts/qa_live.py`, which creates and deletes one ACL rule, one Pro subscription, and one database on the QA account. The credential comes from the `UPTEST_CLOUD_CREDENTIALS` secret. The script requires secret keys `public_endpoint` and `private_endpoint`. `port` is not required. `attribute.password` may also be present because the sensitive-field mapping owns the password. This workflow is not a required status check.
+Runs at 06:17 UTC, and from Actions → Run workflow. It does not run on pull requests. The job builds the provider on a kind cluster and runs `scripts/qa_live.py`, which creates and deletes one ACL rule, role, and user, one Pro subscription and database, and one Essentials subscription and database on the QA account. The credential comes from the `UPTEST_CLOUD_CREDENTIALS` secret. The script requires secret keys `public_endpoint` and `private_endpoint`. `port` is not required. `attribute.password` may also be present because the sensitive-field mapping owns the password. This workflow is not a required status check.
 
 ## Testing
 
