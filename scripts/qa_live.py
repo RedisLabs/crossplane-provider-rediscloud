@@ -295,6 +295,14 @@ def clear_or_refuse(deps) -> bool:
         deps.cluster.delete(SUBSCRIPTION, name)
         sub_id = sub.get("id")
         if sub_id is not None:
+            if not delete_leftover_databases(
+                deps,
+                str(sub_id),
+                deps.cloud.list_databases,
+                deps.cloud.delete_database,
+            ):
+                deps.log("xp-ci- subscription still present; refusing to create")
+                return False
             deps.cloud.delete_subscription(str(sub_id))
     for sub in names_with_prefix(deps.cloud.list_fixed_subscriptions()):
         name = str(sub.get("name") or "")
@@ -302,6 +310,14 @@ def clear_or_refuse(deps) -> bool:
         deps.cluster.delete(ESS_SUBSCRIPTION, name)
         sub_id = sub.get("id")
         if sub_id is not None:
+            if not delete_leftover_databases(
+                deps,
+                str(sub_id),
+                deps.cloud.list_fixed_databases,
+                deps.cloud.delete_fixed_database,
+            ):
+                deps.log("xp-ci- subscription still present; refusing to create")
+                return False
             deps.cloud.delete_fixed_subscription(str(sub_id))
     if not wait_until(
         deps,
@@ -312,6 +328,24 @@ def clear_or_refuse(deps) -> bool:
         deps.log("xp-ci- subscription still present; refusing to create")
         return False
     return True
+
+
+def delete_leftover_databases(deps, sub_id: str, list_dbs, delete_db) -> bool:
+    _code, databases = list_dbs(sub_id)
+    if not databases:
+        return True
+    for row in databases:
+        db_id = row.get("databaseId")
+        if db_id is None:
+            db_id = row.get("id")
+        if db_id is not None:
+            delete_db(sub_id, str(db_id))
+    return wait_until(
+        deps,
+        "leftover xp-ci- databases to disappear",
+        deps.timeouts["delete"],
+        lambda: not list_dbs(sub_id)[1],
+    )
 
 
 def prefixed_leftovers(deps) -> bool:
@@ -1037,6 +1071,9 @@ class RedisCloud:
     def get_database(self, sub_id: str, db_id: str):
         return self.request("GET", f"/subscriptions/{sub_id}/databases/{db_id}")
 
+    def delete_database(self, sub_id: str, db_id: str) -> None:
+        self._delete(f"/subscriptions/{sub_id}/databases/{db_id}", "delete database")
+
     def list_acl_rules(self) -> list:
         return self._rows("GET", "/acl/redisRules", "list ACL rules", acl_rows)
 
@@ -1079,6 +1116,12 @@ class RedisCloud:
 
     def get_fixed_database(self, sub_id: str, db_id: str):
         return self.request("GET", f"/fixed/subscriptions/{sub_id}/databases/{db_id}")
+
+    def delete_fixed_database(self, sub_id: str, db_id: str) -> None:
+        self._delete(
+            f"/fixed/subscriptions/{sub_id}/databases/{db_id}",
+            "delete essentials database",
+        )
 
     def _rows(self, method: str, path: str, label: str, parse) -> list:
         code, body = self.request(method, path)

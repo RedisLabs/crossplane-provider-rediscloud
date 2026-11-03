@@ -37,6 +37,7 @@ class World:
         self.roles = []
         self.users = []
         self.fixed = []
+        self.fixed_databases = []
         self.objects = {}
         self.installed = False
         self.delete_clears = True
@@ -157,6 +158,12 @@ class World:
             return 404, None
         return 200, {"databaseId": db_id, "status": "active"}
 
+    def delete_database(self, sub_id: str, db_id: str) -> None:
+        self.cloud_deletes.append(f"{sub_id}/{db_id}")
+        if self.delete_clears:
+            self.database_applied = False
+            self.database_gone = True
+
     def list_acl_rules(self) -> list:
         return [dict(row) for row in self.rules]
 
@@ -195,9 +202,22 @@ class World:
         return 200, {"id": sub_id, "status": "active"}
 
     def list_fixed_databases(self, sub_id: str):
+        if self.fixed_databases:
+            return 200, [dict(row) for row in self.fixed_databases]
         if not self.ess_db_applied:
             return 200, []
         return 200, [{"name": self.ess_db_name, "status": "active", "databaseId": "60"}]
+
+    def delete_fixed_database(self, sub_id: str, db_id: str) -> None:
+        self.cloud_deletes.append(f"{sub_id}/{db_id}")
+        if self.delete_clears:
+            self.fixed_databases = [
+                row
+                for row in self.fixed_databases
+                if str(row.get("databaseId") or row.get("id")) != str(db_id)
+            ]
+            self.ess_db_applied = False
+            self.ess_db_gone = True
 
     def get_fixed_database(self, sub_id: str, db_id: str):
         if self.ess_db_gone:
@@ -365,6 +385,16 @@ class QaLiveTest(unittest.TestCase):
         self.assertIn("still present", str(caught.exception))
         self.assertEqual(world.applied, [])
         self.assertIn("8", world.cloud_deletes)
+
+    def test_leftover_essentials_deletes_database_before_subscription(self):
+        world = World()
+        world.fixed = [{"id": "8", "name": "xp-ci-old", "status": "active"}]
+        world.fixed_databases = [{"databaseId": "61", "name": "xp-ci-old-db", "status": "active"}]
+        deps = deps_for(world)
+        qa_live.cleanup_only(deps)
+        self.assertEqual(world.cloud_deletes, ["8/61", "8"])
+        self.assertEqual(world.fixed, [])
+        self.assertEqual(world.fixed_databases, [])
 
     def test_fixed_database_list_reads_the_subscription_object(self):
         body = {"subscription": {"subscriptionId": 1, "databases": [{"name": "db", "status": "active"}]}}
