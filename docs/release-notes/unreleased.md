@@ -4,6 +4,18 @@ Draft notes for the first package. No official package has been published, and t
 Compared with the provider already in the repo: main `6128cb7`, 9 September 2025.
 Current main is `a2b716c`, 31 October 2026.
 
+## Contents
+
+- [Publication](#publication)
+- [Motivation](#motivation)
+- [What changed](#what-changed)
+- [Custom resources](#custom-resources)
+  - [Introduced](#introduced)
+  - [Changed](#changed)
+  - [sub ref](#sub-ref)
+- [Unchanged on purpose](#unchanged-on-purpose)
+- [Checked](#checked)
+
 ## Publication
 
 There is no official publication yet.
