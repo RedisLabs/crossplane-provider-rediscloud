@@ -36,44 +36,6 @@ In short, the new work adds:
 - A workflow that opens a pull request when a newer Terraform release exists.
 - A required CI check, a vulnerability scan, and a nightly create-and-delete on the QA Redis Cloud account.
 
-## Custom resources
-
-Compared with the provider at `6128cb7` (9 September 2025). A resource that already existed is stored as `v1beta1`, and `v1alpha1` is still accepted. The controller timeout on each managed resource is 30 minutes. The column names the fields and behavior that are new for that resource. The three lookups are new and stay `v1alpha1`. `ProviderConfig` was already `v1beta1`. `StoreConfig` is not in this release.
-
-| Custom resource | What's new in this release |
-| --- | --- |
-| [Role](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/acl.redis.io_roles.yaml) (`acl.redis.io`) | No new fields. |
-| [Rule](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/acl.redis.io_rules.yaml) (`acl.redis.io`) | No new fields. |
-| [User](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/acl.redis.io_users.yaml) (`acl.redis.io`) | No new fields. The password was already a secret reference. |
-| [Subscription](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/rediscloud.redis.io_subscriptions.yaml) (`rediscloud.redis.io`) | Pro subscription. `customerManagedKey`, `customerManagedKeyEnabled`, `customerManagedKeyDeletionGracePeriod`, and `publicEndpointAccess`. `cloudProvider.resourceTags` sets cloud tags. Status includes `prometheusEndpoint`. |
-| [Database](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/subscription.redis.io_databases.yaml) (`subscription.redis.io`) | Pro database. `enablePasswordless`, `redisVersion`, `autoMinorVersionUpgrade`, and `ramPercentage` (RAM share on a ram-and-flash subscription). The connection secret publishes `public_endpoint` and `private_endpoint`. `subscriptionId` stays a number. |
-| [Peering](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/subscription.redis.io_peerings.yaml) (`subscription.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Pro subscription. |
-| [Link](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_links.yaml) (`private.redis.io`) | Introduced. Private link for a Pro subscription. `subscriptionIdRef` selects that subscription. |
-| [ServiceConnect](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_serviceconnects.yaml) (`private.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Pro subscription. |
-| [ServiceConnectEndpoint](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_serviceconnectendpoints.yaml) (`private.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Pro subscription. |
-| [ServiceConnectEndpointAccepter](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_serviceconnectendpointaccepters.yaml) (`private.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Pro subscription. |
-| [GatewayAttachment](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/transit.redis.io_gatewayattachments.yaml) (`transit.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Pro subscription. |
-| [GatewayInvitationAcceptor](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/transit.redis.io_gatewayinvitationacceptors.yaml) (`transit.redis.io`) | Introduced. Accepts or rejects a Transit Gateway invitation for a Pro subscription. |
-| [GatewayRoute](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/transit.redis.io_gatewayroutes.yaml) (`transit.redis.io`) | Introduced. Sets the Transit Gateway CIDR routes for a Pro subscription. |
-| [Subscription](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/essentials.redis.io_subscriptions.yaml) (`essentials.redis.io`) | No new fields. |
-| [Database](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/essentials.redis.io_databases.yaml) (`essentials.redis.io`) | `redisVersion`. The connection secret publishes `public_endpoint` and `private_endpoint`. |
-| [Account](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/cloud.redis.io_accounts.yaml) (`cloud.redis.io`) | No new fields. The access key and console password were already secret references. |
-| [ActiveSubscription](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptions.yaml) (`active.redis.io`) | `customerManagedKey`, `customerManagedKeyEnabled`, `customerManagedKeyDeletionGracePeriod`, `publicEndpointAccess`, and `resourceTags`. Status includes `prometheusEndpoint`. |
-| [ActiveSubscriptionDatabase](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptiondatabases.yaml) (`active.redis.io`) | `redisVersion`, `autoMinorVersionUpgrade`, `globalEnableDefaultUser`, and `globalEnablePasswordless`. Status includes `redisVersionActual`. Client certificates are `clientSslCertificateSecretRef` and `clientTlsCertificatesSecretRef`. The connection secret publishes `public_endpoint.<region>` and `private_endpoint.<region>`. |
-| [ActiveSubscriptionPeering](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptionpeerings.yaml) (`active.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Active-Active subscription. |
-| [ActiveSubscriptionRegions](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptionregions.yaml) (`active.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Active-Active subscription. |
-| [ActivePrivateLink](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivatelinks.yaml) (`active.redis.io`) | Introduced. Private link for one region of an Active-Active subscription. |
-| [ActivePrivateServiceConnect](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivateserviceconnects.yaml) (`active.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Active-Active subscription. |
-| [ActivePrivateServiceConnectEndpoint](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivateserviceconnectendpoints.yaml) (`active.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Active-Active subscription. |
-| [ActivePrivateServiceConnectEndpointAccepter](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivateserviceconnectendpointaccepters.yaml) (`active.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Active-Active subscription. |
-| [ActiveTransitGatewayAttachment](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activetransitgatewayattachments.yaml) (`active.redis.io`) | `subscriptionIdRef` and `subscriptionIdSelector` select the Active-Active subscription. |
-| [ActiveTransitGatewayInvitationAcceptor](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activetransitgatewayinvitationacceptors.yaml) (`active.redis.io`) | Introduced. Accepts or rejects a Transit Gateway invitation for one Active-Active region. |
-| [ActiveTransitGatewayRoute](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activetransitgatewayroutes.yaml) (`active.redis.io`) | Introduced. Sets the Transit Gateway CIDR routes for one Active-Active region. |
-| [PaymentMethod](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/lookup.redis.io_paymentmethods.yaml) (`lookup.redis.io`) | Introduced. Reads a payment method id. Stored as `v1alpha1`. |
-| [EssentialsPlan](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/lookup.redis.io_essentialsplans.yaml) (`lookup.redis.io`) | Introduced. Reads an Essentials plan id. Stored as `v1alpha1`. |
-| [Regions](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/lookup.redis.io_regions.yaml) (`lookup.redis.io`) | Introduced. Reads a region id. Stored as `v1alpha1`. |
-| [ProviderConfig](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/rediscloud.redis.io_providerconfigs.yaml) (`rediscloud.redis.io`) | No field change. It was already `v1beta1`. |
-
 ## What changed
 
 1. This Crossplane provider uses the [Terraform Redis Cloud provider](https://github.com/RedisLabs/terraform-provider-rediscloud), aligned from v2.1.5 to v2.19.3
@@ -138,6 +100,49 @@ Compared with the provider at `6128cb7` (9 September 2025). A resource that alre
     - A nightly workflow builds the provider on a kind cluster and runs against the QA Redis Cloud account. It creates and deletes one ACL rule, one Pro subscription, and one database. It is not a required pull-request check.
     - That same live path was run by hand first: three ACL cycles, three Pro subscription cycles, and one database. Each was created, became Ready, and was deleted.
     - A coverage-percentage gate was not added. Generated files would dominate that number.
+
+## Custom resources
+
+Compared with the provider at `6128cb7` (9 September 2025). A managed resource that already existed is stored as `v1beta1` instead of `v1alpha1`, and `v1alpha1` is still accepted. The controller timeout is 30 minutes.
+
+### Introduced
+
+| Custom resource | Stored version | What's new |
+| --- | --- | --- |
+| [Link](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_links.yaml) (`private.redis.io`) | `v1beta1` | Private link for a Pro subscription. [sub ref](#sub-ref) |
+| [GatewayInvitationAcceptor](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/transit.redis.io_gatewayinvitationacceptors.yaml) (`transit.redis.io`) | `v1beta1` | Accepts or rejects a Transit Gateway invitation for a Pro subscription. [sub ref](#sub-ref) |
+| [GatewayRoute](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/transit.redis.io_gatewayroutes.yaml) (`transit.redis.io`) | `v1beta1` | Sets the Transit Gateway CIDR routes for a Pro subscription. [sub ref](#sub-ref) |
+| [ActivePrivateLink](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivatelinks.yaml) (`active.redis.io`) | `v1beta1` | Private link for one region of an Active-Active subscription. [sub ref](#sub-ref) |
+| [ActiveTransitGatewayInvitationAcceptor](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activetransitgatewayinvitationacceptors.yaml) (`active.redis.io`) | `v1beta1` | Accepts or rejects a Transit Gateway invitation for one Active-Active region. [sub ref](#sub-ref) |
+| [ActiveTransitGatewayRoute](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activetransitgatewayroutes.yaml) (`active.redis.io`) | `v1beta1` | Sets the Transit Gateway CIDR routes for one Active-Active region. [sub ref](#sub-ref) |
+| [PaymentMethod](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/lookup.redis.io_paymentmethods.yaml) (`lookup.redis.io`) | `v1alpha1` | Reads a payment method id. |
+| [EssentialsPlan](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/lookup.redis.io_essentialsplans.yaml) (`lookup.redis.io`) | `v1alpha1` | Reads an Essentials plan id. |
+| [Regions](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/lookup.redis.io_regions.yaml) (`lookup.redis.io`) | `v1alpha1` | Reads a region id. |
+
+### Changed
+
+| Custom resource | Stored version | What's new |
+| --- | --- | --- |
+| [Subscription](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/rediscloud.redis.io_subscriptions.yaml) (`rediscloud.redis.io`) | `v1alpha1` to `v1beta1` | Pro subscription. `customerManagedKey`, `customerManagedKeyEnabled`, `customerManagedKeyDeletionGracePeriod`, and `publicEndpointAccess`. `cloudProvider.resourceTags` sets cloud tags. Status includes `prometheusEndpoint`. |
+| [Database](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/subscription.redis.io_databases.yaml) (`subscription.redis.io`) | `v1alpha1` to `v1beta1` | Pro database. `enablePasswordless`, `redisVersion`, `autoMinorVersionUpgrade`, and `ramPercentage` (RAM share on a ram-and-flash subscription). The connection secret publishes `public_endpoint` and `private_endpoint`. `subscriptionId` stays a number. |
+| [Peering](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/subscription.redis.io_peerings.yaml) (`subscription.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ServiceConnect](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_serviceconnects.yaml) (`private.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ServiceConnectEndpoint](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_serviceconnectendpoints.yaml) (`private.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ServiceConnectEndpointAccepter](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/private.redis.io_serviceconnectendpointaccepters.yaml) (`private.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [GatewayAttachment](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/transit.redis.io_gatewayattachments.yaml) (`transit.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [Database](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/essentials.redis.io_databases.yaml) (`essentials.redis.io`) | `v1alpha1` to `v1beta1` | `redisVersion`. The connection secret publishes `public_endpoint` and `private_endpoint`. |
+| [ActiveSubscription](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptions.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | `customerManagedKey`, `customerManagedKeyEnabled`, `customerManagedKeyDeletionGracePeriod`, `publicEndpointAccess`, and `resourceTags`. Status includes `prometheusEndpoint`. |
+| [ActiveSubscriptionDatabase](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptiondatabases.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | `redisVersion`, `autoMinorVersionUpgrade`, `globalEnableDefaultUser`, and `globalEnablePasswordless`. Status includes `redisVersionActual`. Client certificates are `clientSslCertificateSecretRef` and `clientTlsCertificatesSecretRef`. The connection secret publishes `public_endpoint.<region>` and `private_endpoint.<region>`. |
+| [ActiveSubscriptionPeering](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptionpeerings.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ActiveSubscriptionRegions](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activesubscriptionregions.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ActivePrivateServiceConnect](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivateserviceconnects.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ActivePrivateServiceConnectEndpoint](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivateserviceconnectendpoints.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ActivePrivateServiceConnectEndpointAccepter](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activeprivateserviceconnectendpointaccepters.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+| [ActiveTransitGatewayAttachment](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/package/crds/active.redis.io_activetransitgatewayattachments.yaml) (`active.redis.io`) | `v1alpha1` to `v1beta1` | [sub ref](#sub-ref) |
+
+<a id="sub-ref"></a>
+
+**sub ref.** `subscriptionIdRef` and `subscriptionIdSelector` select the parent subscription. For a Pro resource the parent is `rediscloud.redis.io` Subscription. For an Active-Active resource the parent is `active.redis.io` ActiveSubscription.
 
 ## Unchanged on purpose
 
