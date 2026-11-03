@@ -2,6 +2,30 @@ name: Comment Commands
 
 on: issue_comment
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 jobs:
-  comment-commands:
-    uses: upbound/official-providers-ci/.github/workflows/provider-commands.yml@standard-runners
+  backport:
+    runs-on: ubuntu-24.04
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/backport')
+    steps:
+      - name: Extract Command
+        id: command
+        uses: xt0rted/slash-command-action@bf51f8f5f4ea3d58abc7eca58f77104182b23e88 # v2.0.0
+        with:
+          command: backport
+          reaction: "true"
+          reaction-type: "eyes"
+          allow-edits: "false"
+          permission-level: write
+
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Open Backport PR
+        uses: zeebe-io/backport-action@be567af183754f6a5d831ae90f648954763f17f5 # v3.1.0

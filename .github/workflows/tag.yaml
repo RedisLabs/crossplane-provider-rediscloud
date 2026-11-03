@@ -1,18 +1,30 @@
 name: Tag
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
     inputs:
       version:
         description: 'Release version (e.g. v0.1.0)'
         required: true
+        type: string
       message:
         description: 'Tag message'
         required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   tag:
-    uses: upbound/official-providers-ci/.github/workflows/provider-tag.yml@standard-runners
-    with:
-      version: ${{ github.event.inputs.version }}
-      message: ${{ github.event.inputs.message }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+
+      - name: Create Tag
+        uses: negz/create-tag@39bae1e0932567a58c20dea5a1a0d18358503320 # v1
+        with:
+          version: ${{ github.event.inputs.version }}
+          message: ${{ github.event.inputs.message }}
+          token: ${{ secrets.GITHUB_TOKEN }}
