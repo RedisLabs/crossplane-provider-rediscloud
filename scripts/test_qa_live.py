@@ -51,6 +51,8 @@ class World:
         self.subscription_gone = False
         self.database_gone = False
         self.database_applied = False
+        self.database_gets = []
+        self.fixed_database_gets = []
         self.ess_db_applied = False
         self.ess_sub_gone = False
         self.ess_db_gone = False
@@ -85,11 +87,11 @@ class World:
         elif kind == "Database" and api.startswith("essentials."):
             self.ess_db_applied = True
             self.ess_db_name = manifest["spec"]["forProvider"]["name"]
-            self.objects[(qa_live.ESS_DATABASE, name)] = ready("60")
+            self.objects[(qa_live.ESS_DATABASE, name)] = ready("200/60")
         elif kind == "Database":
             self.database_applied = True
             self.database_name = manifest["spec"]["forProvider"]["name"]
-            self.objects[(qa_live.DATABASE, name)] = ready("50")
+            self.objects[(qa_live.DATABASE, name)] = ready("100/50")
         elif kind == "PaymentMethod":
             self.objects[(qa_live.PAYMENT, name)] = ready("1")
         elif kind == "EssentialsPlan":
@@ -152,6 +154,7 @@ class World:
         return 200, [{"name": self.database_name, "status": self.database_status, "databaseId": "50"}]
 
     def get_database(self, sub_id: str, db_id: str):
+        self.database_gets.append(str(db_id))
         if self.database_http is not None:
             return self.database_http, None
         if self.database_gone:
@@ -220,6 +223,7 @@ class World:
             self.ess_db_gone = True
 
     def get_fixed_database(self, sub_id: str, db_id: str):
+        self.fixed_database_gets.append(str(db_id))
         if self.ess_db_gone:
             return 404, None
         return 200, {"databaseId": db_id, "status": "active"}
@@ -324,6 +328,12 @@ class QaLiveTest(unittest.TestCase):
         role = next(item for item in world.applied if item["kind"] == "Role")
         bound = role["spec"]["forProvider"]["rule"][0]["database"][0]
         self.assertEqual(bound, {"subscription": 100, "database": 50})
+        self.assertIn("50", world.database_gets)
+        self.assertNotIn("100/50", world.database_gets)
+        self.assertIn("60", world.fixed_database_gets)
+        self.assertNotIn("200/60", world.fixed_database_gets)
+        self.assertNotIn("100/50", text)
+        self.assertNotIn("200/60", text)
         essentials = next(
             item for item in world.applied
             if item["kind"] == "Subscription" and item["apiVersion"].startswith("essentials.")
@@ -419,6 +429,16 @@ class QaLiveTest(unittest.TestCase):
         with self.assertRaises(qa_live.SuiteFailure):
             qa_live.cleanup_only(deps)
         self.assertEqual(world.applied, [])
+
+    def test_database_number_uses_the_database_segment(self):
+        self.assertEqual(qa_live.database_number("50"), "50")
+        self.assertEqual(qa_live.database_number("100/50"), "50")
+        self.assertEqual(qa_live.observed_database_id({"databaseId": 60}, "200/60"), "60")
+        self.assertEqual(qa_live.observed_database_id({}, "200/60"), "60")
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.database_number("100/50/1")
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.database_number("subscription/database")
 
     def test_context_guard(self):
         qa_live.assert_safe_context("kind-local-dev")
