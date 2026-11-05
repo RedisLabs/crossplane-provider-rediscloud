@@ -27,7 +27,7 @@ It runs on every pull request and on pushes to `main`. It does not call Redis Cl
 
 `make test` cases, all without Redis Cloud:
 
-- All 27 managed resources are registered, including the six added after Terraform v2.1.5, and each of those six references a subscription.
+- All 29 managed resources are registered, including Agent Memory and the six added after Terraform v2.1.5. Each of those six references a subscription. Every resource in `config/schema.json` is in `ExternalNameConfigs`.
 - Controller timeout stays 30 minutes.
 - Active-Active `clientTlsCertificatesSecretRef` stays a secret-reference list.
 - Database types have no `subscriptionIdRef`. String children, such as peering, keep that reference.

@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
 
 // managedResources is the Terraform v2.20.0 managed resource list. A new
 // resource has to be added here and in ExternalNameConfigs together.
@@ -79,6 +83,35 @@ func TestNewResourcesReferenceASubscription(t *testing.T) {
 		}
 		if parent == "" {
 			t.Errorf("%s reference parent is empty", name)
+		}
+	}
+}
+
+func TestSchemaResourcesAreConfigured(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile("schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		ProviderSchemas map[string]struct {
+			ResourceSchemas map[string]json.RawMessage `json:"resource_schemas"`
+		} `json:"provider_schemas"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.ProviderSchemas) != 1 {
+		t.Fatalf("provider schemas: %d", len(doc.ProviderSchemas))
+	}
+	for _, schema := range doc.ProviderSchemas {
+		if len(schema.ResourceSchemas) != len(ExternalNameConfigs) {
+			t.Fatalf("schema has %d resources, ExternalNameConfigs has %d", len(schema.ResourceSchemas), len(ExternalNameConfigs))
+		}
+		for name := range schema.ResourceSchemas {
+			if _, ok := ExternalNameConfigs[name]; !ok {
+				t.Errorf("schema resource %s is not generated", name)
+			}
 		}
 	}
 }
