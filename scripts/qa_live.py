@@ -217,6 +217,33 @@ def numeric_id(value: str):
     return number
 
 
+def database_number(value) -> str:
+    """Return the database segment of a Terraform id.
+
+    Pro and Essentials databases store status.atProvider.id as
+    subscription/database. A plain database number is unchanged.
+    """
+    text = str(value).strip()
+    parts = text.split("/")
+    if len(parts) == 2:
+        text = parts[1].strip()
+    elif len(parts) != 1:
+        raise SuiteFailure("database id is not a number")
+    if not text.isdigit():
+        raise SuiteFailure("database id is not a number")
+    return text
+
+
+def observed_database_id(row: dict | None, cr_id) -> str:
+    cloud_id = None
+    if isinstance(row, dict):
+        cloud_id = row.get("databaseId")
+        if cloud_id in (None, ""):
+            cloud_id = row.get("id")
+    raw = cloud_id if cloud_id not in (None, "") else cr_id
+    return database_number(raw)
+
+
 class State:
     def __init__(self, run_name: str):
         self.run_name = run_name
@@ -479,7 +506,8 @@ def database_is_active(deps, state: State, holder: dict) -> bool:
         raise SuiteFailure(f"database {state.run_name} was rejected by the API")
     cr_id = ((cr or {}).get("status") or {}).get("atProvider", {}).get("id")
     if status == "active" and is_ready(cr) and cr_id not in (None, ""):
-        holder["id"] = cr_id
+        deps.remember_secret(str(cr_id))
+        holder["id"] = observed_database_id(row, cr_id)
         return True
     return False
 
@@ -654,7 +682,8 @@ def essentials_database_is_active(deps, state: State, holder: dict) -> bool:
         raise SuiteFailure(f"essentials database {state.run_name} cloud status error")
     cr_id = ((cr or {}).get("status") or {}).get("atProvider", {}).get("id")
     if status == "active" and is_ready(cr) and cr_id not in (None, ""):
-        holder["id"] = cr_id
+        deps.remember_secret(str(cr_id))
+        holder["id"] = observed_database_id(row, cr_id)
         return True
     return False
 
