@@ -44,9 +44,6 @@ func TestMatchEssentialsPlan(t *testing.T) {
 	if CanonicalProvider("AZURE") != "Azure" || CanonicalProvider("gcp") != "GCP" {
 		t.Fatal("provider canonical form")
 	}
-	if EssentialsPlanListProvider("Azure") != "AZURE" || EssentialsPlanListProvider(" aws ") != "AWS" || EssentialsPlanListProvider("gcp") != "GCP" {
-		t.Fatal("plan list provider query")
-	}
 
 	_, err = MatchEssentialsPlan(plansList, EssentialsPlanQuery{Name: "small"})
 	if !errors.Is(err, ErrMany) {
@@ -80,4 +77,17 @@ func redisPlanID(plan *plans.GetPlanResponse) int {
 		return 0
 	}
 	return *plan.ID
+}
+
+func TestEssentialsPlanListProvider(t *testing.T) {
+	cases := map[string]string{
+		"Azure": "AZURE",
+		" aws ": "AWS",
+		"gcp":   "GCP",
+	}
+	for in, want := range cases {
+		if got := EssentialsPlanListProvider(in); got != want {
+			t.Fatalf("%q: got %s", in, got)
+		}
+	}
 }

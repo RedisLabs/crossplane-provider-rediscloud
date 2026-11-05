@@ -5,10 +5,13 @@
 package lookup
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/RedisLabs/rediscloud-go-api/redis"
 	"github.com/RedisLabs/rediscloud-go-api/service/fixed/plans"
+
+	lookupv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/lookup/v1alpha1"
 )
 
 func TestObservePlanCopiesCapabilityFields(t *testing.T) {
@@ -41,25 +44,31 @@ func TestObservePlanCopiesCapabilityFields(t *testing.T) {
 		SupportedAlerts:               []*string{&alert, nil},
 		CustomerSupport:               redis.String("Standard"),
 	})
-	if got.CloudProvider != "Azure" || got.MaximumDatabases != "1" || got.MaximumThroughput != "1000" || got.MaximumBandwidthGB != "5" {
-		t.Fatalf("identity and limits: %#v", got)
+	want := lookupv1alpha1.EssentialsPlanObservation{
+		ID:                            "7",
+		Name:                          "1GB",
+		Size:                          "1",
+		SizeMeasurementUnit:           "GB",
+		CloudProvider:                 "Azure",
+		Region:                        "eastus",
+		RegionID:                      "9",
+		Availability:                  "No replication",
+		Price:                         "10",
+		PriceCurrency:                 "USD",
+		PricePeriod:                   "Month",
+		MaximumDatabases:              "1",
+		MaximumThroughput:             "1000",
+		MaximumBandwidthGB:            "5",
+		Connections:                   "unlimited",
+		CidrAllowRules:                "4",
+		SupportDataPersistence:        &persistence,
+		SupportInstantAndDailyBackups: &backups,
+		SupportReplication:            &replication,
+		SupportClustering:             &clustering,
+		SupportedAlerts:               []string{"dataset-size"},
+		CustomerSupport:               "Standard",
 	}
-	if got.Connections != "unlimited" || got.CidrAllowRules != "4" || got.CustomerSupport != "Standard" {
-		t.Fatalf("connections: %#v", got)
-	}
-	if got.SupportDataPersistence == nil || *got.SupportDataPersistence {
-		t.Fatal("data persistence should be false")
-	}
-	if got.SupportReplication == nil || *got.SupportReplication {
-		t.Fatal("replication should be false")
-	}
-	if got.SupportInstantAndDailyBackups == nil || !*got.SupportInstantAndDailyBackups {
-		t.Fatal("backups should be true")
-	}
-	if got.SupportClustering == nil || !*got.SupportClustering {
-		t.Fatal("clustering should be true")
-	}
-	if len(got.SupportedAlerts) != 1 || got.SupportedAlerts[0] != "dataset-size" {
-		t.Fatalf("alerts: %#v", got.SupportedAlerts)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v", got)
 	}
 }
