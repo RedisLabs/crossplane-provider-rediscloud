@@ -24,7 +24,9 @@ spec:
     - name: us-east-2
       overrideGlobalSourceIps:
       - 192.10.0.0/16
-    - name: us-east-1
+    - localReadOperationsPerSecond: 2000
+      localWriteOperationsPerSecond: 1000
+      name: us-east-1
       overrideGlobalAlert:
       - name: dataset-size
         value: 60

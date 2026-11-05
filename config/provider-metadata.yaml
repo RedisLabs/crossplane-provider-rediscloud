@@ -485,6 +485,8 @@ resources:
                       ]
                     },
                     {
+                      "local_read_operations_per_second": 2000,
+                      "local_write_operations_per_second": 1000,
                       "name": "us-east-1",
                       "override_global_alert": [
                         {
@@ -555,6 +557,8 @@ resources:
             name: '- (Required) A meaningful name to identify the database (maximum 40 characters).'
             override_region: '- (Optional) Override region specific configuration, documented below'
             override_region.enable_default_user: '- (Optional) Whether the default user should be enabled for this specific region. If not set, inherits from global_enable_default_user. Only set this if you need a different value for this region than the global setting'
+            override_region.local_read_operations_per_second: '- (Optional) Local read operations per second for this region, the same value as Local read ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions'
+            override_region.local_write_operations_per_second: '- (Optional) Local write operations per second for this region, the same value as Local write ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions'
             override_region.name: '- (Required) Region name.'
             override_region.override_global_alert: '- (Optional) A block defining Redis regional instance of an Active-Active database alert, documented below, can be specified multiple times'
             override_region.override_global_alert.name: '- (Required) Alert name'
@@ -821,6 +825,244 @@ resources:
             subscription_id: '- (Required) The ID of the Active-Active subscription'
             tgw_id: '- (Required) The ID of the Transit Gateway'
         importStatements: []
+    rediscloud_agent_memory:
+        subCategory: ""
+        description: Agent Memory resource in the Redis Cloud Terraform provider.
+        name: rediscloud_agent_memory
+        title: rediscloud_agent_memory
+        examples:
+            - name: example
+              manifest: |-
+                {
+                  "database_id": "${rediscloud_subscription_database.example.db_id}",
+                  "name": "example-memory"
+                }
+              references:
+                database_id: rediscloud_subscription_database.example.db_id
+            - name: example
+              manifest: |-
+                {
+                  "database_id": "${rediscloud_subscription_database.example.db_id}",
+                  "extraction_cadence_seconds": 300,
+                  "extraction_strategy": "INSTRUCT",
+                  "long_term_ttl_seconds": 31536000,
+                  "name": "example-memory",
+                  "short_term_ttl_seconds": 86400
+                }
+              references:
+                database_id: rediscloud_subscription_database.example.db_id
+            - name: example
+              manifest: |-
+                {
+                  "database_id": "${rediscloud_subscription_database.example.db_id}",
+                  "embedding": [
+                    {
+                      "credentials": [
+                        {
+                          "api_key": "${var.agent_memory_embedding_api_key}",
+                          "api_key_version": 1,
+                          "type": "apiKey"
+                        }
+                      ],
+                      "model": "text-embedding-3-small",
+                      "provider": "openai"
+                    }
+                  ],
+                  "extraction_cadence_seconds": 300,
+                  "extraction_strategy": "INSTRUCT",
+                  "llm": [
+                    {
+                      "credentials": [
+                        {
+                          "api_key": "${var.agent_memory_llm_api_key}",
+                          "api_key_version": 1,
+                          "type": "apiKey"
+                        }
+                      ],
+                      "model": "gpt-4o-mini",
+                      "provider": "openai"
+                    }
+                  ],
+                  "long_term_ttl_seconds": 31536000,
+                  "name": "example-memory",
+                  "short_term_ttl_seconds": 86400
+                }
+              references:
+                database_id: rediscloud_subscription_database.example.db_id
+                embedding.credentials.api_key: var.agent_memory_embedding_api_key
+                llm.credentials.api_key: var.agent_memory_llm_api_key
+            - name: example
+              manifest: |-
+                {
+                  "custom_memory_types": [
+                    {
+                      "description": "User preferences captured from conversations",
+                      "extraction_strategy": [
+                        {
+                          "enabled": true,
+                          "prompt": "Extract durable user preferences."
+                        }
+                      ],
+                      "fields": [
+                        {
+                          "description": "Preference topic",
+                          "name": "topic",
+                          "type": "str"
+                        }
+                      ],
+                      "name": "preference"
+                    }
+                  ],
+                  "database_id": "${rediscloud_subscription_database.example.db_id}",
+                  "extraction_cadence_seconds": 300,
+                  "extraction_strategy": "INSTRUCT",
+                  "long_term_memory_exclusions": [
+                    {
+                      "built_in_detectors": [
+                        {
+                          "detectors": [
+                            {
+                              "action": "redact",
+                              "enabled": true,
+                              "id": "email"
+                            }
+                          ],
+                          "enabled": true
+                        }
+                      ],
+                      "custom_detectors": [
+                        {
+                          "detectors": [
+                            {
+                              "action": "redact",
+                              "enabled": true,
+                              "matcher": [
+                                {
+                                  "kind": "regex",
+                                  "regex": [
+                                    {
+                                      "pattern": "ACCT-[0-9]+"
+                                    }
+                                  ]
+                                }
+                              ],
+                              "name": "account_number"
+                            }
+                          ],
+                          "enabled": true
+                        }
+                      ],
+                      "enabled": true,
+                      "semantic": [
+                        {
+                          "enabled": true,
+                          "prompt": "Do not remember secrets, recovery codes, or payment credentials."
+                        }
+                      ]
+                    }
+                  ],
+                  "long_term_ttl_seconds": 31536000,
+                  "name": "example-memory",
+                  "short_term_ttl_seconds": 86400,
+                  "summarization": [
+                    {
+                      "enabled": true,
+                      "event_count": [
+                        {
+                          "retain_count": 10,
+                          "threshold": 20
+                        }
+                      ],
+                      "trigger_strategy": "event_count"
+                    }
+                  ]
+                }
+              references:
+                database_id: rediscloud_subscription_database.example.db_id
+        argumentDocs:
+            action: '- Action when the detector matches. Examples include redact and drop; accepted values are validated by the Agent Memory API. When omitted, the provider records the value returned by the API.'
+            api_key: '- Provider API key omitted from plan/state values. Requires api_key_version.'
+            api_key_version: '- Positive version for in-place credential rotation. Change it whenever the write-only key changes.'
+            built_in_detectors: '- Built-in sensitive-data detector configuration.'
+            created_at: '- The Agent Memory service creation timestamp.'
+            credentials: '- Required when creating a store with customer-managed models; optional on existing/imported stores. When present, type, api_key, and api_key_version must be configured.'
+            custom_detectors: '- Custom regex detector configuration.'
+            custom_memory_types: '- Custom long-term memory types. Quantity limits are validated by the Agent Memory API.'
+            database_id: |-
+                - The ID of the Redis Cloud database that backs the Agent Memory service. Changing it requires replacement.
+                Must be an integer. Validity and access to the database are checked by the Agent Memory API.
+            description: '- Custom type description. Maximum length is validated by the Agent Memory API.'
+            detectors: '- Built-in detector selections.'
+            egress_ips: '- Egress IP addresses used by the endpoint.'
+            embedding: '- Customer-managed embedding model configuration for long-term memory. If configured, llm must also be configured. Both provider and model must be explicitly configured.'
+            enabled: '- Whether automatic summarization is enabled.'
+            endpoint: '- The primary data-plane API endpoint for the Agent Memory service.'
+            endpoints: '- Regional data-plane API endpoints for the Agent Memory service.'
+            event_count: '- Event-count thresholds. Numeric limits are validated by the Agent Memory API. Both fields must be configured when this block is present.'
+            extraction_cadence_seconds: '- How often the extraction pipeline runs while a session is active, in seconds. Accepted values are validated by the Agent Memory API.'
+            extraction_strategy: |-
+                - How long-term memories are extracted from sessions.
+                Accepted values are validated by the Agent Memory API. Changing an explicitly configured strategy requires replacement because the API does not support updating it in place.
+            fields: '- Structured fields for this custom memory type.'
+            id: '- Non-blank built-in detector ID validated by the Agent Memory API. Examples include credit-card, email, ip-address, phone, and us-ssn; the available catalogue is managed by the service.'
+            is_accessible: '- Whether the endpoint is reachable from the store''s database network.'
+            kind: '- Matcher kind validated by the Agent Memory API. When kind is regex, the regex block is required. The published API currently documents regex; other kinds needing additional fields require SDK/schema support.'
+            llm: '- Customer-managed LLM configuration. If configured, embedding must also be configured. Both provider and model must be explicitly configured.'
+            long_term_memory_exclusions: '- Exclusion policy applied to newly extracted long-term memories.'
+            long_term_ttl_seconds: |-
+                - Long-term memory TTL in seconds.
+                The API accepts 1 second to 1 year. This must be configured explicitly when embedding is configured.
+            matcher: '- Detector matcher configuration.'
+            model: '- Model name advertised by the provider.'
+            name: |-
+                - The name of the Agent Memory service.
+                Must contain at least one non-whitespace character. Maximum length is validated by the Agent Memory API.
+            prompt: '- Prompt used to extract memories of this custom type. Required when this extraction strategy block is present. Additional limits are determined by the Agent Memory service.'
+            provider: '- Model provider. The Agent Memory API validates this against the providers supported by the service. Changing an explicitly configured provider requires replacement.'
+            regex.pattern: '- Regex pattern used by the matcher. Maximum length and syntax are validated by the Agent Memory API. Non-empty patterns known to match empty text are rejected locally.'
+            region: '- Cloud region of the endpoint.'
+            retain_count: '- Number of most recent messages retained in full.'
+            semantic: '- Semantic exclusion configuration.'
+            short_term_ttl_seconds: |-
+                - Short-term memory TTL in seconds.
+                The API accepts 1 second to 1 year.
+            status: '- The current provisioning status.'
+            summarization: '- Automatic session summarization configuration.'
+            threshold: '- Number of messages that triggers summarization. Must be greater than retain_count.'
+            trigger_strategy: '- Summarization trigger strategy. Accepted values are validated by the Agent Memory API; when omitted, the provider records the value returned by the API.'
+            type: '- Credential type validated by the Agent Memory API.'
+            url: '- Endpoint URL.'
+        importStatements:
+            - $ terraform import rediscloud_agent_memory.example store-id
+    rediscloud_agent_memory_api_key:
+        subCategory: ""
+        description: Agent Memory data-plane API key resource in the Redis Cloud Terraform provider.
+        name: rediscloud_agent_memory_api_key
+        title: rediscloud_agent_memory_api_key
+        examples:
+            - name: application
+              manifest: |-
+                {
+                  "name": "application",
+                  "store_id": "${rediscloud_agent_memory.example.id}"
+                }
+              references:
+                store_id: rediscloud_agent_memory.example.id
+              dependencies:
+                rediscloud_agent_memory.example: |-
+                    {
+                      "database_id": "${rediscloud_subscription_database.example.db_id}",
+                      "name": "example-memory"
+                    }
+        argumentDocs:
+            api_key: '- The generated data-plane API key. This value is sensitive and is returned only during creation.'
+            created_at: '- The API key creation timestamp.'
+            id: '- The API key ID.'
+            name: '- (Required) The name of the API key. Must be non-empty and must not contain whitespace. Maximum length is validated by the Agent Memory API.'
+            obfuscated_token: '- The obfuscated API key returned by the Admin API.'
+            store_id: '- (Required) The Agent Memory store ID. Must contain only letters, numbers, and hyphens. The Agent Memory API validates the referenced store.'
+        importStatements:
+            - $ terraform import rediscloud_agent_memory_api_key.application store-id/api-key-id
     rediscloud_cloud_account:
         subCategory: ""
         description: Cloud Account resource in the Redis Cloud Terraform provider.
