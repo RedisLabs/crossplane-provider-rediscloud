@@ -39,16 +39,16 @@ A successful reconcile sets Ready and Synced. Zero matches or more than one matc
 | Kind | Spec filters | Status |
 | --- | --- | --- |
 | `PaymentMethod` | `cardType`, `lastFourNumbers`, `excludeExpired` (default true) | `atProvider.id`, `cardType`, `lastFourNumbers` |
-| `EssentialsPlan` | `id`, `name`, `size`, `sizeMeasurementUnit`, `cloudProvider`, `region`, `availability`, `supportDataPersistence`, `supportReplication`, `subscriptionId` | the matching plan, including `id` |
+| `EssentialsPlan` | `id`, `name`, `size`, `sizeMeasurementUnit`, `cloudProvider`, `region`, `availability`, `supportDataPersistence`, `supportReplication`, `subscriptionId` | the matching plan, including `id`, price, limits, connections, capability flags, supported alerts, and customer support |
 | `Regions` | `providerName` (`AWS` or `GCP`), optional `name` | `regions[]` with `regionId`, `name`, `providerName` |
 
-`PaymentMethod` and `EssentialsPlan` require exactly one match, as the Terraform data sources do. `Regions` returns every region that passes the filter. `cloudProvider` accepts `AWS`, `GCP`, and `Azure` in any case. The API call uses `AWS`, `GCP`, or `Azure`, and the match ignores case.
+`PaymentMethod` and `EssentialsPlan` require exactly one match, as the Terraform data sources do. `Regions` returns every region that passes the filter. `cloudProvider` accepts `AWS`, `GCP`, and `Azure` in any case. The plan list query is the trimmed value uppercased, matching the Terraform data source, so Azure is sent as `AZURE`. Status `cloudProvider` stays the value the API returns, which is `Azure`. Matching ignores case.
 
 Pro and Active-Active `paymentMethodId` are strings. This change does not add `paymentMethodIdRef`. The author copies `status.atProvider.id` onto the subscription. Essentials `planId` and Essentials `paymentMethodId` are numbers, so those stay hand copies too.
 
 ## Validation
 
-Unit tests cover the filters: expired cards dropped, zero matches, multiple matches, one match, provider and name filters for regions, and one Essentials plan.
+Unit tests cover the filters: expired cards dropped, zero matches, multiple matches, one match, provider and name filters for regions, and one Essentials plan. The Essentials plan list query uppercases Azure to `AZURE`, and status copies the capability fields the API client already returns, including a false flag.
 
 On the test cluster, against the non-production Redis Cloud account:
 

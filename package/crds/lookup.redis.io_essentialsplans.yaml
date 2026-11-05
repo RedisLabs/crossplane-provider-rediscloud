@@ -137,9 +137,21 @@ spec:
                 properties:
                   availability:
                     type: string
+                  cidrAllowRules:
+                    type: string
                   cloudProvider:
                     type: string
+                  connections:
+                    type: string
+                  customerSupport:
+                    type: string
                   id:
+                    type: string
+                  maximumBandwidthGB:
+                    type: string
+                  maximumDatabases:
+                    type: string
+                  maximumThroughput:
                     type: string
                   name:
                     type: string
@@ -157,6 +169,18 @@ spec:
                     type: string
                   sizeMeasurementUnit:
                     type: string
+                  supportClustering:
+                    type: boolean
+                  supportDataPersistence:
+                    type: boolean
+                  supportInstantAndDailyBackups:
+                    type: boolean
+                  supportReplication:
+                    type: boolean
+                  supportedAlerts:
+                    items:
+                      type: string
+                    type: array
                 type: object
               conditions:
                 description: Conditions of the resource.

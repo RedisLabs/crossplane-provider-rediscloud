@@ -44,6 +44,9 @@ func TestMatchEssentialsPlan(t *testing.T) {
 	if CanonicalProvider("AZURE") != "Azure" || CanonicalProvider("gcp") != "GCP" {
 		t.Fatal("provider canonical form")
 	}
+	if EssentialsPlanListProvider("Azure") != "AZURE" || EssentialsPlanListProvider(" aws ") != "AWS" || EssentialsPlanListProvider("gcp") != "GCP" {
+		t.Fatal("plan list provider query")
+	}
 
 	_, err = MatchEssentialsPlan(plansList, EssentialsPlanQuery{Name: "small"})
 	if !errors.Is(err, ErrMany) {

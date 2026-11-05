@@ -76,7 +76,7 @@ func listPlans(ctx context.Context, api *rediscloud.Client, spec lookupv1alpha1.
 		return api.FixedPlanSubscriptions.List(ctx, id)
 	}
 	if spec.CloudProvider != nil && *spec.CloudProvider != "" {
-		return api.FixedPlans.ListWithProvider(ctx, lookup.CanonicalProvider(*spec.CloudProvider))
+		return api.FixedPlans.ListWithProvider(ctx, lookup.EssentialsPlanListProvider(*spec.CloudProvider))
 	}
 	return api.FixedPlans.List(ctx)
 }
@@ -111,18 +111,54 @@ func observePlan(plan *plans.GetPlanResponse) lookupv1alpha1.EssentialsPlanObser
 		size = strconv.FormatFloat(*plan.Size, 'f', -1, 64)
 	}
 	return lookupv1alpha1.EssentialsPlanObservation{
-		ID:                  intString(plan.ID),
-		Name:                redis.StringValue(plan.Name),
-		Size:                size,
-		SizeMeasurementUnit: redis.StringValue(plan.SizeMeasurementUnit),
-		CloudProvider:       redis.StringValue(plan.Provider),
-		Region:              redis.StringValue(plan.Region),
-		RegionID:            intString(plan.RegionID),
-		Availability:        redis.StringValue(plan.Availability),
-		Price:               intString(plan.Price),
-		PriceCurrency:       redis.StringValue(plan.PriceCurrency),
-		PricePeriod:         redis.StringValue(plan.PricePeriod),
+		ID:                            intString(plan.ID),
+		Name:                          redis.StringValue(plan.Name),
+		Size:                          size,
+		SizeMeasurementUnit:           redis.StringValue(plan.SizeMeasurementUnit),
+		CloudProvider:                 redis.StringValue(plan.Provider),
+		Region:                        redis.StringValue(plan.Region),
+		RegionID:                      intString(plan.RegionID),
+		Availability:                  redis.StringValue(plan.Availability),
+		Price:                         intString(plan.Price),
+		PriceCurrency:                 redis.StringValue(plan.PriceCurrency),
+		PricePeriod:                   redis.StringValue(plan.PricePeriod),
+		MaximumDatabases:              intString(plan.MaximumDatabases),
+		MaximumThroughput:             intString(plan.MaximumThroughput),
+		MaximumBandwidthGB:            intString(plan.MaximumBandwidthGB),
+		Connections:                   redis.StringValue(plan.Connections),
+		CidrAllowRules:                intString(plan.CidrAllowRules),
+		SupportDataPersistence:        boolCopy(plan.SupportDataPersistence),
+		SupportInstantAndDailyBackups: boolCopy(plan.SupportInstantAndDailyBackups),
+		SupportReplication:            boolCopy(plan.SupportReplication),
+		SupportClustering:             boolCopy(plan.SupportClustering),
+		SupportedAlerts:               stringList(plan.SupportedAlerts),
+		CustomerSupport:               redis.StringValue(plan.CustomerSupport),
 	}
+}
+
+func boolCopy(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func stringList(values []*string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		out = append(out, *value)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func intString(value *int) string {

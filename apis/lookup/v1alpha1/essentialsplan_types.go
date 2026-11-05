@@ -57,18 +57,30 @@ type EssentialsPlanParameters struct {
 }
 
 // EssentialsPlanObservation is the single plan that matched.
+// Numeric fields are strings, matching the filters on this lookup.
 type EssentialsPlanObservation struct {
-	ID                  string `json:"id,omitempty"`
-	Name                string `json:"name,omitempty"`
-	Size                string `json:"size,omitempty"`
-	SizeMeasurementUnit string `json:"sizeMeasurementUnit,omitempty"`
-	CloudProvider       string `json:"cloudProvider,omitempty"`
-	Region              string `json:"region,omitempty"`
-	RegionID            string `json:"regionId,omitempty"`
-	Availability        string `json:"availability,omitempty"`
-	Price               string `json:"price,omitempty"`
-	PriceCurrency       string `json:"priceCurrency,omitempty"`
-	PricePeriod         string `json:"pricePeriod,omitempty"`
+	ID                            string   `json:"id,omitempty"`
+	Name                          string   `json:"name,omitempty"`
+	Size                          string   `json:"size,omitempty"`
+	SizeMeasurementUnit           string   `json:"sizeMeasurementUnit,omitempty"`
+	CloudProvider                 string   `json:"cloudProvider,omitempty"`
+	Region                        string   `json:"region,omitempty"`
+	RegionID                      string   `json:"regionId,omitempty"`
+	Availability                  string   `json:"availability,omitempty"`
+	Price                         string   `json:"price,omitempty"`
+	PriceCurrency                 string   `json:"priceCurrency,omitempty"`
+	PricePeriod                   string   `json:"pricePeriod,omitempty"`
+	MaximumDatabases              string   `json:"maximumDatabases,omitempty"`
+	MaximumThroughput             string   `json:"maximumThroughput,omitempty"`
+	MaximumBandwidthGB            string   `json:"maximumBandwidthGB,omitempty"`
+	Connections                   string   `json:"connections,omitempty"`
+	CidrAllowRules                string   `json:"cidrAllowRules,omitempty"`
+	SupportDataPersistence        *bool    `json:"supportDataPersistence,omitempty"`
+	SupportInstantAndDailyBackups *bool    `json:"supportInstantAndDailyBackups,omitempty"`
+	SupportReplication            *bool    `json:"supportReplication,omitempty"`
+	SupportClustering             *bool    `json:"supportClustering,omitempty"`
+	SupportedAlerts               []string `json:"supportedAlerts,omitempty"`
+	CustomerSupport               string   `json:"customerSupport,omitempty"`
 }
 
 // EssentialsPlanSpec selects one Essentials plan.
