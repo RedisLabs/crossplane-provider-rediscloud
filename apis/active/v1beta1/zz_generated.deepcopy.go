@@ -4152,6 +4152,16 @@ func (in *OverrideRegionInitParameters) DeepCopyInto(out *OverrideRegionInitPara
 		*out = new(bool)
 		**out = **in
 	}
+	if in.LocalReadOperationsPerSecond != nil {
+		in, out := &in.LocalReadOperationsPerSecond, &out.LocalReadOperationsPerSecond
+		*out = new(float64)
+		**out = **in
+	}
+	if in.LocalWriteOperationsPerSecond != nil {
+		in, out := &in.LocalWriteOperationsPerSecond, &out.LocalWriteOperationsPerSecond
+		*out = new(float64)
+		**out = **in
+	}
 	if in.Name != nil {
 		in, out := &in.Name, &out.Name
 		*out = new(string)
@@ -4217,6 +4227,16 @@ func (in *OverrideRegionObservation) DeepCopyInto(out *OverrideRegionObservation
 		*out = new(bool)
 		**out = **in
 	}
+	if in.LocalReadOperationsPerSecond != nil {
+		in, out := &in.LocalReadOperationsPerSecond, &out.LocalReadOperationsPerSecond
+		*out = new(float64)
+		**out = **in
+	}
+	if in.LocalWriteOperationsPerSecond != nil {
+		in, out := &in.LocalWriteOperationsPerSecond, &out.LocalWriteOperationsPerSecond
+		*out = new(float64)
+		**out = **in
+	}
 	if in.Name != nil {
 		in, out := &in.Name, &out.Name
 		*out = new(string)
@@ -4275,6 +4295,16 @@ func (in *OverrideRegionParameters) DeepCopyInto(out *OverrideRegionParameters) 
 	if in.EnableDefaultUser != nil {
 		in, out := &in.EnableDefaultUser, &out.EnableDefaultUser
 		*out = new(bool)
+		**out = **in
+	}
+	if in.LocalReadOperationsPerSecond != nil {
+		in, out := &in.LocalReadOperationsPerSecond, &out.LocalReadOperationsPerSecond
+		*out = new(float64)
+		**out = **in
+	}
+	if in.LocalWriteOperationsPerSecond != nil {
+		in, out := &in.LocalWriteOperationsPerSecond, &out.LocalWriteOperationsPerSecond
+		*out = new(float64)
 		**out = **in
 	}
 	if in.Name != nil {

@@ -2,12 +2,14 @@ package config
 
 import "testing"
 
-// managedResources is the Terraform v2.19.2 managed resource list. A new
+// managedResources is the Terraform v2.20.0 managed resource list. A new
 // resource has to be added here and in ExternalNameConfigs together.
 var managedResources = []string{
 	"rediscloud_acl_role",
 	"rediscloud_acl_rule",
 	"rediscloud_acl_user",
+	"rediscloud_agent_memory",
+	"rediscloud_agent_memory_api_key",
 	"rediscloud_active_active_private_link",
 	"rediscloud_active_active_private_service_connect",
 	"rediscloud_active_active_private_service_connect_endpoint",
@@ -46,8 +48,8 @@ var newIn219 = []string{
 
 func TestManagedResourceList(t *testing.T) {
 	t.Parallel()
-	if len(managedResources) != 27 {
-		t.Fatalf("managed resource list has %d entries, want 27", len(managedResources))
+	if len(managedResources) != 29 {
+		t.Fatalf("managed resource list has %d entries, want 29", len(managedResources))
 	}
 	seen := map[string]struct{}{}
 	for _, name := range managedResources {

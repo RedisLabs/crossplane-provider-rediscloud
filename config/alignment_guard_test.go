@@ -17,8 +17,8 @@ import (
 func TestControllersUseThirtyMinuteTimeout(t *testing.T) {
 	t.Parallel()
 	files := controllerFiles(t, moduleRoot(t))
-	if len(files) != 27 {
-		t.Fatalf("generated controllers: got %d, want 27", len(files))
+	if len(files) != 29 {
+		t.Fatalf("generated controllers: got %d, want 29", len(files))
 	}
 	if problems := timeoutProblems(files); len(problems) > 0 {
 		t.Fatal(strings.Join(problems, "\n"))
