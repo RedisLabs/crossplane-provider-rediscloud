@@ -14,6 +14,7 @@ import (
 	v1beta1 "github.com/RedisLabs/provider-rediscloud/apis/acl/v1beta1"
 	v1alpha1active "github.com/RedisLabs/provider-rediscloud/apis/active/v1alpha1"
 	v1beta1active "github.com/RedisLabs/provider-rediscloud/apis/active/v1beta1"
+	v1beta1agent "github.com/RedisLabs/provider-rediscloud/apis/agent/v1beta1"
 	v1alpha1cloud "github.com/RedisLabs/provider-rediscloud/apis/cloud/v1alpha1"
 	v1beta1cloud "github.com/RedisLabs/provider-rediscloud/apis/cloud/v1beta1"
 	v1alpha1essentials "github.com/RedisLabs/provider-rediscloud/apis/essentials/v1alpha1"
@@ -36,6 +37,7 @@ func init() {
 		v1beta1.SchemeBuilder.AddToScheme,
 		v1alpha1active.SchemeBuilder.AddToScheme,
 		v1beta1active.SchemeBuilder.AddToScheme,
+		v1beta1agent.SchemeBuilder.AddToScheme,
 		v1alpha1cloud.SchemeBuilder.AddToScheme,
 		v1beta1cloud.SchemeBuilder.AddToScheme,
 		v1alpha1essentials.SchemeBuilder.AddToScheme,

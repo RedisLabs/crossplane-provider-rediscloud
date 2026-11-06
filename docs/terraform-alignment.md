@@ -1,10 +1,9 @@
-# Alignment with Terraform Provider v2.19.3
+# Alignment with Terraform Provider v2.20.0
 
-Current main: `a2b716c`.
-Terraform provider pin: `RedisLabs/terraform-provider-rediscloud` v2.19.3. That is the newest release, published 28 October 2026.
-Crossplane generator: Upjet v2.5.1. `config/schema.json` on this commit matches `terraform providers schema -json` from Terraform CLI 1.5.7 for v2.19.3.
+Terraform provider pin: `RedisLabs/terraform-provider-rediscloud` v2.20.0, published 4 November 2026.
+Crossplane generator: Upjet v2.5.1. Terraform CLI stays 1.5.7. `config/schema.json` is the schema that CLI dumped for v2.20.0.
 
-This document tracks the alignment between this Crossplane provider and the official Redis Cloud Terraform provider. Parity is current through v2.19.3. A recount on 31 October 2026 found 27 managed resources and 29 data sources. Top-level resource fields are on the generated CRDs. Sensitive values are Kubernetes secret references. The Terraform `timeouts` block is provider meta and is not a CRD field. v2.19.3 added no managed resource and no managed field. On the `rediscloud_subscription` and `rediscloud_active_active_subscription` data sources, `maintenance_windows` and `pricing` are attributes rather than blocks, and `cloud_provider` is an attribute on the Pro subscription data source. Those data sources stay pasted IDs.
+This document tracks the alignment between this Crossplane provider and the official Redis Cloud Terraform provider. Parity is current through v2.20.0: 29 managed resources and 29 data sources. v2.20.0 adds `rediscloud_agent_memory` and `rediscloud_agent_memory_api_key`, and local read and write operations per second on an Active-Active database region. Agent Memory is stored as `v1beta1` only. Its model API key is `apiKeySecretRef`, because Terraform 1.5.7 exposes that credential as a sensitive string. A recount on 31 October 2026 found 27 managed resources and 29 data sources against v2.19.3. Top-level resource fields are on the generated CRDs. Sensitive values are Kubernetes secret references. The Terraform `timeouts` block is provider meta and is not a CRD field. v2.19.3 added no managed resource and no managed field. On the `rediscloud_subscription` and `rediscloud_active_active_subscription` data sources, `maintenance_windows` and `pricing` are attributes rather than blocks, and `cloud_provider` is an attribute on the Pro subscription data source. Those data sources stay pasted IDs.
 
 The original comparison, dated 21 October 2026, used branch `spike/tf-2.19.2-generate`, Terraform provider v2.19.2, and Upjet v1.4.1. Numbering and the architecture diagrams were added on 22 October 2026. Evidence dates for that comparison remain 21 October 2026. GitHub main at `6128cb7` in the tables below is that earlier main, before the alignment merge. Gaps 3, 4, and 8 stay as written. Gaps are numbered in one sequence from 1 through 9.
 
@@ -80,15 +79,15 @@ flowchart TB
 
   author["Author writes YAML"]
   k8s["Kubernetes API"]
-  crd["27 CRDs\nmatch Terraform v2.19.3"]
+  crd["29 CRDs\nmatch Terraform v2.20.0"]
   beta["Managed APIs are v1beta1\n🟡 ✅ 6"]
   pc["ProviderConfig\ncredentials JSON"]
   refs["String subscriptionIdRef\npeering, link, PSC, transit gateway"]
   dbref["Database subscriptionId\nis a number, so no Ref\n🟡 3"]
   lookup["PaymentMethod, EssentialsPlan, Regions\nlookup.redis.io\n🔴 ✅ 8"]
-  ctrl["27 Upjet controllers\nasync apply, 30m timeout\n🟣 ✅ 2"]
+  ctrl["29 Upjet controllers\nasync apply, 30m timeout\n🟣 ✅ 2"]
   ws["Terraform workspace\ninside the provider pod"]
-  plugin["Same terraform-provider-rediscloud\nv2.19.3 plugin"]
+  plugin["Same terraform-provider-rediscloud\nv2.20.0 plugin"]
   cloud["Redis Cloud API"]
   proof["ACL rules, Pro subscription,\nand Database CR created and deleted\n🟡 ✅ 7"]
   track["Workflow opens a pull request\nwhen a Terraform release is newer\n🟡 ✅ 9"]
@@ -111,7 +110,7 @@ The provider pod does not call Redis Cloud itself for managed resources. It runs
 
 ## Result
 
-On main `a2b716c`, managed-resource coverage matches Terraform provider v2.19.3.
+Managed-resource coverage matches Terraform provider v2.20.0. The table below is the 31 October 2026 recount against v2.19.3.
 
 | Surface | Terraform v2.19.3 | Main `a2b716c` | Main before alignment (`6128cb7`) |
 | --- | --- | --- | --- |
