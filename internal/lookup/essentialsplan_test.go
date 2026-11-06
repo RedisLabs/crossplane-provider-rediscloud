@@ -80,9 +80,10 @@ func redisPlanID(plan *plans.GetPlanResponse) int {
 }
 
 func TestEssentialsPlanListProvider(t *testing.T) {
+	padded := " aws "
 	cases := map[string]string{
 		"Azure": "AZURE",
-		" aws ": "AWS",
+		padded:  "AWS",
 		"gcp":   "GCP",
 	}
 	for in, want := range cases {
