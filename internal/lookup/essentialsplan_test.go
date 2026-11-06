@@ -78,3 +78,17 @@ func redisPlanID(plan *plans.GetPlanResponse) int {
 	}
 	return *plan.ID
 }
+
+func TestEssentialsPlanListProvider(t *testing.T) {
+	padded := " aws "
+	cases := map[string]string{
+		"Azure": "AZURE",
+		padded:  "AWS",
+		"gcp":   "GCP",
+	}
+	for in, want := range cases {
+		if got := EssentialsPlanListProvider(in); got != want {
+			t.Fatalf("%q: got %s", in, got)
+		}
+	}
+}

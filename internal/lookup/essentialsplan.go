@@ -28,6 +28,15 @@ func CanonicalProvider(value string) string {
 	}
 }
 
+// EssentialsPlanListProvider is the provider query sent to
+// FixedPlans.ListWithProvider. The Terraform essentials plan data source
+// uppercases that query, so Azure is sent as AZURE. CanonicalProvider stays
+// the observed API value, which is Azure, and plan matching stays
+// case-insensitive.
+func EssentialsPlanListProvider(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
 // EssentialsPlanQuery is the filter for one Essentials plan.
 type EssentialsPlanQuery struct {
 	ID                     string
