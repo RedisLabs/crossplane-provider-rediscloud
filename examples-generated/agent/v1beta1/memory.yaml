@@ -1,0 +1,12 @@
+apiVersion: agent.redis.io/v1beta1
+kind: Memory
+metadata:
+  annotations:
+    meta.upbound.io/example-id: agent/v1beta1/memory
+  labels:
+    testing.upbound.io/example-name: example
+  name: example
+spec:
+  forProvider:
+    databaseId: ${rediscloud_subscription_database.example.db_id}
+    name: example-memory

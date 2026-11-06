@@ -23,6 +23,18 @@ Not to be confused with Ultra.
 
 Source: confirmed by Shay, 2026-10-21. See `docs/terraform-alignment.md`.
 
+## Agent Memory
+
+A Redis Cloud service attached to an existing database. Terraform resources
+`rediscloud_agent_memory` and `rediscloud_agent_memory_api_key`. The
+Crossplane kinds are `Memory` and `MemoryAPIKey` in `agent.redis.io`.
+
+The model credential is an optional sensitive string in the Terraform 1.5.7
+schema, so the generated field is `apiKeySecretRef`. Terraform 1.11 write-only
+arguments are outside this provider while the Terraform CLI pin stays below 1.6.
+
+Source: Terraform provider v2.20.0 changelog and the generated CRDs.
+
 ## bring-your-own-cloud
 
 Redis Cloud running in the customer's cloud account. Covered here only where
@@ -116,10 +128,10 @@ Source: `docs/design/test-suites.md`.
 
 ## storage version
 
-The CRD version Kubernetes persists for a kind. For the 27 managed kinds
-that is `v1beta1`. `v1alpha1` stays served while a cluster CRD
-`status.storedVersions` still lists it. Generation keeps the `zz_*` files
-for both.
+The CRD version Kubernetes persists for a kind. For the 29 managed kinds
+that is `v1beta1`. `v1alpha1` stays served for the kinds that already stored
+it. Agent Memory is `v1beta1` only. Generation keeps the `zz_*` files for a
+served older version when that version already exists.
 
 Not to be confused with ProviderConfig, which is `v1beta1` and has no served
 `v1alpha1`, or with lookups, which stay `lookup.redis.io/v1alpha1`.

@@ -413,6 +413,14 @@ type OverrideRegionInitParameters struct {
 	// When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
 	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
 
+	// Local read operations per second for this region, the same value as Local read ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions
+	// Local read operations per second for this region. When unset, the region is created at 1000. Set this together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions.
+	LocalReadOperationsPerSecond *float64 `json:"localReadOperationsPerSecond,omitempty" tf:"local_read_operations_per_second,omitempty"`
+
+	// Local write operations per second for this region, the same value as Local write ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions
+	// Local write operations per second for this region. When unset, the region is created at 1000. Set this together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions.
+	LocalWriteOperationsPerSecond *float64 `json:"localWriteOperationsPerSecond,omitempty" tf:"local_write_operations_per_second,omitempty"`
+
 	// Region name.
 	// Region name
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
@@ -449,6 +457,14 @@ type OverrideRegionObservation struct {
 	// When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
 	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
 
+	// Local read operations per second for this region, the same value as Local read ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions
+	// Local read operations per second for this region. When unset, the region is created at 1000. Set this together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions.
+	LocalReadOperationsPerSecond *float64 `json:"localReadOperationsPerSecond,omitempty" tf:"local_read_operations_per_second,omitempty"`
+
+	// Local write operations per second for this region, the same value as Local write ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions
+	// Local write operations per second for this region. When unset, the region is created at 1000. Set this together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions.
+	LocalWriteOperationsPerSecond *float64 `json:"localWriteOperationsPerSecond,omitempty" tf:"local_write_operations_per_second,omitempty"`
+
 	// Region name.
 	// Region name
 	Name *string `json:"name,omitempty" tf:"name,omitempty"`
@@ -481,6 +497,16 @@ type OverrideRegionParameters struct {
 	// When 'true', enables connecting to the database with the 'default' user. If not set, inherits from global_enable_default_user.
 	// +kubebuilder:validation:Optional
 	EnableDefaultUser *bool `json:"enableDefaultUser,omitempty" tf:"enable_default_user,omitempty"`
+
+	// Local read operations per second for this region, the same value as Local read ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions
+	// Local read operations per second for this region. When unset, the region is created at 1000. Set this together with local_write_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions.
+	// +kubebuilder:validation:Optional
+	LocalReadOperationsPerSecond *float64 `json:"localReadOperationsPerSecond,omitempty" tf:"local_read_operations_per_second,omitempty"`
+
+	// Local write operations per second for this region, the same value as Local write ops/sec in the Redis Cloud console. When unset, the region is created at 1000. Must be set together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions
+	// Local write operations per second for this region. When unset, the region is created at 1000. Set this together with local_read_operations_per_second. Do not also set throughput for this database on rediscloud_active_active_subscription_regions.
+	// +kubebuilder:validation:Optional
+	LocalWriteOperationsPerSecond *float64 `json:"localWriteOperationsPerSecond,omitempty" tf:"local_write_operations_per_second,omitempty"`
 
 	// Region name.
 	// Region name

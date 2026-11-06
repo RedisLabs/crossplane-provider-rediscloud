@@ -23,6 +23,8 @@ import (
 	activetransitgatewayattachment "github.com/RedisLabs/provider-rediscloud/internal/controller/active/activetransitgatewayattachment"
 	activetransitgatewayinvitationacceptor "github.com/RedisLabs/provider-rediscloud/internal/controller/active/activetransitgatewayinvitationacceptor"
 	activetransitgatewayroute "github.com/RedisLabs/provider-rediscloud/internal/controller/active/activetransitgatewayroute"
+	memory "github.com/RedisLabs/provider-rediscloud/internal/controller/agent/memory"
+	memoryapikey "github.com/RedisLabs/provider-rediscloud/internal/controller/agent/memoryapikey"
 	account "github.com/RedisLabs/provider-rediscloud/internal/controller/cloud/account"
 	database "github.com/RedisLabs/provider-rediscloud/internal/controller/essentials/database"
 	subscription "github.com/RedisLabs/provider-rediscloud/internal/controller/essentials/subscription"
@@ -57,6 +59,8 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		activetransitgatewayattachment.Setup,
 		activetransitgatewayinvitationacceptor.Setup,
 		activetransitgatewayroute.Setup,
+		memory.Setup,
+		memoryapikey.Setup,
 		account.Setup,
 		database.Setup,
 		subscription.Setup,
@@ -97,6 +101,8 @@ func SetupGated(mgr ctrl.Manager, o controller.Options) error {
 		activetransitgatewayattachment.SetupGated,
 		activetransitgatewayinvitationacceptor.SetupGated,
 		activetransitgatewayroute.SetupGated,
+		memory.SetupGated,
+		memoryapikey.SetupGated,
 		account.SetupGated,
 		database.SetupGated,
 		subscription.SetupGated,
@@ -136,6 +142,8 @@ func SetupWebhookWithManager(mgr ctrl.Manager) error {
 		activetransitgatewayattachment.SetupWebhookWithManager,
 		activetransitgatewayinvitationacceptor.SetupWebhookWithManager,
 		activetransitgatewayroute.SetupWebhookWithManager,
+		memory.SetupWebhookWithManager,
+		memoryapikey.SetupWebhookWithManager,
 		account.SetupWebhookWithManager,
 		database.SetupWebhookWithManager,
 		subscription.SetupWebhookWithManager,

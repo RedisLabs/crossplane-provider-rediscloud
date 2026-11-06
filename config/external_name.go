@@ -21,6 +21,10 @@ var ExternalNameConfigs = map[string]config.ExternalName{
 	"rediscloud_acl_rule": config.IdentifierFromProvider,
 	"rediscloud_acl_user": config.IdentifierFromProvider,
 
+	// Agent Memory Resources
+	"rediscloud_agent_memory":         config.IdentifierFromProvider,
+	"rediscloud_agent_memory_api_key": config.IdentifierFromProvider,
+
 	// Active-Active Resources
 	"rediscloud_active_active_private_link":                              config.IdentifierFromProvider,
 	tfActiveActiveSubscription:                                           config.IdentifierFromProvider,
