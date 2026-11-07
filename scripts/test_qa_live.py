@@ -309,6 +309,11 @@ class QaLiveTest(unittest.TestCase):
             qa_live.run(deps)
         self.assertIn("HTTP 200", str(caught.exception))
 
+    def test_agent_memory_waits_past_terraform_create(self):
+        deps = deps_for(World())
+        self.assertGreaterEqual(deps.timeouts["agent_memory"], 35 * 60)
+        self.assertGreater(deps.timeouts["agent_memory"], deps.timeouts["database"])
+
     def test_run_succeeds_and_logs_key_names_only(self):
         world = World()
         deps = deps_for(world)

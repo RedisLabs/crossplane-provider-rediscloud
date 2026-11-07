@@ -55,7 +55,7 @@ Live cases, in order, on the QA Redis Cloud account:
 3. Create one ACL rule named `xp-ci-<run id>` with rule text `+@read ~*`. Wait until Ready and Cloud status `active`. Leave it in place.
 4. Create one Pro subscription named `xp-ci-<run id>` with a fresh CIDR, `paymentMethodId` from the lookup, a dataset size, and `operations-per-second`. Wait until Cloud status is `active` and the Crossplane resource is Ready.
 5. Copy `status.atProvider.id` into the database `subscriptionId`. Create one database. Wait until Cloud status is `active` and Ready.
-6. Create one Agent Memory store named `xp-ci-<run id>` on that database number. Wait until Ready and `status.atProvider.status` is `READY`. Delete it and wait until the object is gone.
+6. Create one Agent Memory store named `xp-ci-<run id>` on that database number. Wait up to 35 minutes until Ready and `status.atProvider.status` is `READY`. Terraform blocks for up to 30 minutes before Crossplane writes that status. Delete it and wait until the object is gone. Delete uses the same 35 minute wait.
 7. Create one ACL role bound to that rule and database, then one ACL user with a generated password in a Secret. Wait until each is Ready and Cloud status `active`. Delete the user, then the role. The password is not written to the log.
 8. Delete the ACL rule and confirm that name is gone.
 9. Read the connection secret key names. Require `public_endpoint` and `private_endpoint`. `port` is not required.

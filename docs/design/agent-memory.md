@@ -30,7 +30,7 @@ Terraform provider v2.20.0 added Agent Memory. The release-tracking pull request
 
 ## Behavior
 
-`agent.redis.io/v1beta1` stores `Memory` and `MemoryAPIKey`. Nightly QA creates one `Memory` after the Pro database is active, waits for status `READY`, and deletes it before the database. `MemoryAPIKey` stays out of nightly. Update is the Upjet apply loop. Import uses `crossplane.io/external-name` when the management policy is Observe. Active-Active database regions also gain `localReadOperationsPerSecond` and `localWriteOperationsPerSecond`.
+`agent.redis.io/v1beta1` stores `Memory` and `MemoryAPIKey`. Nightly QA creates one `Memory` after the Pro database is active, waits up to 35 minutes for status `READY`, and deletes it before the database. The 35 minutes is longer than Terraform's 30 minute create, because Crossplane writes Ready only after that create returns. `MemoryAPIKey` stays out of nightly. Update is the Upjet apply loop. Import uses `crossplane.io/external-name` when the management policy is Observe. Active-Active database regions also gain `localReadOperationsPerSecond` and `localWriteOperationsPerSecond`.
 
 ## Validation
 

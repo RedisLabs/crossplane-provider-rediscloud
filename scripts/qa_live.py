@@ -496,13 +496,17 @@ def run_database(deps, state: State) -> None:
 
 
 def run_agent_memory(deps, state: State) -> None:
-    """Create one Agent Memory store on the Pro database, then delete it."""
+    """Create one Agent Memory store on the Pro database, then delete it.
+
+    Terraform waits inside apply for up to 30 minutes, and Crossplane writes
+    Ready only after that apply returns. The wait here is longer than that.
+    """
     state.memory_name = state.run_name
     deps.cluster.apply(memory_manifest(state.run_name, state.database_id))
     if not wait_until(
         deps,
         f"agent memory {state.run_name}",
-        deps.timeouts["database"],
+        deps.timeouts["agent_memory"],
         lambda: memory_is_active(deps, state.run_name),
     ):
         raise SuiteFailure(f"agent memory {state.run_name} did not become ready")
@@ -510,7 +514,7 @@ def run_agent_memory(deps, state: State) -> None:
     if not wait_until(
         deps,
         f"agent memory {state.run_name} delete",
-        deps.timeouts["delete"],
+        deps.timeouts["agent_memory"],
         lambda: memory_is_gone(deps, state.run_name),
     ):
         raise SuiteFailure(f"agent memory {state.run_name} is still present")
@@ -537,7 +541,10 @@ def memory_is_active(deps, name: str) -> bool:
     cr = deps.cluster.get(MEMORY, name)
     provider = ((cr or {}).get("status") or {}).get("atProvider") or {}
     status = str(provider.get("status") or "")
-    deps.log(f"agent memory {name} status={status} ready={is_ready(cr)} reason={ready_reason(cr)}")
+    message = ready_message(cr).replace("\n", " ")[:180]
+    deps.log(
+        f"agent memory {name} status={status} ready={is_ready(cr)} reason={ready_reason(cr)} message={message}"
+    )
     if status.lower() == "error":
         raise SuiteFailure(f"agent memory {name} status error")
     return is_ready(cr) and status.upper() == "READY"
@@ -1096,6 +1103,8 @@ class Deps:
             "subscription": 1800.0,
             "database": 1200.0,
             "delete": 900.0,
+            # Terraform create and delete each block for up to 30 minutes.
+            "agent_memory": 2100.0,
         }
         self.lookups_applied = False
         self._now = time.monotonic
