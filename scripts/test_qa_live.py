@@ -92,6 +92,10 @@ class World:
             self.database_applied = True
             self.database_name = manifest["spec"]["forProvider"]["name"]
             self.objects[(qa_live.DATABASE, name)] = ready("100/50")
+        elif kind == "Memory":
+            obj = ready("store-1")
+            obj["status"]["atProvider"]["status"] = "READY"
+            self.objects[(qa_live.MEMORY, name)] = obj
         elif kind == "PaymentMethod":
             self.objects[(qa_live.PAYMENT, name)] = ready("1")
         elif kind == "EssentialsPlan":
@@ -313,6 +317,10 @@ class QaLiveTest(unittest.TestCase):
         self.assertIn("secret keys private_endpoint,public_endpoint", deps.lines)
         self.assertIn("qa live ok", deps.lines)
         self.assertIn("ACL role and user xp-ci-123 created and gone", deps.lines)
+        self.assertIn("agent memory xp-ci-123 created and gone", deps.lines)
+        memory = next(item for item in world.applied if item["kind"] == "Memory")
+        self.assertEqual(memory["spec"]["forProvider"]["databaseId"], 50)
+        self.assertEqual(memory["spec"]["forProvider"]["name"], "xp-ci-123")
         self.assertIn("essentials xp-ci-123 created and gone", deps.lines)
         self.assertNotIn(PAYMENT_ID, text)
         self.assertNotIn(PAYMENT_NUMBER, text)
@@ -350,6 +358,7 @@ class QaLiveTest(unittest.TestCase):
         self.assertEqual(names(world.roles), [])
         self.assertEqual(names(world.users), [])
         deleted = world.deleted
+        self.assertLess(deleted.index((qa_live.MEMORY, "xp-ci-123")), deleted.index((qa_live.DATABASE, "xp-ci-123")))
         self.assertLess(deleted.index((qa_live.USER, "xp-ci-123")), deleted.index((qa_live.ROLE, "xp-ci-123")))
         self.assertLess(deleted.index((qa_live.ROLE, "xp-ci-123")), deleted.index((qa_live.ACL, "xp-ci-123")))
         self.assertLess(deleted.index((qa_live.SUBSCRIPTION, "xp-ci-123")), deleted.index((qa_live.ESS_SUBSCRIPTION, "xp-ci-123")))

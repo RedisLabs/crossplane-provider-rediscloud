@@ -2,8 +2,8 @@
 """Create and delete QA objects that need only the Redis Cloud API.
 
 The suite creates one ACL rule, role, and user, one Pro subscription and
-database, and one Essentials subscription and database. It deletes each
-before the run finishes.
+database, one Agent Memory store on that database, and one Essentials
+subscription and database. It deletes each before the run finishes.
 
 The workflow that calls this script triggers on schedule and workflow_dispatch
 only. It does not run on pull requests. Logs print status codes, Ready
@@ -41,6 +41,7 @@ HELD_CIDRS = {
 
 SUBSCRIPTION = "subscription.rediscloud.redis.io"
 DATABASE = "database.subscription.redis.io"
+MEMORY = "memory.agent.redis.io"
 ESS_SUBSCRIPTION = "subscription.essentials.redis.io"
 ESS_DATABASE = "database.essentials.redis.io"
 ACL = "rule.acl.redis.io"
@@ -249,6 +250,8 @@ class State:
         self.run_name = run_name
         self.subscription_name = None
         self.database_name = None
+        self.memory_name = None
+        self.memory_deleted = False
         self.acl_name = None
         self.role_name = None
         self.user_name = None
@@ -281,6 +284,7 @@ def run(deps) -> None:
         create_acl(deps, state)
         run_subscription(deps, state, payment_id)
         run_database(deps, state)
+        run_agent_memory(deps, state)
         run_acl_role_and_user(deps, state)
         delete_acl(deps, state)
         keys = list(deps.cluster.secret_key_names("default", state.run_name))
@@ -318,6 +322,7 @@ def clear_or_refuse(deps) -> bool:
     delete_prefixed(deps, deps.cloud.list_acl_rules(), ACL, deps.cloud.delete_acl_rule)
     for sub in names_with_prefix(deps.cloud.list_subscriptions()):
         name = str(sub.get("name") or "")
+        deps.cluster.delete(MEMORY, name)
         deps.cluster.delete(DATABASE, name)
         deps.cluster.delete(SUBSCRIPTION, name)
         sub_id = sub.get("id")
@@ -488,6 +493,60 @@ def run_database(deps, state: State) -> None:
     state.database_id = str(holder["id"])
     deps.remember_secret(state.database_id)
     deps.log(f"database {state.run_name} cloud=active ready=true")
+
+
+def run_agent_memory(deps, state: State) -> None:
+    """Create one Agent Memory store on the Pro database, then delete it."""
+    state.memory_name = state.run_name
+    deps.cluster.apply(memory_manifest(state.run_name, state.database_id))
+    if not wait_until(
+        deps,
+        f"agent memory {state.run_name}",
+        deps.timeouts["database"],
+        lambda: memory_is_active(deps, state.run_name),
+    ):
+        raise SuiteFailure(f"agent memory {state.run_name} did not become ready")
+    deps.cluster.delete(MEMORY, state.run_name)
+    if not wait_until(
+        deps,
+        f"agent memory {state.run_name} delete",
+        deps.timeouts["delete"],
+        lambda: memory_is_gone(deps, state.run_name),
+    ):
+        raise SuiteFailure(f"agent memory {state.run_name} is still present")
+    state.memory_deleted = True
+    deps.log(f"agent memory {state.run_name} created and gone")
+
+
+def memory_manifest(name: str, database_id: str) -> dict:
+    return {
+        "apiVersion": "agent.redis.io/v1beta1",
+        "kind": "Memory",
+        "metadata": {"name": name},
+        "spec": {
+            "forProvider": {
+                "name": name,
+                "databaseId": int(database_id),
+            },
+            "providerConfigRef": {"name": "default"},
+        },
+    }
+
+
+def memory_is_active(deps, name: str) -> bool:
+    cr = deps.cluster.get(MEMORY, name)
+    provider = ((cr or {}).get("status") or {}).get("atProvider") or {}
+    status = str(provider.get("status") or "")
+    deps.log(f"agent memory {name} status={status} ready={is_ready(cr)} reason={ready_reason(cr)}")
+    if status.lower() == "error":
+        raise SuiteFailure(f"agent memory {name} status error")
+    return is_ready(cr) and status.upper() == "READY"
+
+
+def memory_is_gone(deps, name: str) -> bool:
+    gone = deps.cluster.get(MEMORY, name) is None
+    deps.log(f"agent memory {name} gone={gone}")
+    return gone
 
 
 def database_is_active(deps, state: State, holder: dict) -> bool:
@@ -704,6 +763,10 @@ def cleanup(deps, state: State) -> None:
     if state.essentials_name and not state.essentials_deleted:
         deps.cluster.delete(ESS_SUBSCRIPTION, state.essentials_name)
         state.essentials_deleted = True
+    if state.memory_name and not state.memory_deleted:
+        deps.log(f"cleanup delete agent memory {state.memory_name}")
+        deps.cluster.delete(MEMORY, state.memory_name)
+        state.memory_deleted = True
     if state.database_name and not state.database_deleted:
         deps.log(f"cleanup delete database {state.database_name}")
         deps.cluster.delete(DATABASE, state.database_name)
