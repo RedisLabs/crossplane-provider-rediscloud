@@ -1,64 +1,84 @@
-# SPDX-FileCopyrightText: 2024 The Crossplane Authors <https://crossplane.io>
-#
-# SPDX-License-Identifier: CC0-1.0
-
 name: Nightly QA
-
-# This workflow is not a required check. It runs on main after merge.
-# 06:17 UTC is two hours after terraform-release.yaml at 04:17 UTC.
 on:
-  schedule:
-    - cron: "17 6 * * *"
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: qa-live
   cancel-in-progress: false
-
-env:
-  GO_VERSION: "1.26"
-
 jobs:
-  qa-live:
+  evidence:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
-      - name: Cleanup Disk
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+      - name: Checkout verification harness
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
         with:
-          large-packages: false
-          swap-storage: false
-
-      - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+          path: harness
+      - name: Checkout exact provider baseline
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
         with:
+          ref: 5ceb4431079b46fe79159b9ff637d4a3f1efb0e6
           submodules: true
-
+          path: baseline
       - name: Setup Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
         with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Vendor Dependencies
-        run: make vendor vendor.check
-
-      - name: Deploy the provider to kind
-        run: make local-deploy
-
-      - name: Create and delete the QA objects
+          go-version: '1.26'
+      - name: Verify QA credential endpoint before building
         env:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
         run: |
-          tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
-          python3 scripts/qa_live.py --kubectl "$tool"
-
-      - name: Delete a leftover xp-ci subscription
+          python3 - <<'PY'
+          import json,os,sys
+          sys.path.insert(0,'baseline/scripts')
+          import qa_live as q
+          c=q.normalize_credentials(json.loads(os.environ['UPTEST_CLOUD_CREDENTIALS']))
+          if c.get('url') != 'https://capi.k8s-rcp.sm-qa.qa.redislabs.com/v1':
+              raise SystemExit('Required QA endpoint is not configured; no resources created')
+          print('Explicit nonproduction QA endpoint verified')
+          PY
+      - name: Build exact provider and deploy Crossplane to isolated Kind
+        working-directory: baseline
+        run: make vendor vendor.check local-deploy
+      - name: Create GCP resources and capture ordered active evidence
+        id: active
+        timeout-minutes: 65
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: |
+          tool=$(find baseline/.cache/tools -name 'kubectl-*' -type f | head -n 1)
+          echo "QA_KUBECTL=$tool" >> "$GITHUB_ENV"
+          python3 harness/scripts/evidence_run.py create --baseline baseline --kubectl "$tool" --output evidence
+          docker images --digests > evidence/provider-images.txt
+          find baseline -name '*.xpkg' -type f -exec sha256sum {} \; > evidence/provider-packages.txt
+      - name: Publish active evidence before UI capture
+        if: steps.active.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: crossplane-gcp-active-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
+          retention-days: 14
+      - name: Wait for explicit SM screenshot acknowledgment
+        if: steps.active.outcome == 'success'
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 harness/scripts/evidence_ack.py
+      - name: Delete through Crossplane and verify Cloud absence
+        if: always() && steps.active.outcome != 'skipped'
+        timeout-minutes: 50
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: |
+          python3 harness/scripts/evidence_run.py cleanup --baseline baseline --kubectl "$QA_KUBECTL" --output evidence
+      - name: Publish cleanup proof and available evidence
         if: always()
-        env:
-          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
-        run: |
-          tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
-          python3 scripts/qa_live.py --kubectl "$tool" --cleanup-only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: crossplane-gcp-final-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
+          if-no-files-found: ignore
+          retention-days: 14
