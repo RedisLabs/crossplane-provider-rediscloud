@@ -1,4 +1,4 @@
-"""GCP verification adapter; invoke from an exact-baseline Actions checkout.
+"""AWS/GCP verification adapter; invoke from an exact-baseline Actions checkout.
 
 Keep this harness separate from the provider source being built. Evidence output
 contains only selected fields. The caller must run cleanup with if: always().
@@ -6,6 +6,7 @@ contains only selected fields. The caller must run cleanup with if: always().
 import argparse
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -149,6 +150,7 @@ def main():
     p.add_argument('--baseline', required=True)
     p.add_argument('--kubectl', required=True)
     p.add_argument('--output', required=True)
+    p.add_argument('--cloud', choices=['AWS', 'GCP'], default='GCP')
     a = p.parse_args()
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         raise RuntimeError('This harness runs only in GitHub Actions')
@@ -160,7 +162,8 @@ def main():
     c = q.normalize_credentials(json.loads(os.environ['UPTEST_CLOUD_CREDENTIALS']))
     if c.get('url') != QA_URL:
         raise RuntimeError('Explicit QA endpoint required; production fallback prohibited')
-    run_id = 'gcp-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+    region = {'AWS': 'us-east-1', 'GCP': 'us-central1'}[a.cloud]
+    run_id = a.cloud.lower() + '-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
     q.PREFIX = 'xp-red225344-'
     name = q.PREFIX + run_id
     out = Path(a.output)
@@ -206,18 +209,22 @@ def main():
             def manifest(*args):
                 result = original(*args)
                 cp = result['spec']['forProvider']['cloudProvider'][0]
-                cp['provider'] = 'GCP'
-                cp['region'][0]['region'] = 'us-central1'
+                cp['provider'] = a.cloud
+                cp['region'][0]['region'] = region
                 return result
             q.subscription_manifest = manifest
             apply = cluster.apply
             def recorded_apply(obj):
                 if obj['kind'] != 'Secret':
                     with (out / '01-trigger.txt').open('a') as f:
-                        f.write(f"kubectl --context {q.ALLOWED_CONTEXT} apply -f - # {obj['kind']}/{obj['metadata']['name']}\n")
+                        command = shlex.join([cluster.kubectl, '--context', cluster.context, 'apply', '-f', '-'])
+                        line = f"{command} # {obj['kind']}/{obj['metadata']['name']}"
+                        f.write(line + '\n')
+                        print('Executing: ' + line, flush=True)
                 apply(obj)
             cluster.apply = recorded_apply
             (out / '01-trigger.txt').write_text(f'Crossplane; Kind hosts Crossplane and CRDs\nProvider commit: {BASELINE}\nRun: {name}\n')
+            print(f'Crossplane provider commit {BASELINE}; run {name}; {a.cloud}/{region}', flush=True)
             for action in (lambda:q.create_acl(deps,state), lambda:q.run_subscription(deps,state,payment), lambda:q.run_database(deps,state)):
                 action()
                 write('state.json', vars(state))
@@ -242,7 +249,7 @@ def main():
             cloud_details = [{'provider':x.get('provider') or x.get('cloudProvider'),
                               'regions':[r.get('region') for r in x.get('regions',[])]}
                              for x in sub.get('cloudDetails',[])]
-            if not any(x['provider'] == 'GCP' and 'us-central1' in x['regions'] for x in cloud_details):
+            if not any(x['provider'] == a.cloud and region in x['regions'] for x in cloud_details):
                 raise RuntimeError('Cloud region/provider mismatch')
             write('03-capi.json', {'run':name,'captured':datetime.now(timezone.utc).isoformat(),
                 'subscription':{k:sub.get(k) for k in ('id','name','status','numberOfDatabases')},

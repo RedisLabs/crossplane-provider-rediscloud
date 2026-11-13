@@ -74,3 +74,15 @@ asserts that the original backend provisioning fault has been diagnosed.
 
 Design: this document. ADR: not needed for a harness failure-path repair.
 BDR: not needed; no product or commercial policy changes.
+
+## Bounded AWS visual verification — 2026-11-13
+
+The successful GCP retry 43468905029 completed normal cleanup. Preserve the
+earlier failure and its unknown cause. The manual cloud input now selects AWS
+us-east-1 or GCP us-central1; it is supplied identically to create and cleanup.
+The provider baseline remains unchanged. Before each non-Secret apply, the
+adapter prints the exact kubectl invocation that its apply method executes,
+without stdin or credential values. Capture the genuine GitHub Actions console
+while resources exist; never label a rendered artifact as a live terminal.
+Build logs include commit, package hashes, image inventory and Kind node status.
+The same ownership checks, evidence acknowledgment and normal cleanup apply.

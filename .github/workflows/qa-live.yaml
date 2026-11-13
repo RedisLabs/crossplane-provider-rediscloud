@@ -1,6 +1,13 @@
 name: Nightly QA
 on:
   workflow_dispatch:
+    inputs:
+      cloud:
+        description: Cloud for the isolated Pro evidence run
+        type: choice
+        options: [AWS, GCP]
+        default: GCP
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -40,8 +47,14 @@ jobs:
           PY
       - name: Build exact provider and deploy Crossplane to isolated Kind
         working-directory: baseline
-        run: make vendor vendor.check local-deploy
-      - name: Create GCP resources and capture ordered active evidence
+        run: |
+          make vendor vendor.check local-deploy
+          git rev-parse HEAD
+          find . -name '*.xpkg' -type f -exec sha256sum {} \;
+          docker images --digests
+          tool=$(find .cache/tools -name 'kubectl-*' -type f | head -n 1)
+          "$tool" --context kind-local-dev get nodes
+      - name: Create ${{ inputs.cloud }} resources and capture ordered active evidence
         id: active
         timeout-minutes: 65
         env:
@@ -49,14 +62,14 @@ jobs:
         run: |
           tool=$(find baseline/.cache/tools -name 'kubectl-*' -type f | head -n 1)
           echo "QA_KUBECTL=$tool" >> "$GITHUB_ENV"
-          python3 harness/scripts/evidence_run.py create --baseline baseline --kubectl "$tool" --output evidence
+          python3 harness/scripts/evidence_run.py create --baseline baseline --kubectl "$tool" --output evidence --cloud "${{ inputs.cloud }}"
           docker images --digests > evidence/provider-images.txt
           find baseline -name '*.xpkg' -type f -exec sha256sum {} \; > evidence/provider-packages.txt
       - name: Publish active evidence before UI capture
         if: steps.active.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: crossplane-gcp-active-${{ github.run_id }}-${{ github.run_attempt }}
+          name: crossplane-${{ inputs.cloud }}-active-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/
           retention-days: 14
       - name: Wait for explicit SM screenshot acknowledgment
@@ -73,12 +86,12 @@ jobs:
         env:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
         run: |
-          python3 harness/scripts/evidence_run.py cleanup --baseline baseline --kubectl "$QA_KUBECTL" --output evidence
+          python3 harness/scripts/evidence_run.py cleanup --baseline baseline --kubectl "$QA_KUBECTL" --output evidence --cloud "${{ inputs.cloud }}"
       - name: Publish cleanup proof and available evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: crossplane-gcp-final-${{ github.run_id }}-${{ github.run_attempt }}
+          name: crossplane-${{ inputs.cloud }}-final-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/
           if-no-files-found: ignore
           retention-days: 14
