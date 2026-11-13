@@ -464,9 +464,10 @@ class QaLiveTest(unittest.TestCase):
     def test_workflow_is_not_a_pull_request(self):
         text = (REPO / ".github/workflows/qa-live.yaml").read_text()
         self.assertNotIn("pull_request", text)
-        self.assertIn("schedule:", text)
+        # RED-225344 experimental evidence workflow is deliberately manual-only.
+        self.assertNotIn("schedule:", text)
         self.assertIn("workflow_dispatch:", text)
-        self.assertIn("17 6 * * *", text)
+        self.assertIn("harness/scripts/evidence_run.py", text)
         self.assertNotIn("17 4 * * *", text)
         self.assertIn("secrets.UPTEST_CLOUD_CREDENTIALS", text)
         self.assertNotIn("api_key:", text)

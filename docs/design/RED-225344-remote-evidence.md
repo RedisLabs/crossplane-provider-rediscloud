@@ -29,3 +29,48 @@ Runner termination can interrupt cleanup; inspect CAPI and retain recovery
 credentials until absence is independently confirmed. Never cancel a run with
 live resources. Rollback is discontinuing dispatch of this experimental branch.
 No new architecture or business decision; ADR and BDR are not needed.
+
+## Failure evidence and cleanup repair — 2026-11-13
+
+Status: local harness repair, hermetically tested; live retry remains blocked.
+This does not change the provider baseline or resolve the original provisioning
+failure. No new Cloud run is authorized by this repair.
+
+The adapter persists numeric subscription/database IDs as soon as observed in
+its exact-name Cloud subscription lookup or managed CR reads, before Ready.
+Ambiguous duplicate Cloud names and mismatched database subscription IDs fail
+closed. A create exception captures allowlisted Provider, ProviderConfig, and
+managed-resource status in `failure-kubernetes.json`; individual failed reads
+are recorded without discarding the other statuses. Messages, specs, credential
+values and arbitrary provider fields are excluded. Raw backend task payloads
+are not captured: obtaining the missing creation task diagnostic is still open.
+
+Cleanup validates that saved state belongs to the current run. Database deletion
+must complete before parent subscription deletion. An unresolved child skips
+its parent, while independent ACL cleanup still runs. Every resource result is
+persisted in `06-cleanup.json`. Any exception, finalizer timeout, remaining run
+prefix, missing subscription ID, non-404 response, or lookup cleanup failure
+keeps cleanup FAILED. Accepted requests do not prove deletion. Credentials and
+lookups remain available when managed-resource cleanup fails; finalizers are
+never stripped. The original create step remains failed even if later cleanup
+passes. Runner termination can still interrupt evidence capture and cleanup.
+
+Hermetic validation:
+`python3 -m unittest discover -s scripts -p test_evidence_run.py -v`.
+Tests cover timeout/error before Ready, early IDs, foreign-state/resource
+rejection, mismatched database ownership, sanitization, independent cleanup,
+missing IDs, accepted-but-not-deleted responses, and confirmed absence.
+The original schedule assertion passes at provider baseline `5ceb443` and
+fails at unmodified experimental harness commit `1613c52`. The harness replaced
+Nightly QA with manual-only verification without updating that assertion. This
+repair narrowly tests the documented dispatch-only contract; it does not enable
+scheduled live provisioning. Baseline comparison is retained in review evidence.
+
+Error-path discovery also attempts an exact-name Cloud lookup when creation
+fails before the first CR poll. Changed or duplicate subscription IDs persist an
+ownership-conflict marker and prevent cleanup from reporting success. Missing
+cleanup state fails instead of silently returning success. None of these changes
+asserts that the original backend provisioning fault has been diagnosed.
+
+Design: this document. ADR: not needed for a harness failure-path repair.
+BDR: not needed; no product or commercial policy changes.
