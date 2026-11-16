@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ACLUser
+metadata:
+  name: example-acl-user
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    name: example-user

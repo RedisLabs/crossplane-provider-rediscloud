@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: TransitGatewayInvitations
+metadata:
+  name: example-transit-gateway-invitations
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"

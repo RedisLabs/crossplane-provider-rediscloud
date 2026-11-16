@@ -1,0 +1,11 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: TransitGateway
+metadata:
+  name: example-transit-gateway
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"
+    tgwId: "4"
+    awsTgwUid: example-tgw

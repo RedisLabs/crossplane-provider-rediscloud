@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: PrivateServiceConnect
+metadata:
+  name: example-private-service-connect
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"

@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: PrivateLink
+metadata:
+  name: example-private-link
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"

@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ACLRole
+metadata:
+  name: example-acl-role
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    name: example-role

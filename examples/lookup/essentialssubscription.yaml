@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: EssentialsSubscription
+metadata:
+  name: example-essentials-subscription
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    name: example-essentials

@@ -1,0 +1,7 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: DatabaseModules
+metadata:
+  name: example-database-modules
+spec:
+  providerConfigRef:
+    name: default
