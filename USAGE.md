@@ -424,7 +424,7 @@ spec:
 
 ### `rediscloud_active_active_subscription_regions`
 
-Local read and write operations per second on the Active-Active database and on this regions resource for that same database are mutually exclusive.
+The regions example and the database overrideRegion throughput are alternatives, and they are not applied to the same database.
 
 ```yaml
 apiVersion: active.redis.io/v1beta1
@@ -440,13 +440,17 @@ spec:
     - region: us-east-1
       networkingDeploymentCidr: 192.168.0.0/24
       database:
-      - databaseName: example-active-database
-        databaseId: 1001
+      - databaseName: example-active-regions-database
+        databaseId: 1002
+        localReadOperationsPerSecond: 1000
+        localWriteOperationsPerSecond: 1000
     - region: us-east-2
       networkingDeploymentCidr: 10.0.1.0/24
       database:
-      - databaseName: example-active-database
-        databaseId: 1001
+      - databaseName: example-active-regions-database
+        databaseId: 1002
+        localReadOperationsPerSecond: 1000
+        localWriteOperationsPerSecond: 1000
   providerConfigRef:
     name: default
 ```
