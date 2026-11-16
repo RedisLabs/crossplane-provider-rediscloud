@@ -122,7 +122,6 @@ spec:
     subscriptionId: 1001
     name: example-database
     protocol: redis
-    memoryLimitInGb: 1
     datasetSizeInGb: 1
     dataPersistence: aof-every-1-second
     throughputMeasurementBy: operations-per-second
@@ -393,7 +392,6 @@ spec:
     # subscriptionId is a number. Copy status.atProvider.id from the subscription.
     subscriptionId: 1001
     datasetSizeInGb: 1
-    memoryLimitInGb: 1
     globalDataPersistence: aof-every-1-second
     globalPasswordSecretRef:
       name: example-database-password
