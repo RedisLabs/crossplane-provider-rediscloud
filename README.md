@@ -65,6 +65,8 @@ spec:
 
 ### Usage Example
 
+Synthetic examples for every managed resource are in [USAGE.md](USAGE.md).
+
 Create an Essentials subscription:
 
 ```yaml
@@ -141,6 +143,8 @@ make local-deploy
 
 ## Documentation
 
+- [Usage](USAGE.md) - Synthetic example for every managed resource
+- [Release](RELEASE.md) - How a tag, a package, and a Terraform pin pull request are produced
 - [Terraform Alignment](docs/terraform-alignment.md) - Alignment with Redis Cloud Terraform provider v2.19.2
 - [Architecture decisions](docs/adr/ADR-index.md) - Why the provider follows Upjet v2
 - [Testing Guide](TESTING.md) - Instructions for testing the provider
