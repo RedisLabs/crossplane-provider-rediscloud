@@ -17,7 +17,9 @@ Source: `docs/design/test-suites.md`. Terraform workflow
 ## Active-Active
 
 Redis Cloud multi-region subscriptions. Terraform resource names start with
-`rediscloud_active_active_`.
+`rediscloud_active_active_`. Local read and write operations per second on
+the database and on the regions resource for that same database are mutually
+exclusive. Confirmed by Shay, 2026-11-17.
 
 Not to be confused with Ultra.
 
