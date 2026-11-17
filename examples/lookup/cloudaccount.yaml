@@ -1,0 +1,11 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: CloudAccount
+metadata:
+  name: example-cloud-account
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    excludeInternalAccount: true
+    providerType: GCP
+    name: example-cloud-account

@@ -21,7 +21,10 @@ import (
 	"github.com/RedisLabs/provider-rediscloud/internal/lookup"
 )
 
-const requeue = 10 * time.Minute
+const (
+	requeue       = 10 * time.Minute
+	requeueFailed = time.Minute
+)
 
 // PaymentMethodReconciler looks up one payment method.
 type PaymentMethodReconciler struct {
@@ -95,5 +98,5 @@ func (r *PaymentMethodReconciler) fail(ctx context.Context, obj *lookupv1alpha1.
 	if updateErr := r.Status().Update(ctx, obj); updateErr != nil {
 		return ctrl.Result{}, errors.Wrap(updateErr, reported.Error())
 	}
-	return ctrl.Result{RequeueAfter: time.Minute}, nil
+	return ctrl.Result{RequeueAfter: requeueFailed}, nil
 }

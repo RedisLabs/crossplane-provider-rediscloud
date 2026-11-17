@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ActiveActiveSubscriptionRegions
+metadata:
+  name: example-active-active-regions
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionName: example-active-active

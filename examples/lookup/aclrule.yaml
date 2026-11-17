@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ACLRule
+metadata:
+  name: example-acl-rule
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    name: example-rule

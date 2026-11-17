@@ -1,7 +1,7 @@
-# Lookups for payment method, plan, and region
+# Lookups for Terraform data sources
 
-Date: 23 October 2026.
-Status: Proposed. Implementation matches this design. Unit tests passed, and the three lookup objects became Ready on the test cluster on 23 October 2026. Status ids matched the Redis Cloud API for the same filters. Deleting the objects left the account unchanged.
+Date: 23 October 2026. Updated 17 November 2026.
+Status: Proposed. The payment method, Essentials plan, and region lookups match this design. Those three became Ready on the test cluster on 23 October 2026, and deleting them left the account unchanged. The 17 November 2026 lookups follow the same controller pattern. Their filters are covered by credential-free tests against a local HTTP server. They have not been run against a live Redis Cloud account.
 Owner: Shay Berman.
 Ticket: none.
 Design: this file.
@@ -10,7 +10,7 @@ BDR: none.
 
 ## TLDR
 
-Three read-only custom resources call the Redis Cloud API and write the looked-up id into status. They cover payment method, Essentials plan, and region. The other 26 Terraform data sources stay pasted ids. A database subscription id and an Essentials plan id stay numbers, so those values are still copied by hand.
+Read-only custom resources in `lookup.redis.io/v1alpha1` call the Redis Cloud API and write the looked-up value into status. Twenty-four of the twenty-nine Terraform v2.20.0 data sources have a lookup. Five stay without one because a single list-and-filter read would not represent them. A database subscription id and an Essentials plan id stay numbers, so those values are still copied by hand.
 
 ## Problem
 
@@ -19,16 +19,18 @@ Terraform Redis Cloud v2.19.2 has data sources for a payment method, an Essentia
 ## Goals
 
 - `PaymentMethod`, `EssentialsPlan`, and `Regions` become Ready when the Redis Cloud API returns a match.
-- The match rules follow the Terraform data sources in v2.19.2.
+- The match rules follow the Terraform data sources. The original three follow v2.19.2. The lookups added on 17 November 2026 follow v2.20.0.
 - Deleting the object deletes nothing in Redis Cloud.
 - Examples contain no account ids.
 
 ## Non-goals
 
-- Lookups for the other 26 data sources.
+- Lookups for the five data sources that fan out across several APIs or return a secret. Those are listed below.
+- A request field the Terraform data source does not send. `wait_for_tgw_timeout` and `wait_for_invitations_timeout` default to one read, so they are not spec fields. The controller requeues instead of blocking. `includeTerraformGcpScript` is hardcoded true by Terraform, so the controller passes true and does not accept it as a field.
 - A Crossplane reference into a numeric field. Essentials `planId` and Essentials `paymentMethodId` stay hand copies.
 - Regenerating the Upjet subscription types in this change.
-- A Terraform CLI or Upjet upgrade.
+- A Terraform CLI, Upjet, or `rediscloud-go-api` upgrade. The client stays v0.52.1.
+- A live Cloud run for the lookups added on 17 November 2026.
 
 ## Behavior
 
@@ -57,6 +59,39 @@ On the test cluster, against the non-production Redis Cloud account:
 - An `EssentialsPlan` filter that matches one plan becomes Ready and status.id is that plan id.
 - Deleting the three objects leaves the account unchanged.
 
+## Additional lookups
+
+The same rules apply to the lookups added on 17 November 2026. Each is cluster-scoped, names a ProviderConfig, and deletes nothing. A successful reconcile sets Ready and Synced and requeues after 10 minutes. A failed reconcile clears `atProvider`, sets Ready false and Synced false, and requeues after 1 minute. Numeric filters are strings on the CRD and are parsed before the API call. An empty catalog, an empty peering list, and an empty invitation list are Ready. A lookup that must return one object fails on zero matches and on more than one match. Active-Active regions fail when the region list is empty.
+
+| Kind | Terraform data source | Spec | Ready when |
+| --- | --- | --- | --- |
+| `ACLRole`, `ACLRule`, `ACLUser` | `rediscloud_acl_role`, `rediscloud_acl_rule`, `rediscloud_acl_user` | required `name` | exactly one exact name |
+| `CloudAccount` | `rediscloud_cloud_account` | optional `excludeInternalAccount`, `providerType`, `name` | exactly one. Internal account id 1 is dropped only when `excludeInternalAccount` is true |
+| `DataPersistence` | `rediscloud_data_persistence` | none | the catalog is returned, including an empty catalog. Status id is `ALL` |
+| `DatabaseModules` | `rediscloud_database_modules` | none | the catalog is returned, including an empty catalog. Status id is `ALL` |
+| `EssentialsSubscription` | `rediscloud_essentials_subscription` | optional `id` and `name`. `id` `0` is unset | exactly one. A missing payment method id is `0` |
+| `PrivateLink`, `ActiveActivePrivateLink` | `rediscloud_private_link`, `rediscloud_active_active_private_link` | `subscriptionId`, plus `regionId` for Active-Active | the API returns the link |
+| `PrivateLinkEndpointScript` | `rediscloud_private_link_endpoint_script` | `subscriptionId` | the subscription, the private link, and the script read succeed. An empty script is Ready |
+| `ActiveActivePrivateLinkEndpointScript` | `rediscloud_active_active_private_link_endpoint_script` | `subscriptionId`, `regionId` | the script read succeeds. An empty script is Ready |
+| `PrivateServiceConnect`, `ActiveActivePrivateServiceConnect` | `rediscloud_private_service_connect`, `rediscloud_active_active_private_service_connect` | `subscriptionId`, plus `regionId` for Active-Active | the service id is present. Status id is `subscription/service` |
+| `PrivateServiceConnectEndpoints`, `ActiveActivePrivateServiceConnectEndpoints` | `rediscloud_private_service_connect_endpoints`, `rediscloud_active_active_private_service_connect_endpoints` | `subscriptionId`, `privateServiceConnectServiceId`, plus `regionId` for Active-Active | the endpoint list is returned. Rejected and deleted endpoints do not request a creation script. An empty list is Ready |
+| `SubscriptionPeerings` | `rediscloud_subscription_peerings` | `subscriptionId`, optional `status` | the peering list is returned. Status id is `ALL` or the status filter |
+| `TransitGateway`, `ActiveActiveTransitGateway` | `rediscloud_transit_gateway`, `rediscloud_active_active_transit_gateway` | `subscriptionId`, optional `tgwId` and `awsTgwUid`, plus `regionId` for Active-Active | exactly one attachment. Status id is `subscription/tgw` |
+| `TransitGatewayInvitations`, `ActiveActiveTransitGatewayInvitations` | `rediscloud_transit_gateway_invitations`, `rediscloud_active_active_transit_gateway_invitations` | `subscriptionId`, plus `regionId` for Active-Active | the invitation list is returned, including an empty list |
+| `ActiveActiveSubscriptionRegions` | `rediscloud_active_active_subscription_regions` | required `subscriptionName` | one Active-Active subscription has that name and its region list is not empty |
+
+## Skipped data sources
+
+These five are not one list or one get plus a client-side filter. A lookup of that shape would invent calls or put a secret in status.
+
+| Data source | Why it is skipped |
+| --- | --- |
+| `rediscloud_database` | The read lists and gets the database, then reads the latest backup and the latest import. The password is sensitive. |
+| `rediscloud_essentials_database` | The read lists and gets the fixed database, then reads the fixed latest backup and the fixed latest import. The password is sensitive. |
+| `rediscloud_active_active_subscription_database` | The read lists and gets the Active-Active database, then reads the latest backup per region, the latest import, and the certificate. The password and TLS certificate are sensitive. |
+| `rediscloud_subscription` | After the subscription list, the read calls maintenance and pricing. Those are separate APIs, and the status would be the whole subscription document. |
+| `rediscloud_active_active_subscription` | Same maintenance and pricing fan-out as the Pro subscription data source. |
+
 ## Rollout
 
-The new CRDs install with the provider package. The package manager grants the provider access to those CRDs. Existing managed resources are unchanged. Rollback is reverting the pull request. Already-applied lookup objects become unknown kinds after the CRDs are removed.
+The CRDs install with the provider package. The package manager grants the provider access to those CRDs. Existing managed resources are unchanged. Rollback is reverting the pull request. Already-applied lookup objects become unknown kinds after the CRDs are removed.

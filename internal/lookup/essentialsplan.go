@@ -13,14 +13,19 @@ import (
 	"github.com/RedisLabs/rediscloud-go-api/service/fixed/plans"
 )
 
+const (
+	cloudProviderAWS = "AWS"
+	cloudProviderGCP = "GCP"
+)
+
 // CanonicalProvider maps AWS, GCP, and Azure to the values the Redis Cloud
 // API returns. Other providers are returned trimmed, so a typo stays visible.
 func CanonicalProvider(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "aws":
-		return "AWS"
+		return cloudProviderAWS
 	case "gcp":
-		return "GCP"
+		return cloudProviderGCP
 	case "azure":
 		return "Azure"
 	default:

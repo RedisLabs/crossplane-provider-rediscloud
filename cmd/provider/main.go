@@ -173,23 +173,15 @@ func setupControllers(mgr manager.Manager, o tjcontroller.Options, log logging.L
 }
 
 func setupLookups(mgr manager.Manager, g *gate.Gate[schema.GroupVersionKind]) error {
-	setups := []struct {
-		kind string
-		fn   func(manager.Manager) error
-	}{
-		{kind: "PaymentMethod", fn: lookupcontroller.SetupPaymentMethod},
-		{kind: "EssentialsPlan", fn: lookupcontroller.SetupEssentialsPlan},
-		{kind: "Regions", fn: lookupcontroller.SetupRegions},
-	}
-	for _, setup := range setups {
+	for _, setup := range lookupcontroller.Setups() {
 		if g == nil {
-			if err := setup.fn(mgr); err != nil {
-				return errors.Wrapf(err, "cannot setup %s lookup", setup.kind)
+			if err := setup.Fn(mgr); err != nil {
+				return errors.Wrapf(err, "cannot setup %s lookup", setup.Kind)
 			}
 			continue
 		}
-		kind := setup.kind
-		fn := setup.fn
+		kind := setup.Kind
+		fn := setup.Fn
 		g.Register(func() {
 			if err := fn(mgr); err != nil {
 				mgr.GetLogger().Error(err, "unable to setup lookup", "kind", kind)
