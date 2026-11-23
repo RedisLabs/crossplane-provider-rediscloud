@@ -99,6 +99,7 @@ class CheckpointTest(unittest.TestCase):
              patch.object(qa_recovery_resolve, "recover_exact") as mutation:
             self.assertEqual(qa_recovery_resolve.main(), 1)
             mutation.assert_not_called()
+
         with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
              patch.object(qa_verify_source, "verify_remote") as verify, \
              patch.object(qa_recovery_resolve, "recover_exact") as mutation:
@@ -110,6 +111,11 @@ class CheckpointTest(unittest.TestCase):
              patch.object(qa_recovery_resolve, "recover_exact") as mutation:
             self.assertEqual(qa_recovery_resolve.main(), 1)
             mutation.assert_not_called()
+
+    def test_hosted_recovery_mutation_has_an_early_disabled_gate(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/qa-recover.yaml").read_text()
+        self.assertLess(workflow.index("Refuse disabled recovery mutation"), workflow.index("Retrieve encrypted ownership intent"))
+        self.assertLess(workflow.index("Refuse disabled recovery mutation"), workflow.index("Recover exact owned resources"))
 
 
 class ResolutionTest(unittest.TestCase):

@@ -20,6 +20,7 @@ on:
           - preflight
           - checkpoint-rehearsal
           - recovery-rehearsal
+          - recovery-gate-check
         default: standard
       source_run_id:
         description: Completed checkpoint rehearsal run ID (recovery-rehearsal only)
@@ -42,6 +43,15 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
+  recovery-gate-check:
+    if: inputs.suite == 'recovery-gate-check'
+    uses: ./.github/workflows/qa-recover.yaml
+    with:
+      source_run_id: ${{ inputs.source_run_id }}
+      source_attempt: ${{ inputs.source_attempt }}
+      recovery_mode: recover-exact
+    secrets: inherit
+
   recovery-rehearsal:
     if: inputs.suite == 'recovery-rehearsal'
     uses: ./.github/workflows/qa-recover.yaml
