@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -114,6 +115,57 @@ def discover(cloud, intent, log):
     if task_check_ok and result == "present":
         evidence_ok = task_evidence(cloud, new_tasks, missing, details, log)
     return 0 if evidence_ok else 2
+
+
+def recover_exact(cloud, intent, log, timeout=900, poll=15, now=time.monotonic, sleep=time.sleep):
+    """Recover one proven pair; never infer ownership from a shared prefix.
+
+    This helper is not exposed by the workflow until source authentication,
+    cloud serialization and independent hosted failure tests are complete.
+    """
+    new_tasks, missing = task_delta(cloud, intent, log)
+    details = {}
+    if resolve(cloud, intent, log, details) != "present":
+        raise qa_live.SuiteFailure("recovery uncertain: both original resources must be present")
+    if not task_evidence(cloud, new_tasks, missing, details, log):
+        raise qa_live.SuiteFailure("recovery uncertain: exact create-task evidence is incomplete")
+    sub_id, db_id = details["subscriptionId"], details["databaseId"]
+    name = intent["runName"]
+    log("RECOVERY ONLY: original qualification remains failed; deleting exact owned database")
+    cloud.delete_fixed_database(sub_id, db_id)
+    deadline = now() + timeout
+    while True:
+        parent_code, parent = cloud.get_fixed_subscription(sub_id)
+        db_code, _ = cloud.get_fixed_database(sub_id, db_id)
+        if (parent_code != 200 or not isinstance(parent, dict) or str(parent.get("id") or "") != sub_id
+                or parent.get("name") != name):
+            raise qa_live.SuiteFailure("recovery stopped: parent identity or read changed")
+        if db_code == 404:
+            break
+        if db_code != 200 or now() >= deadline:
+            raise qa_live.SuiteFailure("recovery stopped: database absence unverified")
+        sleep(poll)
+    code, rows = cloud.list_fixed_databases_complete(sub_id)
+    if code != 200 or rows:
+        raise qa_live.SuiteFailure("recovery stopped: child inventory is not completely empty")
+    # Verify the exact parent again after child deletion and before mutation.
+    code, parent = cloud.get_fixed_subscription(sub_id)
+    if (code != 200 or not isinstance(parent, dict) or str(parent.get("id") or "") != sub_id
+            or parent.get("name") != name or parent.get("status") != "active"):
+        raise qa_live.SuiteFailure("recovery stopped: exact parent is not active")
+    log("RECOVERY ONLY: database absent while parent exists; deleting exact owned subscription")
+    cloud.delete_fixed_subscription(sub_id)
+    deadline = now() + timeout
+    while True:
+        code, _ = cloud.get_fixed_subscription(sub_id)
+        if code == 404:
+            break
+        if code != 200 or now() >= deadline:
+            raise qa_live.SuiteFailure("recovery stopped: subscription absence unverified")
+        sleep(poll)
+    if any(row.get("name") == name for row in cloud.list_fixed_subscriptions_checked()):
+        raise qa_live.SuiteFailure("recovery stopped: subscription remains in inventory")
+    log("RECOVERY ONLY: exact pair absent; original qualification remains failed")
 
 
 def main():

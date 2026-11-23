@@ -214,6 +214,111 @@ class ResolutionTest(unittest.TestCase):
              patch.object(qa_recovery_resolve, "task_evidence", return_value=False):
             self.assertEqual(qa_recovery_resolve.discover(object(), self.intent, self.logs.append), 2)
 
+    def test_exact_recovery_deletes_child_before_parent_and_preserves_failed_qualification(self):
+        cloud, intent, tasks = recovery_fixture()
+        with patch.object(qa_capture_task_baseline, "task_rows", return_value=tasks):
+            qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=0)
+        self.assertEqual(cloud.deletes, ["database", "subscription"])
+        self.assertTrue(any("original qualification remains failed" in line for line in self.logs))
+
+    def test_exact_recovery_refuses_prior_delete_or_ambiguous_tasks_without_writes(self):
+        cloud, intent, tasks = recovery_fixture()
+        tasks["00000000-0000-0000-0000-000000000003"] = {"commandType": "fixedDatabaseDeleteRequest"}
+        with patch.object(qa_capture_task_baseline, "task_rows", return_value=tasks):
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=0)
+        self.assertEqual(cloud.deletes, [])
+
+    def test_exact_recovery_preserves_parent_when_child_absence_unverified(self):
+        cloud, intent, tasks = recovery_fixture()
+        cloud.fail_db_read_after_delete = True
+        with patch.object(qa_capture_task_baseline, "task_rows", return_value=tasks):
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=0)
+        self.assertEqual(cloud.deletes, ["database"])
+
+    def test_exact_recovery_refuses_foreign_database_and_inactive_resource(self):
+        for change in ("foreign", "pending"):
+            cloud, intent, tasks = recovery_fixture()
+            setattr(cloud, change, True)
+            with patch.object(qa_capture_task_baseline, "task_rows", return_value=tasks):
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=0)
+            self.assertEqual(cloud.deletes, [])
+
+    def test_exact_recovery_polls_delayed_child_and_times_out_safely(self):
+        for delay, timeout, expected in ((1, 2, ["database", "subscription"]), (100, 2, ["database"])):
+            cloud, intent, tasks = recovery_fixture()
+            cloud.db_delay = delay
+            clock = [0]
+            def sleep(seconds): clock[0] += seconds
+            with patch.object(qa_capture_task_baseline, "task_rows", return_value=tasks):
+                if delay == 1:
+                    qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=timeout,
+                                                      poll=1, now=lambda: clock[0], sleep=sleep)
+                else:
+                    with self.assertRaises(qa_live.SuiteFailure):
+                        qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=timeout,
+                                                          poll=1, now=lambda: clock[0], sleep=sleep)
+            self.assertEqual(cloud.deletes, expected)
+            self.assertGreater(clock[0], 0)
+
+    def test_exact_recovery_rejects_subscription_timeout_and_stale_inventory(self):
+        for change in ("sub_stuck", "stale_inventory", "sub_forbidden"):
+            cloud, intent, tasks = recovery_fixture()
+            setattr(cloud, change, True)
+            with patch.object(qa_capture_task_baseline, "task_rows", return_value=tasks):
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_recovery_resolve.recover_exact(cloud, intent, self.logs.append, timeout=0)
+            self.assertEqual(cloud.deletes, ["database", "subscription"])
+
+
+def recovery_fixture():
+    subtask = "00000000-0000-0000-0000-000000000001"
+    dbtask = "00000000-0000-0000-0000-000000000002"
+    tasks = {subtask: {"commandType": "fixedSubscriptionCreateRequest"},
+             dbtask: {"commandType": "fixedDatabaseCreateRequest"}}
+    class Cloud:
+        def __init__(self):
+            self.deletes = []
+            self.db_gone = False
+            self.sub_gone = False
+            self.foreign = False
+            self.pending = False
+            self.fail_db_read_after_delete = False
+            self.db_delay = 0
+            self.sub_stuck = False
+            self.sub_forbidden = False
+            self.stale_inventory = False
+        def list_fixed_subscriptions_checked(self):
+            return [] if self.sub_gone and not self.stale_inventory else [{"id": 9, "name": "xp-ci-12345-2"}]
+        def get_fixed_subscription(self, sub):
+            if self.sub_gone and self.sub_forbidden: return 403, None
+            return (404, None) if self.sub_gone and not self.sub_stuck else (200, {"id": 9, "name": "xp-ci-12345-2", "status": "active"})
+        def list_fixed_databases_complete(self, sub):
+            rows = [] if self.db_gone else [{"databaseId": 11, "name": "xp-ci-12345-2-db"}]
+            return 200, rows + ([{"databaseId": 12, "name": "foreign"}] if self.foreign else [])
+        def get_fixed_database(self, sub, db):
+            if self.db_gone:
+                if self.db_delay:
+                    self.db_delay -= 1
+                    return 200, {"databaseId": 11, "name": "xp-ci-12345-2-db", "status": "active"}
+                return (403, None) if self.fail_db_read_after_delete else (404, None)
+            return 200, {"databaseId": 11, "name": "xp-ci-12345-2-db", "status": "pending" if self.pending else "active"}
+        def request(self, method, path):
+            task_id = path.split("/")[-1]
+            if task_id == subtask:
+                return 200, {"taskId": task_id, "commandType": "fixedSubscriptionCreateRequest", "status": "processing-completed", "response": {"resourceId": 9}}
+            return 200, {"taskId": task_id, "commandType": "fixedDatabaseCreateRequest", "status": "processing-completed", "response": {"resourceId": 11, "additionalResourceId": 9}}
+        def delete_fixed_database(self, sub, db):
+            self.deletes.append("database")
+            self.db_gone = True
+        def delete_fixed_subscription(self, sub):
+            self.deletes.append("subscription")
+            self.sub_gone = True
+    intent = {"runName": "xp-ci-12345-2", "taskBaseline": {"capturedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "taskIds": []}}
+    return Cloud(), intent, tasks
+
 
 if __name__ == "__main__":
     unittest.main()
