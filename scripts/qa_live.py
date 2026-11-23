@@ -34,6 +34,7 @@ REQUIRED_SECRET_KEYS = ("public_endpoint", "private_endpoint")
 ALLOWED_CONTEXT = "kind-local-dev"
 ACL_RULE = "+@read ~*"
 DEFAULT_API = "https://api.redislabs.com/v1"
+MAX_HTTP_BODY_BYTES = 8 * 1024 * 1024
 HELD_CIDRS = {
     "10.13.90.0/24",
     "10.13.91.0/24",
@@ -1331,7 +1332,9 @@ class RedisCloud:
         try:
             # Do not forward authenticated reads or writes to a redirected URL.
             with urllib.request.build_opener(RefuseRedirect()).open(req, timeout=60) as resp:
-                raw = resp.read()
+                raw = resp.read(MAX_HTTP_BODY_BYTES + 1)
+                if len(raw) > MAX_HTTP_BODY_BYTES:
+                    raise SuiteFailure("Cloud response exceeds the safety limit")
                 body = json.loads(raw.decode()) if raw else {}
                 return resp.status, body
         except urllib.error.HTTPError as err:
