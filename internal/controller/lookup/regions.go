@@ -6,7 +6,6 @@ package lookup
 
 import (
 	"context"
-	"time"
 
 	"github.com/pkg/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -82,5 +81,5 @@ func (r *RegionsReconciler) fail(ctx context.Context, obj *lookupv1alpha1.Region
 	if updateErr := r.Status().Update(ctx, obj); updateErr != nil {
 		return ctrl.Result{}, errors.Wrap(updateErr, reported.Error())
 	}
-	return ctrl.Result{RequeueAfter: time.Minute}, nil
+	return ctrl.Result{RequeueAfter: requeueFailed}, nil
 }

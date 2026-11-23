@@ -1,0 +1,10 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ActiveActivePrivateLink
+metadata:
+  name: example-active-active-private-link
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"
+    regionId: "1"

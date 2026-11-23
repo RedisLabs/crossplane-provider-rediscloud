@@ -1,0 +1,12 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ActiveActiveTransitGateway
+metadata:
+  name: example-active-active-transit-gateway
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"
+    regionId: "1"
+    tgwId: "4"
+    awsTgwUid: example-tgw

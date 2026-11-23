@@ -27,6 +27,8 @@ import (
 	"github.com/RedisLabs/provider-rediscloud/apis/v1beta1"
 )
 
+const exampleProviderConfig = "default"
+
 func TestPaymentMethodReconcileWritesID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/payment-methods" {
@@ -43,7 +45,7 @@ func TestPaymentMethodReconcileWritesID(t *testing.T) {
 	kube := fakeClient(t, server.URL, &lookupv1alpha1.PaymentMethod{
 		ObjectMeta: metav1.ObjectMeta{Name: "example-payment-method"},
 		Spec: lookupv1alpha1.PaymentMethodSpec{
-			ProviderConfigRef: xpv1.Reference{Name: "default"},
+			ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig},
 			ForProvider: lookupv1alpha1.PaymentMethodParameters{
 				CardType: stringPtr("Visa"),
 			},
@@ -81,7 +83,7 @@ func TestPaymentMethodReconcileHidesHTMLErrors(t *testing.T) {
 	kube := fakeClient(t, server.URL, &lookupv1alpha1.PaymentMethod{
 		ObjectMeta: metav1.ObjectMeta{Name: "example-payment-method"},
 		Spec: lookupv1alpha1.PaymentMethodSpec{
-			ProviderConfigRef: xpv1.Reference{Name: "default"},
+			ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig},
 		},
 	})
 	result, err := (&PaymentMethodReconciler{Client: kube}).Reconcile(context.Background(), request("example-payment-method"))
@@ -123,7 +125,7 @@ func fakeClient(t *testing.T, apiURL string, payment *lookupv1alpha1.PaymentMeth
 		},
 	}
 	config := &v1beta1.ProviderConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: exampleProviderConfig},
 		Spec: v1beta1.ProviderConfigSpec{
 			Credentials: v1beta1.ProviderCredentials{
 				Source: xpv1.CredentialsSourceSecret,

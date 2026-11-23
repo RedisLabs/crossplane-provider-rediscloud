@@ -7,7 +7,6 @@ package lookup
 import (
 	"context"
 	"strconv"
-	"time"
 
 	"github.com/pkg/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -88,7 +87,7 @@ func (r *EssentialsPlanReconciler) fail(ctx context.Context, obj *lookupv1alpha1
 	if updateErr := r.Status().Update(ctx, obj); updateErr != nil {
 		return ctrl.Result{}, errors.Wrap(updateErr, reported.Error())
 	}
-	return ctrl.Result{RequeueAfter: time.Minute}, nil
+	return ctrl.Result{RequeueAfter: requeueFailed}, nil
 }
 
 func planQuery(spec lookupv1alpha1.EssentialsPlanParameters) lookup.EssentialsPlanQuery {

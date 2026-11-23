@@ -73,6 +73,8 @@ installation if it differs.
 
 ### Usage Example
 
+Synthetic examples for every managed resource are in [USAGE.md](USAGE.md).
+
 Create an Essentials subscription:
 
 ```yaml
@@ -149,8 +151,9 @@ make local-deploy
 
 ## Documentation
 
-- [Usage guide](USAGE.md) - Complete AWS and GCP Pro examples, credentials, status, and cleanup
-- [Terraform Alignment](docs/terraform-alignment.md) - Alignment history and remaining gaps
+- [Usage guide](USAGE.md) - AWS and GCP Pro walkthrough plus synthetic examples for every managed resource
+- [Release](RELEASE.md) - How a tag, a package, and a Terraform pin pull request are produced
+- [Terraform Alignment](docs/terraform-alignment.md) - Alignment with Redis Cloud Terraform provider v2.19.2
 - [Architecture decisions](docs/adr/ADR-index.md) - Why the provider follows Upjet v2
 - [Testing Guide](TESTING.md) - Instructions for testing the provider
 - [API Reference](https://doc.crds.dev/github.com/RedisLabs/provider-rediscloud) - Generated CRD documentation

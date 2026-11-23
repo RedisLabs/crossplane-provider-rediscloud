@@ -1,0 +1,7 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: DataPersistence
+metadata:
+  name: example-data-persistence
+spec:
+  providerConfigRef:
+    name: default

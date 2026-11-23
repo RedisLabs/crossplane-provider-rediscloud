@@ -14,10 +14,10 @@ import (
 func TestMatchRegions(t *testing.T) {
 	regions := []*account.Region{
 		region(1, "us-east-1", "AWS"),
-		region(2, "us-central1", "GCP"),
+		region(2, "us-central1", cloudProviderGCP),
 		nil,
 	}
-	got, err := MatchRegions(regions, RegionQuery{ProviderName: "GCP", Name: "us-central1"})
+	got, err := MatchRegions(regions, RegionQuery{ProviderName: cloudProviderGCP, Name: "us-central1"})
 	if err != nil {
 		t.Fatalf("match: %v", err)
 	}

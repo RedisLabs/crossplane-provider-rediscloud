@@ -17,7 +17,9 @@ Source: `docs/design/test-suites.md`. Terraform workflow
 ## Active-Active
 
 Redis Cloud multi-region subscriptions. Terraform resource names start with
-`rediscloud_active_active_`.
+`rediscloud_active_active_`. The regions example and the database
+overrideRegion throughput are alternatives, and they are not applied to the
+same database.
 
 Not to be confused with Ultra.
 

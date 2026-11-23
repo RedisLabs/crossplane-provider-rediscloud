@@ -1,0 +1,10 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: SubscriptionPeerings
+metadata:
+  name: example-subscription-peerings
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"
+    status: active

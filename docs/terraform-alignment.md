@@ -33,7 +33,7 @@ The original comparison, dated 21 October 2026, used branch `spike/tf-2.19.2-gen
 | <a id="g5"></a>5. One bad generated type<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** `initProvider.clientTlsCertificatesSecretRef` is a secret-reference list. |
 | <a id="g6"></a>6. Managed APIs are `v1alpha1`<br>**severity:** 🟡<br>**Fix status:** fixed | ✅ Fixed<br>• **Fix detail:** The 27 managed kinds are stored and reconciled as `v1beta1`. `v1alpha1` stays served for those same kinds so a cluster whose CRD `status.storedVersions` still lists `v1alpha1` can accept the package. Examples and the QA manifests use `v1beta1`. ProviderConfig stays `v1beta1`. PaymentMethod, EssentialsPlan, and Regions stay `lookup.redis.io/v1alpha1`. Generation keeps the `zz_*` files for both served versions.<br>• **Plan:** No further change for this gap. Dropping served `v1alpha1` waits until those CRDs no longer record it as a stored version. |
 | <a id="g7"></a>7. No proof of a real apply<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** ACL rules, a Pro subscription, and a Database custom resource were created, became Ready, and were deleted against a Redis Cloud account. The database copied the numeric subscription id, reached Cloud active and Kubernetes Ready, then both were deleted cleanly. |
-| <a id="g8"></a>8. Data-source lookups are manual<br>**severity:** 🔴<br>**Fix status:** partial | ✅ Fixed for payment method, Essentials plan, and region<br>• **Fix detail:** `PaymentMethod`, `EssentialsPlan`, and `Regions` are read-only cluster objects in `lookup.redis.io`. They read the ProviderConfig credentials, call the Redis Cloud API, and write the matched id to status. Delete does not change the account. Examples are in `examples/lookup`.<br>• **Left unfixed:** for the other 26 data sources. Callers keep pasting those IDs.<br>• **Plan:** No fix for the other 26 data sources. Callers keep pasting those IDs. |
+| <a id="g8"></a>8. Data-source lookups are manual<br>**severity:** 🔴<br>**Fix status:** partial | ✅ Fixed for 24 of 29 data sources<br>• **Fix detail:** `lookup.redis.io` has read-only cluster objects for payment method, Essentials plan, regions, and 21 more Terraform v2.20.0 data sources. They read the ProviderConfig credentials, call the Redis Cloud API, and write the match to status. Delete does not change the account. Examples are in `examples/lookup`. The design is `docs/design/lookup-resources.md`.<br>• **Left unfixed:** `rediscloud_database`, `rediscloud_essentials_database`, `rediscloud_active_active_subscription_database`, `rediscloud_subscription`, and `rediscloud_active_active_subscription`. Those reads fan out across extra APIs or return a secret, so a single list-and-filter lookup would not represent them. Callers keep pasting those IDs.<br>• **Plan:** No lookup for those five. A numeric database subscription id still has no Crossplane reference. |
 | <a id="g9"></a>9. Stay aligned with later Terraform provider releases<br>**severity:** 🟡<br>**Fix status:** ✅ | ✅ Fixed<br>• **Fix detail:** `.github/workflows/terraform-release.yaml` opens a pull request when `RedisLabs/terraform-provider-rediscloud` publishes a release newer than `TERRAFORM_PROVIDER_VERSION`. That pull request changes the pin and regenerates. It does not merge itself, and it does not bump Crossplane, Go, or Upjet. |
 
 ## Architectures
@@ -84,7 +84,7 @@ flowchart TB
   pc["ProviderConfig\ncredentials JSON"]
   refs["String subscriptionIdRef\npeering, link, PSC, transit gateway"]
   dbref["Database subscriptionId\nis a number, so no Ref\n🟡 3"]
-  lookup["PaymentMethod, EssentialsPlan, Regions\nlookup.redis.io\n🔴 ✅ 8"]
+  lookup["24 lookup.redis.io data sources\n5 database and subscription reads stay pasted\n🔴 ✅ 8"]
   ctrl["29 Upjet controllers\nasync apply, 30m timeout\n🟣 ✅ 2"]
   ws["Terraform workspace\ninside the provider pod"]
   plugin["Same terraform-provider-rediscloud\nv2.20.0 plugin"]
@@ -106,7 +106,7 @@ flowchart TB
   class dbref,proof medium
 ```
 
-The provider pod does not call Redis Cloud itself for managed resources. It runs Terraform, and Terraform runs the same plugin as the diagram above. The resource boxes match. Payment method, Essentials plan, and region lookups are read-only objects (🔴 ✅ [8](#g8)). The other data-source IDs stay pasted. 🟡 [3](#g3) stays yellow because string children already reference a subscription, and databases still cannot.
+The provider pod does not call Redis Cloud itself for managed resources. It runs Terraform, and Terraform runs the same plugin as the diagram above. The resource boxes match. Twenty-four data-source lookups are read-only objects and call the Redis Cloud API directly (🔴 ✅ [8](#g8)). The database and subscription data sources stay pasted. 🟡 [3](#g3) stays yellow because string children already reference a subscription, and databases still cannot.
 
 ## Result
 
@@ -186,7 +186,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 | `rediscloud_transit_gateway_invitations`, `rediscloud_active_active_transit_gateway_invitations` | Input to the invitation-acceptor resources. |
 | `rediscloud_private_link_endpoint_script`, `rediscloud_active_active_private_link_endpoint_script` | Generated endpoint scripts. No managed resource creates these. |
 
-`PaymentMethod`, `EssentialsPlan`, and `Regions` in `lookup.redis.io` perform the first three lookups. A user still pastes IDs for the other data sources. There is no Crossplane reference from a numeric field, so an Essentials plan id and a database subscription id are copied from status by hand. Child resources whose `subscription_id` is a string now have `subscriptionIdRef`. `subscriptionId` on a Pro database is a number (`*float64` in `apis/subscription/v1beta1/zz_database_types.go`), so that field has no reference. Terraform HCL can interpolate `${rediscloud_subscription.example.id}`. This provider cannot, for databases. That is a composition gap, not a missing resource.
+`lookup.redis.io` performs 24 of the 29 data-source reads, including data persistence, database modules, and transit gateway invitations. A user still pastes IDs for the Pro database, the Essentials database, the Active-Active database, and both subscription data sources. There is no Crossplane reference from a numeric field, so an Essentials plan id and a database subscription id are copied from status by hand. Child resources whose `subscription_id` is a string now have `subscriptionIdRef`. `subscriptionId` on a Pro database is a number (`*float64` in `apis/subscription/v1beta1/zz_database_types.go`), so that field has no reference. Terraform HCL can interpolate `${rediscloud_subscription.example.id}`. This provider cannot, for databases. That is a composition gap, not a missing resource.
 
 ## What was run
 
@@ -223,7 +223,7 @@ Terraform data sources are read-only lookups. Upjet does not turn them into mana
 - 🟡 ✅ [4](#g4). The live database secret contained `public_endpoint` and `private_endpoint`. A `port` already present in Terraform state is still published. Active-Active endpoints are stored per region.
 - 🟡 ✅ [5](#g5). The Active-Active TLS `initProvider` field matches `forProvider`.
 - 🟡 ✅ [7](#g7). ACL rules, a Pro subscription, and a Database CR were created, became Ready, and were deleted against a Redis Cloud account.
-- 🔴 ✅ [8](#g8), three lookups only. `PaymentMethod`, `EssentialsPlan`, and `Regions` write the matched id to status. The other 26 data sources stay pasted IDs.
+- 🔴 ✅ [8](#g8), 24 lookups. The matched value is written to status. Five database and subscription data sources stay pasted IDs.
 - 🟡 ✅ [9](#g9). A workflow opens a pull request when Terraform Redis Cloud publishes a release newer than `TERRAFORM_PROVIDER_VERSION`. The pull request changes that pin and regenerates. It does not merge, and it does not bump Crossplane, Go, or Upjet.
 - Examples for the six resources added in Terraform v2.19.2 are in `examples/private`, `examples/transit`, and `examples/active`. `config/coverage_test.go` lists all 27 managed resources and those six.
 

@@ -14,11 +14,11 @@ import (
 func TestMatchEssentialsPlan(t *testing.T) {
 	no := false
 	plansList := []*plans.GetPlanResponse{
-		plan(1, "small", 1, "GB", "GCP", "us-central1", "Single-zone", false),
+		plan(1, "small", 1, "GB", cloudProviderGCP, "us-central1", "Single-zone", false),
 		plan(2, "small", 1, "GB", "AWS", "us-east-1", "Multi-zone", true),
 	}
 	got, err := MatchEssentialsPlan(plansList, EssentialsPlanQuery{
-		CloudProvider:      "GCP",
+		CloudProvider:      cloudProviderGCP,
 		Region:             "us-central1",
 		Size:               "1",
 		SupportReplication: &no,
@@ -41,7 +41,7 @@ func TestMatchEssentialsPlan(t *testing.T) {
 	if redisPlanID(got) != 3 {
 		t.Fatalf("azure id = %d", redisPlanID(got))
 	}
-	if CanonicalProvider("AZURE") != "Azure" || CanonicalProvider("gcp") != "GCP" {
+	if CanonicalProvider("AZURE") != "Azure" || CanonicalProvider("gcp") != cloudProviderGCP {
 		t.Fatal("provider canonical form")
 	}
 
@@ -84,7 +84,7 @@ func TestEssentialsPlanListProvider(t *testing.T) {
 	cases := map[string]string{
 		"Azure": "AZURE",
 		padded:  "AWS",
-		"gcp":   "GCP",
+		"gcp":   cloudProviderGCP,
 	}
 	for in, want := range cases {
 		if got := EssentialsPlanListProvider(in); got != want {
