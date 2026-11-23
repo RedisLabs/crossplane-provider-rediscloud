@@ -1,6 +1,14 @@
 # SPDX-License-Identifier: CC0-1.0
 name: QA recovery discovery
 on:
+  workflow_call:
+    inputs:
+      source_run_id:
+        required: true
+        type: string
+      source_attempt:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       source_run_id:

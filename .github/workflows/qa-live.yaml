@@ -19,10 +19,20 @@ on:
           - strict-essentials
           - preflight
           - checkpoint-rehearsal
+          - recovery-rehearsal
         default: standard
+      source_run_id:
+        description: Completed checkpoint rehearsal run ID (recovery-rehearsal only)
+        required: false
+        type: string
+      source_attempt:
+        description: Checkpoint rehearsal attempt number
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: qa-live
@@ -32,6 +42,14 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
+  recovery-rehearsal:
+    if: inputs.suite == 'recovery-rehearsal'
+    uses: ./.github/workflows/qa-recover.yaml
+    with:
+      source_run_id: ${{ inputs.source_run_id }}
+      source_attempt: ${{ inputs.source_attempt }}
+    secrets: inherit
+
   checkpoint-rehearsal:
     if: inputs.suite == 'checkpoint-rehearsal'
     runs-on: ubuntu-24.04
