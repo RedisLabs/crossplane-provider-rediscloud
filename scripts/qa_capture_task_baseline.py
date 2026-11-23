@@ -9,7 +9,7 @@ import uuid
 import qa_live
 
 
-def baseline(cloud):
+def task_rows(cloud):
     code, body = cloud.request("GET", "/tasks")
     if code != 200 or not isinstance(body, dict) or not isinstance(body.get("tasks"), list):
         raise qa_live.SuiteFailure("task baseline is unavailable")
@@ -40,6 +40,11 @@ def baseline(cloud):
         ids[normalized] = canonical
         if len(ids) > 20000:
             raise qa_live.SuiteFailure("task baseline exceeds the identity limit")
+    return {task_id: json.loads(row) for task_id, row in ids.items()}
+
+
+def baseline(cloud):
+    ids = task_rows(cloud)
     result = {"capturedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "taskIds": sorted(ids)}
     if len(json.dumps(result).encode()) > 1024 * 1024:
         raise qa_live.SuiteFailure("task baseline exceeds the encrypted payload limit")

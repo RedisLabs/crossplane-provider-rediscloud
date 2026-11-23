@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from datetime import datetime, timezone
 from pathlib import Path
 
 import qa_live
@@ -149,21 +150,69 @@ class ResolutionTest(unittest.TestCase):
                 qa_capture_task_baseline.baseline(Cloud(response))
 
     def test_task_delta_reports_new_and_missing_without_identifiers(self):
-        intent = {"taskBaseline": {"taskIds": ["before", "shared"]}}
-        with patch.object(qa_capture_task_baseline, "baseline", return_value={"taskIds": ["shared", "new"]}):
+        captured = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        intent = {"taskBaseline": {"capturedAt": captured, "taskIds": ["before", "shared"]}}
+        with patch.object(qa_capture_task_baseline, "task_rows", return_value={"shared": {}, "new": {}}):
             qa_recovery_resolve.task_delta(object(), intent, self.logs.append)
             with self.assertRaises(KeyError):
                 qa_recovery_resolve.task_delta(object(), {}, self.logs.append)
         self.assertIn("new=1 missing_baseline=1", self.logs[0])
         self.assertNotIn("shared", self.logs[0])
 
+    def test_expired_task_baseline_cannot_support_correlation(self):
+        intent = {"taskBaseline": {"capturedAt": "2000-01-01T00:00:00Z", "taskIds": []}}
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_recovery_resolve.task_delta(object(), intent, self.logs.append)
+
     def test_discovery_continues_when_account_task_list_is_unavailable(self):
         class Cloud:
             def list_fixed_subscriptions_checked(self): return []
-        with patch.object(qa_capture_task_baseline, "baseline", side_effect=qa_live.SuiteFailure("no access")):
+        with patch.object(qa_capture_task_baseline, "task_rows", side_effect=qa_live.SuiteFailure("no access")):
             self.assertEqual(qa_recovery_resolve.discover(Cloud(), self.intent, self.logs.append), 2)
         self.assertTrue(any("task delta unavailable" in line for line in self.logs))
         self.assertTrue(any("no subscription visible" in line for line in self.logs))
+
+    def test_create_task_correlation_requires_exact_ids_parent_and_active_resources(self):
+        tasks = {
+            "00000000-0000-0000-0000-000000000001": {"commandType": "fixedSubscriptionCreateRequest"},
+            "00000000-0000-0000-0000-000000000002": {"commandType": "fixedDatabaseCreateRequest"},
+        }
+        details = {"subscriptionId": "9", "databaseId": "11", "subscriptionStatus": "active", "databaseStatus": "active", "foreign": 0}
+        class Cloud:
+            def request(self, method, path):
+                task_id = path.split("/")[-1]
+                if task_id.endswith("1"):
+                    return 200, {"taskId": task_id, "commandType": "fixedSubscriptionCreateRequest", "status": "processing-completed", "response": {"resourceId": 9}}
+                return 200, {"taskId": task_id, "commandType": "fixedDatabaseCreateRequest", "status": "processing-completed", "response": {"resourceId": 11, "additionalResourceId": 9}}
+        cloud = Cloud()
+        self.assertTrue(qa_recovery_resolve.task_evidence(cloud, tasks, 0, details, self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, tasks, 1, details, self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, tasks, 0, dict(details, databaseStatus="pending"), self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, tasks, 0, dict(details, subscriptionId="10"), self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, tasks, 0, dict(details, foreign=1), self.logs.append))
+        extra = dict(tasks, **{"00000000-0000-0000-0000-000000000003": {"commandType": "unknown"}})
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, extra, 0, details, self.logs.append))
+        duplicate = dict(tasks, **{"00000000-0000-0000-0000-000000000003": {"commandType": "fixedDatabaseCreateRequest"}})
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, duplicate, 0, details, self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(cloud, {}, 0, details, self.logs.append))
+        class BadCloud:
+            def __init__(self, code, body): self.code, self.body = code, body
+            def request(self, method, path): return self.code, self.body
+        self.assertFalse(qa_recovery_resolve.task_evidence(BadCloud(403, None), tasks, 0, details, self.logs.append))
+        pending = {"taskId": "00000000-0000-0000-0000-000000000001", "commandType": "fixedSubscriptionCreateRequest", "status": "received", "response": {"resourceId": 9}}
+        self.assertFalse(qa_recovery_resolve.task_evidence(BadCloud(200, pending), tasks, 0, details, self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(BadCloud(200, dict(pending, taskId="different")), tasks, 0, details, self.logs.append))
+        self.assertFalse(qa_recovery_resolve.task_evidence(BadCloud(200, dict(pending, commandType="other")), tasks, 0, details, self.logs.append))
+
+    def test_discovery_exit_depends_on_complete_task_and_resource_evidence(self):
+        with patch.object(qa_recovery_resolve, "task_delta", return_value=({}, 0)), \
+             patch.object(qa_recovery_resolve, "resolve", return_value="present"), \
+             patch.object(qa_recovery_resolve, "task_evidence", return_value=True):
+            self.assertEqual(qa_recovery_resolve.discover(object(), self.intent, self.logs.append), 0)
+        with patch.object(qa_recovery_resolve, "task_delta", return_value=({}, 0)), \
+             patch.object(qa_recovery_resolve, "resolve", return_value="present"), \
+             patch.object(qa_recovery_resolve, "task_evidence", return_value=False):
+            self.assertEqual(qa_recovery_resolve.discover(object(), self.intent, self.logs.append), 2)
 
 
 if __name__ == "__main__":
