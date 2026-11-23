@@ -21,9 +21,13 @@ This provider enables management of RedisCloud resources through Kubernetes Cust
 
 ## Getting Started
 
+Follow [USAGE.md](USAGE.md) for a complete walkthrough: install the locally built
+provider, configure credentials, create AWS or GCP Pro resources, check status,
+and verify cleanup.
+
 ### Prerequisites
 
-1. [Kubernetes](https://kubernetes.io/) cluster (1.26+)
+1. [Kubernetes](https://kubernetes.io/) cluster compatible with the Crossplane version you install
 2. [Crossplane](https://crossplane.io/) installed
 3. RedisCloud API credentials
 
@@ -38,13 +42,14 @@ Managed resources are stored and reconciled as `v1beta1`. `v1alpha1` stays serve
 
 ### Configuration
 
-1. Create a secret with your RedisCloud credentials:
+1. Store credential JSON in a private file outside the repository, using
+   `api_key`, `secret_key`, and an explicit `url` for QA. See
+   [the credential setup](USAGE.md#2-configure-credentials). Load it into a Secret:
 
 ```bash
 kubectl create secret generic rediscloud-creds \
-  --namespace crossplane-system \
-  --from-literal=credentials='{"api_key":"YOUR_API_KEY","secret_key":"YOUR_SECRET_KEY"}'
-# Optional third JSON field, only for a non-default API endpoint: "url"
+  --namespace upbound-system \
+  --from-file=credentials="$HOME/.config/rediscloud/example-credentials.json"
 ```
 
 2. Create a ProviderConfig:
@@ -59,9 +64,12 @@ spec:
     source: Secret
     secretRef:
       name: rediscloud-creds
-      namespace: crossplane-system
+      namespace: upbound-system
       key: credentials
 ```
+
+The namespace above matches `make local-deploy`. Use the namespace from your own
+installation if it differs.
 
 ### Usage Example
 
@@ -88,7 +96,7 @@ spec:
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.26 (the CI line)
 - Docker or Podman
 - Make
 
@@ -143,7 +151,7 @@ make local-deploy
 
 ## Documentation
 
-- [Usage](USAGE.md) - Synthetic example for every managed resource
+- [Usage guide](USAGE.md) - AWS and GCP Pro walkthrough plus synthetic examples for every managed resource
 - [Release](RELEASE.md) - How a tag, a package, and a Terraform pin pull request are produced
 - [Terraform Alignment](docs/terraform-alignment.md) - Alignment with Redis Cloud Terraform provider v2.19.2
 - [Architecture decisions](docs/adr/ADR-index.md) - Why the provider follows Upjet v2
