@@ -1,0 +1,21 @@
+# Strict Essentials runner-loss recovery
+
+**TLDR:** Persist encrypted ownership intent before any Cloud write and provide a separate authenticated read-only recovery discovery. Keep live qualification disabled while asynchronous tasks cannot be correlated conclusively.
+
+**Date:** 2026-11-24. **Status:** Proposed. **Ticket:** RED-225344.
+
+## Problem and scope
+
+A hosted runner can disappear while a controller's Cloud create is pending. A local state file or an artifact uploaded only at the end of a job cannot recover that ownership. An empty inventory after runner loss cannot prove cleanup, because an asynchronous create may still finish. This change covers recovery evidence for the isolated Essentials case; it does not change product APIs or grant automatic cleanup authority.
+
+## Design and security
+
+Before any live operation, the disabled workflow is staged to encrypt and upload an immutable ownership-intent artifact with run ID, attempt, exact run-owned names, tested commit, QA origin digest and an HMAC binding to the API account key. AES-256-GCM uses a random nonce and a 32-byte key supplied by the private `QA_CHECKPOINT_KEY` Actions secret. The artifact contains no plaintext IDs or credentials. Keep the key available until every corresponding artifact and possible resource has been resolved; rotating it prematurely makes existing artifacts unreadable. The artifact expires after 90 days, so recovery must occur before expiry or use a separately retained encrypted copy.
+
+The separate recovery workflow validates the originating completed dispatch and commit, decrypts and authenticates its artifact, requires the same independently verified QA origin and credential binding, and resolves exact names through authenticated GETs and complete database pagination. It prints no IDs. Duplicate or mismatched identities fail closed. An absent resource is **uncertain**, not clean. Existing foreign databases are reported as a count. This workflow makes no Cloud mutations and never removes credentials or finalizers.
+
+Redis Cloud exposes an account task list for recent operations and per-task details; processing completion can precede provisioning completion. Evaluate a pre-create task baseline and compare task IDs, commands, timestamps and resource IDs before considering a task terminal. A listing that is incomplete, cannot correlate a request, or lacks an operation's ID cannot prove absence. [Redis Cloud task documentation](https://redis.io/docs/latest/operate/rc/api/get-started/manage-tasks/) and [request lifecycle](https://redis.io/docs/latest/operate/rc/api/get-started/process-lifecycle/) describe these limits. The controller's task IDs are not durably recorded by the intent artifact, so task correlation and recovery mutation remain open. Cross-repository Cloud writes remain serialized by the coordinating session.
+
+## Validation, rollout and rollback
+
+Credential-free tests cover ciphertext authentication, wrong key and source run, unverified endpoint, forced worker loss after simulated artifact persistence, ambiguous identity, and absent-resource uncertainty. Verify a hosted upload and retrieval, actual task-list completeness, source-run verification and failure injection before enabling live qualification or any recovery mutation. The current disabling gates remain. Roll back by reverting this workflow and tooling; do not discard any outstanding encrypted artifact or key while run-owned resources may exist. No ADR or BDR is required for this testing-only change.
