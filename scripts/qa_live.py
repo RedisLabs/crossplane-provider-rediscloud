@@ -14,14 +14,18 @@ the payment method id.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import http.client
 import json
 import os
+import re
 import secrets
 import string
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -70,6 +74,50 @@ def normalize_credentials(raw: dict) -> dict:
     if url:
         out["url"] = url.rstrip("/")
     return out
+
+
+def matches_expected_qa_origin(url: str) -> bool:
+    actual = urllib.parse.urlsplit(url)
+    origin_hash = hashlib.sha256(f"{actual.scheme}://{actual.netloc}".encode()).hexdigest()
+    allowed = [value.strip() for value in os.environ.get("QA_VERIFIED_ORIGIN_HASHES", "").split(",")]
+    if not allowed or not all(re.fullmatch(r"[0-9a-f]{64}", value) for value in allowed):
+        return False
+    return bool(
+        actual.scheme == "https" and actual.netloc
+        and origin_hash in allowed
+        and not actual.username and not actual.password
+        and actual.path.rstrip("/") == "/v1"
+        and not (actual.query or actual.fragment)
+    )
+
+
+def preflight(credentials: dict) -> None:
+    """Authenticate read-only, without a Kubernetes context or any Cloud write."""
+    if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
+        raise SuiteFailure("preflight requires an independently verified QA endpoint")
+    cloud = RedisCloud(credentials["url"], credentials["api_key"], credentials["secret_key"])
+    code, body = cloud.request("GET", "/fixed/plans?provider=GCP")
+    if code != 200 or not isinstance(body, dict) or not isinstance(body.get("plans"), list):
+        raise SuiteFailure("GCP plans read failed or returned unexpected data")
+    matches = [p for p in body["plans"] if isinstance(p, dict)
+               and str(p.get("provider") or "").upper() == "GCP"
+               and p.get("region") == "us-central1" and p.get("name") == "1GB"
+               and p.get("size") == 1 and p.get("sizeMeasurementUnit") == "GB"
+               and not p.get("supportReplication") and not p.get("supportDataPersistence")
+               and p.get("id") is not None]
+    if len(matches) != 1:
+        raise SuiteFailure("the GCP Essentials plan lookup does not have exactly one match")
+    print("QA endpoint verified; authenticated GCP plan lookup has one matching plan", flush=True)
+    subscriptions = cloud.list_fixed_subscriptions_checked()
+    print(f"authenticated Essentials subscription inventory count={len(subscriptions)}", flush=True)
+    if subscriptions:
+        sub_id = subscriptions[0].get("id")
+        if sub_id is None:
+            raise SuiteFailure("subscription inventory has no identity for pagination check")
+        cloud.list_fixed_databases_complete(str(sub_id))
+        print("authenticated database pagination reached an empty page", flush=True)
+    else:
+        print("database pagination not exercised: account has no Essentials subscription", flush=True)
 
 
 def redact(text: str, secrets: list[str]) -> str:
@@ -189,6 +237,21 @@ def is_ready(obj: dict | None) -> bool:
         if condition.get("type") == "Ready" and condition.get("status") == "True":
             return True
     return False
+
+
+def strict_ready(obj: dict | None) -> bool:
+    conditions = (obj or {}).get("status", {}).get("conditions") or []
+    return all(any(c.get("type") == kind and c.get("status") == "True" for c in conditions)
+               for kind in ("Ready", "Synced"))
+
+
+def strict_identity(obj: dict | None, label: str) -> str:
+    metadata = (obj or {}).get("metadata") or {}
+    if not metadata.get("uid") or not metadata.get("finalizers"):
+        raise SuiteFailure(f"{label} has no UID or finalizer")
+    if not strict_ready(obj):
+        raise SuiteFailure(f"{label} is not Ready and Synced")
+    return str(((obj or {}).get("status") or {}).get("atProvider", {}).get("id") or "")
 
 
 def ready_reason(obj: dict | None) -> str:
@@ -600,6 +663,178 @@ def named_is_active(deps, resource: str, name: str, rows: list) -> bool:
     cr = deps.cluster.get(resource, name)
     deps.log(f"{resource}/{name} ready={is_ready(cr)} cloud={status}")
     return is_ready(cr) and status == "active"
+
+
+def strict_essentials(deps) -> None:
+    """Qualify one GCP Essentials pair, without the shared-prefix cleanup path."""
+    state = State(f"{PREFIX}{deps.run_id}")
+    if deps.cloud.list_fixed_subscriptions_checked():
+        raise SuiteFailure("account already has an essentials subscription; refusing to modify it")
+    deps.cluster.install_provider_config()
+    try:
+        apply_lookups(deps)
+        payment_id = str(deps.cluster.payment_method_id() or "").strip()
+        plan_id = str(deps.cluster.plan_id() or "").strip()
+        if not payment_id or not plan_id:
+            raise SuiteFailure("payment or GCP Essentials plan lookup has no id")
+        plan = deps.cluster.get(PLAN, f"{PREFIX}{deps.run_id}-plan")
+        observed_plan = ((plan or {}).get("status") or {}).get("atProvider") or {}
+        if (str(observed_plan.get("id") or "") != plan_id or
+                str(observed_plan.get("cloudProvider") or "").upper() != "GCP" or
+                str(observed_plan.get("region") or "").lower() != "us-central1"):
+            raise SuiteFailure("looked-up plan is not the requested GCP region and ID")
+        deps.log("verified Essentials plan provider GCP, region us-central1")
+        deps.remember_secret(payment_id)
+        deps.remember_secret(plan_id)
+        state.essentials_name = state.run_name
+        sub_manifest = essentials_subscription_manifest(state.run_name, plan_id, payment_id)
+        sub_manifest["spec"]["deletionPolicy"] = "Delete"
+        deps.cluster.apply(sub_manifest)
+        holder = {}
+        if not wait_until(deps, "essentials Ready", deps.timeouts["subscription"],
+                          lambda: essentials_is_active(deps, state.run_name, holder)):
+            raise SuiteFailure("essentials subscription did not become active")
+        state.essentials_id = str(holder["id"])
+        deps.remember_secret(state.essentials_id)
+        sub = deps.cluster.get(ESS_SUBSCRIPTION, state.run_name)
+        cr_sub_id = strict_identity(sub, "subscription")
+        row = find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name)
+        if not row or str(row.get("id") or "") != cr_sub_id:
+            raise SuiteFailure("subscription CR and Cloud identity differ")
+        code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
+        deps.log(f"subscription baseline {'HTTP_OK' if code == 200 else 'HTTP_ERROR'}; UID={sub['metadata']['uid']} finalizers={len(sub['metadata']['finalizers'])}")
+        if code != 200:
+            raise SuiteFailure("subscription baseline is not HTTP 200")
+        state.essentials_database_name = state.run_name
+        db_manifest = essentials_database_manifest(state.run_name, state.essentials_id)
+        db_manifest["spec"]["deletionPolicy"] = "Delete"
+        deps.cluster.apply(db_manifest)
+        db_holder = {}
+        if not wait_until(deps, "essentials database Ready", deps.timeouts["database"],
+                          lambda: essentials_database_is_active(deps, state, db_holder)):
+            raise SuiteFailure("essentials database did not become active")
+        state.essentials_database_id = str(db_holder["id"])
+        deps.remember_secret(state.essentials_database_id)
+        db = deps.cluster.get(ESS_DATABASE, state.run_name)
+        cr_db_id = strict_identity(db, "database")
+        if cr_db_id != f"{state.essentials_id}/{state.essentials_database_id}":
+            raise SuiteFailure("database CR identity or parent differs")
+        code, _ = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
+        deps.log(f"database baseline {'HTTP_OK' if code == 200 else 'HTTP_ERROR'}; UID={db['metadata']['uid']} finalizers={len(db['metadata']['finalizers'])}")
+        if code != 200:
+            raise SuiteFailure("database baseline is not HTTP 200")
+        deps.cluster.record_controller_evidence(state.run_name)
+
+        deps.cluster.delete(ESS_DATABASE, state.run_name)
+        def database_gone():
+            parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
+            db_code, _ = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
+            cr_gone = deps.cluster.get(ESS_DATABASE, state.run_name) is None
+            deps.log(f"database delete {'HTTP_NOT_FOUND' if db_code == 404 else 'HTTP_OK' if db_code == 200 else 'HTTP_ERROR'}; parent {'HTTP_OK' if parent_code == 200 else 'HTTP_ERROR'}; CR gone={cr_gone}")
+            if parent_code != 200:
+                raise SuiteFailure("parent did not remain HTTP 200 during database deletion")
+            if db_code not in (200, 404):
+                raise SuiteFailure(f"database read HTTP {db_code}")
+            return db_code == 404 and cr_gone
+        if not wait_until(deps, "database deletion", deps.timeouts["delete"], database_gone):
+            raise SuiteFailure("database deletion timed out")
+        state.essentials_database_deleted = True
+        deps.cluster.require_deleted_event(db["metadata"]["uid"], "database")
+        _, db_inventory = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+        if find_named(db_inventory, f"{state.run_name}-db"):
+            raise SuiteFailure("run-owned database remains in paginated inventory")
+        deps.log("authenticated database inventory complete; run-owned database absent")
+        deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
+        def subscription_gone():
+            code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
+            cr_gone = deps.cluster.get(ESS_SUBSCRIPTION, state.run_name) is None
+            deps.log(f"subscription delete {'HTTP_NOT_FOUND' if code == 404 else 'HTTP_OK' if code == 200 else 'HTTP_ERROR'}; CR gone={cr_gone}")
+            if code not in (200, 404):
+                raise SuiteFailure(f"subscription read HTTP {code}")
+            return code == 404 and cr_gone
+        if not wait_until(deps, "subscription deletion", deps.timeouts["delete"], subscription_gone):
+            raise SuiteFailure("subscription deletion timed out")
+        state.essentials_deleted = True
+        deps.cluster.require_deleted_event(sub["metadata"]["uid"], "subscription")
+        if find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name):
+            raise SuiteFailure("run-owned subscription remains in inventory")
+        deps.log("strict essentials qualification passed; run-owned subscription inventory empty")
+    except Exception:
+        deps.log("strict qualification FAILED; attempting run-owned recovery, CR first")
+        try:
+            strict_recover(deps, state)
+        except Exception:
+            deps.log("recovery encountered an error; residue is unknown, preserving credentials")
+        raise
+    else:
+        delete_lookups(deps)
+
+
+def strict_recover(deps, state: State) -> None:
+    """Recover only exact identities created by this run; never convert failure to pass."""
+    if state.essentials_database_name and not state.essentials_database_deleted:
+        deps.cluster.delete(ESS_DATABASE, state.run_name)
+        if state.essentials_id and state.essentials_database_id:
+            code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
+                state.essentials_id, state.essentials_database_id))
+            if code != 404:
+                if code != 200 or not owned_essentials_subscription(deps, state):
+                    deps.log("recovery incomplete: database or parent identity is unverified; parent preserved")
+                    return
+                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+                matching = [r for r in rows if str(r.get("name") or "") == f"{state.run_name}-db"]
+                if (list_code != 200 or len(matching) != 1 or
+                        observed_database_id(matching[0], "") != state.essentials_database_id):
+                    deps.log("recovery incomplete: database ownership could not be established")
+                    return
+                deps.log("RECOVERY ONLY: direct API database delete; qualification remains failed")
+                deps.cloud.delete_fixed_database(state.essentials_id, state.essentials_database_id)
+                code = wait_http_404(deps, "recovery database after API delete", lambda: deps.cloud.get_fixed_database(
+                    state.essentials_id, state.essentials_database_id))
+                if code != 404:
+                    deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
+                    return
+        else:
+            deps.log("recovery incomplete: database identity not established; parent preserved")
+            return
+    if state.essentials_name and not state.essentials_deleted:
+        deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
+        if state.essentials_id:
+            code = wait_http_404(deps, "recovery subscription", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
+            if code != 404:
+                if code != 200 or not owned_essentials_subscription(deps, state):
+                    deps.log("recovery incomplete: subscription ownership is unverified")
+                    return
+                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+                if list_code != 200 or rows:
+                    deps.log("recovery incomplete: subscription contains databases or inventory is unavailable")
+                    return
+                deps.log("RECOVERY ONLY: direct API subscription delete; qualification remains failed")
+                deps.cloud.delete_fixed_subscription(state.essentials_id)
+                code = wait_http_404(deps, "recovery subscription after API delete", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
+                if code != 404:
+                    deps.log("recovery incomplete: subscription remains or cannot be read")
+                    return
+        else:
+            deps.log("recovery incomplete: subscription identity not established; absence unverified")
+            return
+    if find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name):
+        deps.log("recovery incomplete: run-owned subscription remains in inventory")
+        return
+    for resource, name in ((ESS_DATABASE, state.essentials_database_name),
+                           (ESS_SUBSCRIPTION, state.essentials_name)):
+        if name and not wait_until(deps, "recovery CR finalization", deps.timeouts["delete"],
+                                   lambda resource=resource, name=name: deps.cluster.get(resource, name) is None):
+            deps.log("recovery incomplete: CR remains; preserving provider credentials")
+            return
+    deps.log("recovery: no run-owned subscription found")
+    delete_lookups(deps)
+
+
+def owned_essentials_subscription(deps, state: State) -> bool:
+    rows = [row for row in deps.cloud.list_fixed_subscriptions_checked()
+            if str(row.get("name") or "") == state.run_name]
+    return len(rows) == 1 and str(rows[0].get("id") or "") == state.essentials_id
 
 
 def run_essentials(deps, state: State, payment_id: str) -> None:
@@ -1054,6 +1289,11 @@ class Deps:
         print(safe, flush=True)
 
 
+class RefuseRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class RedisCloud:
     def __init__(self, base_url: str, api_key: str, secret_key: str):
         self.base_url = base_url.rstrip("/")
@@ -1067,13 +1307,16 @@ class RedisCloud:
         req.add_header("X-Api-Key", self.api_key)
         req.add_header("X-Api-Secret-Key", self.secret_key)
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            # Do not forward authenticated reads or writes to a redirected URL.
+            with urllib.request.build_opener(RefuseRedirect()).open(req, timeout=60) as resp:
                 raw = resp.read()
                 body = json.loads(raw.decode()) if raw else {}
                 return resp.status, body
         except urllib.error.HTTPError as err:
             err.close()
             return err.code, None
+        except (OSError, http.client.HTTPException, json.JSONDecodeError):
+            raise SuiteFailure("Cloud request failed or returned invalid JSON") from None
 
     def list_subscriptions(self) -> list:
         code, body = self.request("GET", "/subscriptions")
@@ -1129,6 +1372,16 @@ class RedisCloud:
             subscription_rows,
         )
 
+    def list_fixed_subscriptions_checked(self) -> list:
+        # The fixed subscription API returns the complete account list without
+        # pagination, unlike its database endpoint.
+        code, body = self.request("GET", "/fixed/subscriptions")
+        if code != 200:
+            raise SuiteFailure(f"list essentials subscriptions HTTP {code}")
+        if not isinstance(body, dict) or not isinstance(body.get("subscriptions"), list):
+            raise SuiteFailure("list essentials subscriptions has unexpected shape")
+        return body["subscriptions"]
+
     def delete_fixed_subscription(self, sub_id: str) -> None:
         self._delete(f"/fixed/subscriptions/{sub_id}", "delete essentials subscription")
 
@@ -1142,6 +1395,24 @@ class RedisCloud:
         if code != 200:
             raise SuiteFailure(f"list essentials databases HTTP {code}")
         return code, fixed_database_rows(body)
+
+    def list_fixed_databases_complete(self, sub_id: str):
+        # rediscloud-go-api's fixed database iterator advances by limit/offset
+        # until an authenticated page is empty. Never infer absence from 404.
+        rows = []
+        limit = 100
+        for offset in range(0, 10000, limit):
+            code, body = self.request("GET", f"/fixed/subscriptions/{sub_id}/databases?limit={limit}&offset={offset}")
+            if code != 200:
+                raise SuiteFailure(f"list essentials databases page HTTP {code}")
+            if (not isinstance(body, dict) or not isinstance(body.get("subscription"), dict) or
+                    not isinstance(body["subscription"].get("databases"), list)):
+                raise SuiteFailure("list essentials databases page has unexpected shape")
+            page = body["subscription"]["databases"]
+            if not page:
+                return 200, rows
+            rows.extend(page)
+        raise SuiteFailure("list essentials databases pagination did not terminate")
 
     def get_fixed_database(self, sub_id: str, db_id: str):
         return self.request("GET", f"/fixed/subscriptions/{sub_id}/databases/{db_id}")
@@ -1204,6 +1475,41 @@ class KubectlCluster:
                 return None
             raise SuiteFailure(redact(f"kubectl get {resource}/{name} failed", self.deps.secrets))
         return json.loads(proc.stdout)
+
+    def record_controller_evidence(self, run_name: str) -> None:
+        pods = json.loads(self._run(["get", "pods", "-A", "-o", "json"]).stdout).get("items") or []
+        providers = [pod for pod in pods
+                     if str((pod.get("metadata") or {}).get("name") or "").startswith("provider-rediscloud-")]
+        if len(providers) != 1:
+            raise SuiteFailure("provider runtime pod identity is missing or ambiguous")
+        pod = providers[0]
+        statuses = (pod.get("status") or {}).get("containerStatuses") or []
+        runtime = next((s for s in statuses if s.get("name") == "package-runtime" and s.get("ready")), None)
+        digest = re.search(r"sha256:[0-9a-f]{64}", str((runtime or {}).get("imageID") or ""))
+        if not runtime or not digest:
+            raise SuiteFailure("provider runtime digest is missing or runtime is not Ready")
+        name = pod["metadata"]["name"]
+        namespace = pod["metadata"]["namespace"]
+        logs = self._run(["logs", name, "-n", namespace, "-c", "package-runtime", "--timestamps=true"]).stdout
+        matches = sum(run_name in line for line in logs.splitlines())
+        if not matches:
+            raise SuiteFailure("controller logs do not identify this run's managed resources")
+        # Print only a match count: controller messages may contain private IDs
+        # and endpoints that are not known to the harness redactor.
+        # The regex restricts this output to an image digest. Do not pass it
+        # through substring ID redaction, which would corrupt the digest.
+        print(f"provider runtime image {digest.group(0)}", flush=True)
+        self.deps.log(f"controller log lines matched run={matches}")
+
+    def require_deleted_event(self, uid: str, label: str) -> None:
+        events = json.loads(self._run(["get", "events", "-A", "-o", "json"]).stdout).get("items") or []
+        matching = [event for event in events
+                    if (event.get("involvedObject") or {}).get("uid") == uid
+                    and event.get("reason") == "DeletedExternalResource"
+                    and event.get("type") == "Normal"]
+        if not matching:
+            raise SuiteFailure(f"{label} controller deletion event missing")
+        self.deps.log(f"{label} controller event DeletedExternalResource observed")
 
     def secret_key_names(self, namespace: str, name: str) -> list[str]:
         secret = self.get("secret", name, namespace=namespace)
@@ -1274,6 +1580,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--kubectl", default=os.environ.get("QA_KUBECTL", "kubectl"))
     parser.add_argument("--run-id", default=default_run_id())
     parser.add_argument("--cleanup-only", action="store_true")
+    parser.add_argument("--strict-essentials", action="store_true")
+    parser.add_argument("--preflight-only", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -1282,9 +1590,22 @@ def main(argv: list[str] | None = None) -> int:
     deps = None
     try:
         credentials = load_credentials(args.credentials_file, os.environ.get("UPTEST_CLOUD_CREDENTIALS"))
+        if args.preflight_only:
+            if args.cleanup_only or args.strict_essentials:
+                raise SuiteFailure("preflight cannot be combined with mutating modes")
+            preflight(credentials)
+            return 0
+        if args.strict_essentials:
+            if args.cleanup_only:
+                raise SuiteFailure("strict qualification cannot use shared-prefix cleanup")
+            if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
+                raise SuiteFailure("strict qualification requires the explicit approved QA endpoint")
+            raise SuiteFailure("strict qualification disabled until runner-loss recovery is durable")
         deps = build_deps(args, credentials)
         if args.cleanup_only:
             cleanup_only(deps)
+        elif args.strict_essentials:
+            strict_essentials(deps)
         else:
             run(deps)
     except SuiteFailure as err:
