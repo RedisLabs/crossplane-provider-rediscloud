@@ -14,12 +14,13 @@ import re
 import sys
 import urllib.parse
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 import qa_live
 import qa_capture_task_baseline
 
 
-def resolve(cloud, intent, log):
+def resolve(cloud, intent, log, details=None):
     name = intent["runName"]
     matches = [row for row in cloud.list_fixed_subscriptions_checked() if row.get("name") == name]
     if not matches:
@@ -34,6 +35,7 @@ def resolve(cloud, intent, log):
     code, body = cloud.get_fixed_subscription(sub_id)
     if code != 200 or not isinstance(body, dict) or str(body.get("id") or "") != sub_id or body.get("name") != name:
         raise qa_live.SuiteFailure("ownership resolution ambiguous: subscription read does not match")
+    subscription_status = body.get("status")
     code, rows = cloud.list_fixed_databases_complete(sub_id)
     if code != 200:
         raise qa_live.SuiteFailure("ownership resolution ambiguous: incomplete database inventory")
@@ -49,26 +51,69 @@ def resolve(cloud, intent, log):
     if (code != 200 or not isinstance(body, dict) or
             str(body.get("databaseId") or "") != db_id or body.get("name") != f"{name}-db"):
         raise qa_live.SuiteFailure("ownership resolution ambiguous: exact database read does not match")
+    if details is not None:
+        details.update(subscriptionId=sub_id, databaseId=db_id,
+                       subscriptionStatus=subscription_status, databaseStatus=body.get("status"), foreign=foreign)
     log(f"ownership resolution: subscription and database present; foreign databases={foreign}; no mutation performed")
     return "present"
 
 
 def task_delta(cloud, intent, log):
-    current_tasks = qa_capture_task_baseline.baseline(cloud)
+    captured = datetime.strptime(intent["taskBaseline"]["capturedAt"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - captured
+    if age < timedelta(0) or age >= timedelta(days=10):
+        raise qa_live.SuiteFailure("task baseline time falls outside documented task retention")
+    current_tasks = qa_capture_task_baseline.task_rows(cloud)
     prior = set(intent["taskBaseline"]["taskIds"])
-    current = set(current_tasks["taskIds"])
+    current = set(current_tasks)
     log(f"account task delta: new={len(current - prior)} missing_baseline={len(prior - current)}; ownership and provisioning remain unverified")
+    return {task_id: current_tasks[task_id] for task_id in current - prior}, len(prior - current)
+
+
+def task_evidence(cloud, new_tasks, missing_baseline, details, log):
+    """Correlate candidates only; this does not authorize Cloud mutation."""
+    if missing_baseline or not details or details.get("foreign"):
+        log("create-task correlation uncertain: baseline or ownership is incomplete")
+        return False
+    candidates = {kind: [(task_id, row) for task_id, row in new_tasks.items() if row.get("commandType") == kind]
+                  for kind in ("fixedSubscriptionCreateRequest", "fixedDatabaseCreateRequest")}
+    if len(new_tasks) != 2 or any(len(rows) != 1 for rows in candidates.values()):
+        log("create-task correlation uncertain: expected exactly one task of each kind")
+        return False
+    expected = (("fixedSubscriptionCreateRequest", details["subscriptionId"], None),
+                ("fixedDatabaseCreateRequest", details["databaseId"], details["subscriptionId"]))
+    for kind, resource_id, parent_id in expected:
+        task_id, row = candidates[kind][0]
+        code, current = cloud.request("GET", f"/tasks/{task_id}")
+        if code != 200 or not isinstance(current, dict) or str(current.get("taskId") or "").lower() != task_id:
+            log("create-task correlation uncertain: exact task read unavailable")
+            return False
+        response = current.get("response") or {}
+        if (current.get("commandType") != kind or current.get("status") != "processing-completed" or
+                not isinstance(response, dict) or str(response.get("resourceId") or "") != resource_id or
+                (parent_id is not None and str(response.get("additionalResourceId") or "") != parent_id)):
+            log("create-task correlation uncertain: task status or identity does not match")
+            return False
+    if details.get("subscriptionStatus") != "active" or details.get("databaseStatus") != "active":
+        log("create-task correlation uncertain: resource provisioning is not active")
+        return False
+    log("create-task candidates match exact active resources; manual recovery remains required")
+    return True
 
 
 def discover(cloud, intent, log):
     task_check_ok = True
     try:
-        task_delta(cloud, intent, log)
-    except (qa_live.SuiteFailure, KeyError, TypeError):
+        new_tasks, missing = task_delta(cloud, intent, log)
+    except (qa_live.SuiteFailure, KeyError, TypeError, ValueError):
         task_check_ok = False
         log("account task delta unavailable; ownership and provisioning remain unverified")
-    result = resolve(cloud, intent, log)
-    return 0 if result == "present" and task_check_ok else 2
+    details = {}
+    result = resolve(cloud, intent, log, details)
+    evidence_ok = False
+    if task_check_ok and result == "present":
+        evidence_ok = task_evidence(cloud, new_tasks, missing, details, log)
+    return 0 if evidence_ok else 2
 
 
 def main():
