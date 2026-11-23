@@ -7,13 +7,16 @@ import os
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import qa_live
+import qa_capture_task_baseline
 import qa_recovery_resolve
 import qa_verify_source
 
 SCRIPT = str(Path(__file__).with_name("qa_checkpoint.mjs"))
+BASELINE = json.dumps({"capturedAt": "2026-11-23T23:00:00Z", "taskIds": ["00000000-0000-0000-0000-000000000001"]})
 
 
 class CheckpointTest(unittest.TestCase):
@@ -28,15 +31,15 @@ class CheckpointTest(unittest.TestCase):
                         GITHUB_REPOSITORY="RedisLabs/crossplane-provider-rediscloud", GITHUB_RUN_ID="12345",
                         GITHUB_RUN_ATTEMPT="2", GITHUB_SHA="a" * 40, QA_CHECKPOINT_KIND="strict")
 
-    def run_node(self, *args, env=None):
-        return subprocess.run(["node", SCRIPT, *args], env=env or self.env, capture_output=True, text=True)
+    def run_node(self, *args, env=None, data=BASELINE):
+        return subprocess.run(["node", SCRIPT, *args], env=env or self.env, input=data, capture_output=True, text=True)
 
     def test_lost_worker_leaves_encrypted_intent_recoverable_by_another_process(self):
         # Fake immutable artifact storage outlives the worker's local directory.
         remote_path = str(Path(self.temp.name) / "remote-artifact.enc")
         worker = subprocess.run(["python3", "-c",
-            "import os,shutil,subprocess,sys; subprocess.run(['node',sys.argv[1],'create',sys.argv[2]],check=True); shutil.copyfile(sys.argv[2],sys.argv[3]); os._exit(97)",
-            SCRIPT, self.path, remote_path], env=self.env, capture_output=True)
+            "import os,shutil,subprocess,sys; subprocess.run(['node',sys.argv[1],'create',sys.argv[2]],input=sys.argv[4],text=True,check=True); shutil.copyfile(sys.argv[2],sys.argv[3]); os._exit(97)",
+            SCRIPT, self.path, remote_path, BASELINE], env=self.env, capture_output=True)
         self.assertEqual(worker.returncode, 97)
         Path(self.path).unlink()
         ciphertext = Path(remote_path).read_text()
@@ -46,6 +49,7 @@ class CheckpointTest(unittest.TestCase):
         intent = json.loads(Path(remote_path + ".resolved").read_text())
         self.assertEqual(intent["runName"], "xp-ci-12345-2")
         self.assertEqual(intent["commit"], "a" * 40)
+        self.assertEqual(len(intent["taskBaseline"]["taskIds"]), 1)
 
     def test_wrong_run_wrong_key_and_tampering_fail_closed(self):
         self.assertEqual(self.run_node("create", self.path).returncode, 0)
@@ -67,6 +71,13 @@ class CheckpointTest(unittest.TestCase):
         for kind in ("", "bogus"):
             bad = dict(self.env, QA_CHECKPOINT_KIND=kind)
             self.assertNotEqual(self.run_node("create", self.path, env=bad).returncode, 0)
+            self.assertFalse(Path(self.path).exists())
+
+    def test_malformed_baseline_input_fails_closed(self):
+        invalid = ("", "not-json", json.dumps({"capturedAt": "2026-11-23T23:00:00Z", "taskIds": ["bad"]}),
+                   json.dumps({"capturedAt": "2026-11-23T23:00:00Z", "taskIds": ["00000000-0000-0000-0000-000000000001"] * 2}))
+        for data in invalid:
+            self.assertNotEqual(self.run_node("create", self.path, data=data).returncode, 0)
             self.assertFalse(Path(self.path).exists())
 
     def test_rehearsal_intent_round_trip_cannot_authorize_real_recovery(self):
@@ -120,6 +131,39 @@ class ResolutionTest(unittest.TestCase):
             bad = dict(source, **{field: value})
             with self.assertRaises(ValueError):
                 qa_verify_source.verify(intent, bad)
+
+    def test_task_baseline_rejects_ambiguous_or_incomplete_data(self):
+        class Cloud:
+            def __init__(self, response): self.response = response
+            def request(self, method, path):
+                if method != "GET" or path != "/tasks": raise AssertionError("unexpected mutation")
+                return self.response
+        task = {"taskId": "00000000-0000-0000-0000-000000000001"}
+        self.assertEqual(len(qa_capture_task_baseline.baseline(Cloud((200, {"tasks": [task]})))["taskIds"]), 1)
+        self.assertEqual(len(qa_capture_task_baseline.baseline(Cloud((200, {"tasks": [task, task]})))["taskIds"]), 1)
+        conflict = dict(task, status="different")
+        for response in ((403, None), (200, {}), (200, {"tasks": [task], "next": "more"}),
+                         (200, {"tasks": [task], "totalCount": 2}),
+                         (200, {"tasks": [task, conflict]}), (200, {"tasks": [{"taskId": "bad"}]})):
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_capture_task_baseline.baseline(Cloud(response))
+
+    def test_task_delta_reports_new_and_missing_without_identifiers(self):
+        intent = {"taskBaseline": {"taskIds": ["before", "shared"]}}
+        with patch.object(qa_capture_task_baseline, "baseline", return_value={"taskIds": ["shared", "new"]}):
+            qa_recovery_resolve.task_delta(object(), intent, self.logs.append)
+            with self.assertRaises(KeyError):
+                qa_recovery_resolve.task_delta(object(), {}, self.logs.append)
+        self.assertIn("new=1 missing_baseline=1", self.logs[0])
+        self.assertNotIn("shared", self.logs[0])
+
+    def test_discovery_continues_when_account_task_list_is_unavailable(self):
+        class Cloud:
+            def list_fixed_subscriptions_checked(self): return []
+        with patch.object(qa_capture_task_baseline, "baseline", side_effect=qa_live.SuiteFailure("no access")):
+            self.assertEqual(qa_recovery_resolve.discover(Cloud(), self.intent, self.logs.append), 2)
+        self.assertTrue(any("task delta unavailable" in line for line in self.logs))
+        self.assertTrue(any("no subscription visible" in line for line in self.logs))
 
 
 if __name__ == "__main__":

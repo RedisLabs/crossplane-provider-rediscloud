@@ -18,7 +18,12 @@ function validate(value) {
       !/^[1-9][0-9]*$/.test(value.runId) || !/^[1-9][0-9]*$/.test(value.attempt) ||
       value.runName !== `xp-ci-${value.runId}-${value.attempt}` ||
       !/^[a-f0-9]{40}$/.test(value.commit) || !/^[a-f0-9]{64}$/.test(value.originHash) ||
-      !/^[a-f0-9]{64}$/.test(value.credentialBinding) || !['strict', 'rehearsal'].includes(value.kind)) {
+      !/^[a-f0-9]{64}$/.test(value.credentialBinding) || !['strict', 'rehearsal'].includes(value.kind) ||
+      !value.taskBaseline || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value.taskBaseline.capturedAt) ||
+      !Array.isArray(value.taskBaseline.taskIds) ||
+      value.taskBaseline.taskIds.length > 20000 || Buffer.byteLength(JSON.stringify(value.taskBaseline)) > 1048576 ||
+      !value.taskBaseline.taskIds.every(id => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) ||
+      new Set(value.taskBaseline.taskIds).size !== value.taskBaseline.taskIds.length) {
     throw new Error('invalid checkpoint ownership intent');
   }
 }
@@ -52,6 +57,7 @@ function run() {
   const [command, filename, runId, attempt] = process.argv.slice(2);
   const key = keyFromEnv();
   if (command === 'create') {
+    const taskBaseline = JSON.parse(readFileSync(0, 'utf8'));
     const credentials = JSON.parse(process.env.UPTEST_CLOUD_CREDENTIALS || '{}');
     if (typeof credentials.api_key !== 'string' || !credentials.api_key.trim()) throw new Error('missing API key');
     const url = new URL(credentials.url || credentials.base_url || '');
@@ -67,7 +73,7 @@ function run() {
     const value = {version: 1, repo: process.env.GITHUB_REPOSITORY, runId: rid, attempt: att,
       runName: `xp-ci-${rid}-${att}`, commit: process.env.GITHUB_SHA || '', originHash,
       credentialBinding: createHmac('sha256', key).update(credentials.api_key.trim()).digest('hex'),
-      kind: process.env.QA_CHECKPOINT_KIND || ''};
+      kind: process.env.QA_CHECKPOINT_KIND || '', taskBaseline};
     writeFileSync(filename, encryptIntent(value, key), {mode: 0o600, flag: 'wx'});
     process.stdout.write('encrypted ownership intent created\n');
   } else if (command === 'resolve') {

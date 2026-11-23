@@ -16,6 +16,7 @@ import urllib.parse
 from pathlib import Path
 
 import qa_live
+import qa_capture_task_baseline
 
 
 def resolve(cloud, intent, log):
@@ -52,6 +53,24 @@ def resolve(cloud, intent, log):
     return "present"
 
 
+def task_delta(cloud, intent, log):
+    current_tasks = qa_capture_task_baseline.baseline(cloud)
+    prior = set(intent["taskBaseline"]["taskIds"])
+    current = set(current_tasks["taskIds"])
+    log(f"account task delta: new={len(current - prior)} missing_baseline={len(prior - current)}; ownership and provisioning remain unverified")
+
+
+def discover(cloud, intent, log):
+    task_check_ok = True
+    try:
+        task_delta(cloud, intent, log)
+    except (qa_live.SuiteFailure, KeyError, TypeError):
+        task_check_ok = False
+        log("account task delta unavailable; ownership and provisioning remain unverified")
+    result = resolve(cloud, intent, log)
+    return 0 if result == "present" and task_check_ok else 2
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("intent")
@@ -73,10 +92,9 @@ def main():
         if not hmac.compare_digest(binding, str(intent.get("credentialBinding") or "")):
             raise qa_live.SuiteFailure("checkpoint credential binding differs")
         cloud = qa_live.RedisCloud(url, credentials["api_key"], credentials["secret_key"])
-        result = resolve(cloud, intent, print)
         # A successful discovery is not cleanup; a missing resource after
         # runner loss remains unresolved while creation could still finish.
-        return 0 if result == "present" else 2
+        return discover(cloud, intent, print)
     except (qa_live.SuiteFailure, OSError, ValueError, KeyError):
         print("recovery discovery failed or is ambiguous; no mutation performed", file=sys.stderr)
         return 1
