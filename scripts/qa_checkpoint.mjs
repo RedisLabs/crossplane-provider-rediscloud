@@ -18,7 +18,7 @@ function validate(value) {
       !/^[1-9][0-9]*$/.test(value.runId) || !/^[1-9][0-9]*$/.test(value.attempt) ||
       value.runName !== `xp-ci-${value.runId}-${value.attempt}` ||
       !/^[a-f0-9]{40}$/.test(value.commit) || !/^[a-f0-9]{64}$/.test(value.originHash) ||
-      !/^[a-f0-9]{64}$/.test(value.credentialBinding)) {
+      !/^[a-f0-9]{64}$/.test(value.credentialBinding) || !['strict', 'rehearsal'].includes(value.kind)) {
     throw new Error('invalid checkpoint ownership intent');
   }
 }
@@ -66,7 +66,8 @@ function run() {
     const att = process.env.GITHUB_RUN_ATTEMPT || '';
     const value = {version: 1, repo: process.env.GITHUB_REPOSITORY, runId: rid, attempt: att,
       runName: `xp-ci-${rid}-${att}`, commit: process.env.GITHUB_SHA || '', originHash,
-      credentialBinding: createHmac('sha256', key).update(credentials.api_key.trim()).digest('hex')};
+      credentialBinding: createHmac('sha256', key).update(credentials.api_key.trim()).digest('hex'),
+      kind: process.env.QA_CHECKPOINT_KIND || ''};
     writeFileSync(filename, encryptIntent(value, key), {mode: 0o600, flag: 'wx'});
     process.stdout.write('encrypted ownership intent created\n');
   } else if (command === 'resolve') {

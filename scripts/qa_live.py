@@ -117,9 +117,10 @@ def preflight(credentials: dict) -> None:
     if code != 200 or not isinstance(task_body, (dict, list)):
         print("account task list unavailable; task coverage unverified", flush=True)
     else:
-        rows = task_body if isinstance(task_body, list) else next(
-            (task_body[key] for key in ("tasks", "task", "items", "results", "data")
-             if isinstance(task_body.get(key), list)), None)
+        root = "array" if isinstance(task_body, list) else next(
+            (key for key in ("tasks", "task", "items", "results", "data")
+             if isinstance(task_body.get(key), list)), "unrecognized")
+        rows = task_body if isinstance(task_body, list) else task_body.get(root)
         if not isinstance(rows, list):
             print("account task response shape is not a recognized array; task coverage unverified", flush=True)
             rows = []
@@ -127,7 +128,10 @@ def preflight(credentials: dict) -> None:
                   if rows and all(isinstance(row, dict) and key in row for row in rows)]
         metadata = [key for key in ("total", "totalCount", "limit", "offset", "next")
                     if isinstance(task_body, dict) and key in task_body]
-        print(f"authenticated account task list shape: count={len(rows)} common_fields={','.join(schema)} pagination_fields={','.join(metadata)}", flush=True)
+        print(f"authenticated account task list shape: root={root} count={len(rows)} common_fields={','.join(schema)} pagination_fields={','.join(metadata)}", flush=True)
+        resource_count = sum(1 for row in rows if isinstance(row, dict) and isinstance(row.get("response"), dict)
+                             and row["response"].get("resourceId") is not None)
+        print(f"account task entries with response resource identity={resource_count}; task ownership not established", flush=True)
     if subscriptions:
         sub_id = subscriptions[0].get("id")
         if sub_id is None:

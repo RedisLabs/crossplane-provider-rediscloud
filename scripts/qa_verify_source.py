@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def verify(intent, run):
-    if (intent.get("repo") != "RedisLabs/crossplane-provider-rediscloud" or
+    if (intent.get("kind") != "strict" or intent.get("repo") != "RedisLabs/crossplane-provider-rediscloud" or
             str(run.get("id")) != intent.get("runId") or
             str(run.get("run_attempt")) != intent.get("attempt") or
             run.get("head_sha") != intent.get("commit") or

@@ -18,6 +18,7 @@ on:
           - standard
           - strict-essentials
           - preflight
+          - checkpoint-rehearsal
         default: standard
 
 permissions:
@@ -31,6 +32,52 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
+  checkpoint-rehearsal:
+    if: inputs.suite == 'checkpoint-rehearsal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Create encrypted rehearsal intent
+        env:
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+          QA_CHECKPOINT_KIND: rehearsal
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"
+      - name: Persist rehearsal intent
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: ownership-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ownership.enc
+          if-no-files-found: error
+          retention-days: 1
+      - name: Simulate loss after persisted intent
+        run: |
+          echo 'Intentional rehearsal failure after artifact upload; no Cloud writes occurred.'
+          exit 97
+
+  verify-rehearsal:
+    needs: checkpoint-rehearsal
+    if: always() && inputs.suite == 'checkpoint-rehearsal' && needs.checkpoint-rehearsal.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Retrieve encrypted intent from terminated job
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ownership-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-recovery
+      - name: Authenticate recovered rehearsal intent
+        env:
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+        run: |
+          node scripts/qa_checkpoint.mjs resolve "$RUNNER_TEMP/qa-recovery/ownership.enc" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          python3 -c 'import json,os,sys; p=os.environ["RUNNER_TEMP"]+"/qa-recovery/ownership.enc.resolved"; sys.exit(0 if json.load(open(p))["kind"]=="rehearsal" else 1)'
+
   preflight:
     if: inputs.suite == 'preflight'
     runs-on: ubuntu-24.04
@@ -45,7 +92,7 @@ jobs:
         run: python3 scripts/qa_live.py --preflight-only
 
   qa-live:
-    if: inputs.suite != 'preflight'
+    if: inputs.suite == '' || inputs.suite == 'standard' || inputs.suite == 'strict-essentials'
     runs-on: ubuntu-24.04
     # Leave time for a bounded recovery after a qualification failure.
     timeout-minutes: 240
@@ -73,6 +120,7 @@ jobs:
         if: inputs.suite == 'strict-essentials'
         env:
           QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+          QA_CHECKPOINT_KIND: strict
           QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
         run: node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"

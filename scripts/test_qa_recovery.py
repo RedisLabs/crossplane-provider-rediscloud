@@ -26,7 +26,7 @@ class CheckpointTest(unittest.TestCase):
                         UPTEST_CLOUD_CREDENTIALS=json.dumps({"url": origin + "/v1", "api_key": "test-only"}),
                         QA_VERIFIED_ORIGIN_HASHES=hashlib.sha256(origin.encode()).hexdigest(),
                         GITHUB_REPOSITORY="RedisLabs/crossplane-provider-rediscloud", GITHUB_RUN_ID="12345",
-                        GITHUB_RUN_ATTEMPT="2", GITHUB_SHA="a" * 40)
+                        GITHUB_RUN_ATTEMPT="2", GITHUB_SHA="a" * 40, QA_CHECKPOINT_KIND="strict")
 
     def run_node(self, *args, env=None):
         return subprocess.run(["node", SCRIPT, *args], env=env or self.env, capture_output=True, text=True)
@@ -63,6 +63,21 @@ class CheckpointTest(unittest.TestCase):
         self.assertNotEqual(self.run_node("create", self.path, env=bad).returncode, 0)
         self.assertFalse(Path(self.path).exists())
 
+    def test_invalid_or_missing_checkpoint_kind_fails_closed(self):
+        for kind in ("", "bogus"):
+            bad = dict(self.env, QA_CHECKPOINT_KIND=kind)
+            self.assertNotEqual(self.run_node("create", self.path, env=bad).returncode, 0)
+            self.assertFalse(Path(self.path).exists())
+
+    def test_rehearsal_intent_round_trip_cannot_authorize_real_recovery(self):
+        rehearsal = dict(self.env, QA_CHECKPOINT_KIND="rehearsal")
+        self.assertEqual(self.run_node("create", self.path, env=rehearsal).returncode, 0)
+        self.assertEqual(self.run_node("resolve", self.path, "12345", "2", env=rehearsal).returncode, 0)
+        intent = json.loads(Path(self.path + ".resolved").read_text())
+        self.assertEqual(intent["kind"], "rehearsal")
+        with self.assertRaises(ValueError):
+            qa_verify_source.verify(intent, {})
+
 
 class ResolutionTest(unittest.TestCase):
     def setUp(self):
@@ -93,11 +108,13 @@ class ResolutionTest(unittest.TestCase):
             qa_recovery_resolve.resolve(Cloud(), self.intent, self.logs.append)
 
     def test_source_workflow_must_be_completed_and_match_identity(self):
-        intent = {"repo": "RedisLabs/crossplane-provider-rediscloud", "runId": "12345",
+        intent = {"kind": "strict", "repo": "RedisLabs/crossplane-provider-rediscloud", "runId": "12345",
                   "attempt": "2", "commit": "a" * 40}
         source = {"id": 12345, "run_attempt": 2, "head_sha": "a" * 40,
                   "path": ".github/workflows/qa-live.yaml", "event": "workflow_dispatch", "status": "completed"}
         qa_verify_source.verify(intent, source)
+        with self.assertRaises(ValueError):
+            qa_verify_source.verify(dict(intent, kind="rehearsal"), source)
         for field, value in (("status", "in_progress"), ("id", 999), ("run_attempt", 1),
                              ("head_sha", "b" * 40), ("event", "schedule"), ("path", "other")):
             bad = dict(source, **{field: value})
