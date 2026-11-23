@@ -34,6 +34,7 @@ REQUIRED_SECRET_KEYS = ("public_endpoint", "private_endpoint")
 ALLOWED_CONTEXT = "kind-local-dev"
 ACL_RULE = "+@read ~*"
 DEFAULT_API = "https://api.redislabs.com/v1"
+MAX_HTTP_BODY_BYTES = 8 * 1024 * 1024
 HELD_CIDRS = {
     "10.13.90.0/24",
     "10.13.91.0/24",
@@ -110,6 +111,28 @@ def preflight(credentials: dict) -> None:
     print("QA endpoint verified; authenticated GCP plan lookup has one matching plan", flush=True)
     subscriptions = cloud.list_fixed_subscriptions_checked()
     print(f"authenticated Essentials subscription inventory count={len(subscriptions)}", flush=True)
+    try:
+        code, task_body = cloud.request("GET", "/tasks")
+    except SuiteFailure:
+        code, task_body = 0, None
+    if code != 200 or not isinstance(task_body, (dict, list)):
+        print("account task list unavailable; task coverage unverified", flush=True)
+    else:
+        root = "array" if isinstance(task_body, list) else next(
+            (key for key in ("tasks", "task", "items", "results", "data")
+             if isinstance(task_body.get(key), list)), "unrecognized")
+        rows = task_body if isinstance(task_body, list) else task_body.get(root)
+        if not isinstance(rows, list):
+            print("account task response shape is not a recognized array; task coverage unverified", flush=True)
+            rows = []
+        schema = [key for key in ("taskId", "commandType", "status", "timestamp", "response")
+                  if rows and all(isinstance(row, dict) and key in row for row in rows)]
+        metadata = [key for key in ("total", "totalCount", "limit", "offset", "next")
+                    if isinstance(task_body, dict) and key in task_body]
+        print(f"authenticated account task list shape: root={root} count={len(rows)} common_fields={','.join(schema)} pagination_fields={','.join(metadata)}", flush=True)
+        resource_count = sum(1 for row in rows if isinstance(row, dict) and isinstance(row.get("response"), dict)
+                             and row["response"].get("resourceId") is not None)
+        print(f"account task entries with response resource identity={resource_count}; task ownership not established", flush=True)
     if subscriptions:
         sub_id = subscriptions[0].get("id")
         if sub_id is None:
@@ -1309,7 +1332,9 @@ class RedisCloud:
         try:
             # Do not forward authenticated reads or writes to a redirected URL.
             with urllib.request.build_opener(RefuseRedirect()).open(req, timeout=60) as resp:
-                raw = resp.read()
+                raw = resp.read(MAX_HTTP_BODY_BYTES + 1)
+                if len(raw) > MAX_HTTP_BODY_BYTES:
+                    raise SuiteFailure("Cloud response exceeds the safety limit")
                 body = json.loads(raw.decode()) if raw else {}
                 return resp.status, body
         except urllib.error.HTTPError as err:
