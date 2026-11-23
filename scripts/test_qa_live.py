@@ -383,6 +383,8 @@ class QaLiveTest(unittest.TestCase):
             def request(self, method, path):
                 if method != "GET":
                     raise AssertionError("preflight attempted a Cloud write")
+                if path == "/tasks":
+                    return 200, {"tasks": []}
                 return 200, {"plans": [{"id": 5, "provider": "GCP", "region": "us-central1",
                                         "name": "1GB", "size": 1, "sizeMeasurementUnit": "GB",
                                         "supportReplication": False, "supportDataPersistence": False}]}

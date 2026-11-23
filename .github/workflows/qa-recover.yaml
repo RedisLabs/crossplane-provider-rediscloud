@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: CC0-1.0
+name: QA recovery discovery
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Originating strict QA workflow run ID
+        required: true
+        type: string
+      source_attempt:
+        description: Originating workflow attempt number
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: qa-recovery-${{ inputs.source_run_id }}-${{ inputs.source_attempt }}
+  cancel-in-progress: false
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Validate source identity
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
+        run: |
+          python3 -c 'import os,re,sys; sys.exit(0 if all(re.fullmatch(r"[1-9][0-9]*", os.environ.get(k,"")) for k in ("SOURCE_RUN_ID","SOURCE_ATTEMPT")) else 1)'
+      - name: Checkout recovery code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Retrieve encrypted ownership intent
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ownership-${{ inputs.source_run_id }}-${{ inputs.source_attempt }}
+          path: ${{ runner.temp }}/qa-recovery
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+      - name: Authenticate checkpoint and originating workflow
+        env:
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
+        run: |
+          node scripts/qa_checkpoint.mjs resolve "$RUNNER_TEMP/qa-recovery/ownership.enc" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT"
+          python3 scripts/qa_verify_source.py "$RUNNER_TEMP/qa-recovery/ownership.enc.resolved" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT"
+      - name: Discover exact owned resources without mutation
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+        run: python3 scripts/qa_recovery_resolve.py "$RUNNER_TEMP/qa-recovery/ownership.enc.resolved"
