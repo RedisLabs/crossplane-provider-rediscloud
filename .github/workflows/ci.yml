@@ -215,6 +215,9 @@ jobs:
       - name: Vendor Dependencies
         run: make vendor vendor.check
 
+      - name: Test QA harness without Cloud credentials
+        run: python3 -m unittest discover -s scripts -p 'test_qa_live.py'
+
       - name: Run Unit Tests
         run: make -j2 test
 

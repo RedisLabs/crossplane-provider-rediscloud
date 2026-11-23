@@ -10,6 +10,15 @@ on:
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
+    inputs:
+      suite:
+        description: QA suite to run
+        type: choice
+        options:
+          - standard
+          - strict-essentials
+          - preflight
+        default: standard
 
 permissions:
   contents: read
@@ -22,10 +31,31 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
-  qa-live:
+  preflight:
+    if: inputs.suite == 'preflight'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 10
     steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Verify QA endpoint and read-only plans
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+        run: python3 scripts/qa_live.py --preflight-only
+
+  qa-live:
+    if: inputs.suite != 'preflight'
+    runs-on: ubuntu-24.04
+    # Leave time for a bounded recovery after a qualification failure.
+    timeout-minutes: 240
+    steps:
+      - name: Refuse disabled live qualification before Kind
+        if: inputs.suite == 'strict-essentials'
+        run: |
+          echo 'Strict qualification is disabled until runner-loss recovery is durable.'
+          exit 1
+
       - name: Cleanup Disk
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
@@ -51,12 +81,18 @@ jobs:
       - name: Create and delete the QA objects
         env:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+          QA_SUITE: ${{ inputs.suite || 'standard' }}
         run: |
           tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
-          python3 scripts/qa_live.py --kubectl "$tool"
+          if [ "$QA_SUITE" = strict-essentials ]; then
+            python3 scripts/qa_live.py --kubectl "$tool" --strict-essentials
+          else
+            python3 scripts/qa_live.py --kubectl "$tool"
+          fi
 
       - name: Delete a leftover xp-ci subscription
-        if: always()
+        if: always() && (inputs.suite != 'strict-essentials')
         env:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
         run: |
