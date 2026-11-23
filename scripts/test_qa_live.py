@@ -316,6 +316,9 @@ class QaLiveTest(unittest.TestCase):
         obj["metadata"]["finalizers"] = []
         with self.assertRaises(qa_live.SuiteFailure):
             qa_live.strict_identity(obj, "subscription")
+        obj["metadata"]["finalizers"] = ["unrelated.example/finalizer"]
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.strict_identity(obj, "subscription")
 
     def test_strict_rejects_wrong_plan_before_creating_cloud_resource(self):
         world = World()
@@ -397,13 +400,42 @@ class QaLiveTest(unittest.TestCase):
             self.assertEqual(qa_live.main(["--preflight-only"]), 0)
             build.assert_not_called()
 
-    def test_strict_live_is_disabled_even_for_a_verified_origin(self):
+    def test_strict_mode_requires_verified_origin_before_invocation(self):
         with patch.object(qa_live, "load_credentials", return_value={
             "api_key": "a", "secret_key": "b", "url": "https://qa.example.invalid/v1"
         }), patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
-             patch.object(qa_live, "build_deps") as build:
-            self.assertEqual(qa_live.main(["--strict-essentials"]), 1)
-            build.assert_not_called()
+             patch.object(qa_live, "verify_checkpoint_artifact") as checkpoint, \
+             patch.object(qa_live, "build_deps") as build, \
+             patch.object(qa_live, "strict_essentials") as strict:
+            self.assertEqual(qa_live.main(["--strict-essentials"]), 0)
+            checkpoint.assert_called_once()
+            strict.assert_called_once_with(build.return_value)
+
+    def test_strict_requires_persisted_artifact_for_exact_run_and_commit(self):
+        env = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "RedisLabs/crossplane-provider-rediscloud",
+               "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2", "GITHUB_SHA": "a" * 40,
+               "QA_OWNERSHIP_ARTIFACT_ID": "456"}
+        artifact = {"id": 456, "name": "ownership-123-2", "expired": False,
+                    "workflow_run": {"id": 123, "head_sha": "a" * 40}}
+        with patch.dict("os.environ", env), patch.object(qa_live.subprocess, "run") as run:
+            run.return_value.stdout = json.dumps(artifact)
+            qa_live.verify_checkpoint_artifact("123-2")
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_live.verify_checkpoint_artifact("123-1")
+            run.return_value.stdout = json.dumps(dict(artifact, expired=True))
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_live.verify_checkpoint_artifact("123-2")
+            run.return_value.stdout = json.dumps(dict(artifact, workflow_run={"id": 123, "head_sha": "b" * 40}))
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_live.verify_checkpoint_artifact("123-2")
+            run.return_value.stdout = "[]"
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_live.verify_checkpoint_artifact("123-2")
+        with patch.dict("os.environ", dict(env, QA_OWNERSHIP_ARTIFACT_ID="")), \
+             patch.object(qa_live.subprocess, "run") as run:
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_live.verify_checkpoint_artifact("123-2")
+            run.assert_not_called()
 
     def test_strict_recovers_only_its_exact_resources_and_still_fails(self):
         world = World()
@@ -418,9 +450,49 @@ class QaLiveTest(unittest.TestCase):
         deps.timeouts["delete"] = 0
         with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
             qa_live.strict_essentials(deps)
-        self.assertEqual(world.cloud_deletes, ["200/60", "200"])
-        self.assertTrue(any("qualification remains failed" in line for line in deps.lines))
-        self.assertTrue(any("preserving provider credentials" in line for line in deps.lines))
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertTrue(any("parent preserved" in line for line in deps.lines))
+
+    def test_recovery_preserves_parent_if_other_children_remain(self):
+        world = World()
+        deps = deps_for(world)
+        def missing_event(uid, label):
+            if label == "database":
+                raise qa_live.SuiteFailure("database event missing")
+        world.require_deleted_event = missing_event
+        world.list_fixed_databases_complete = lambda sub: (200, [{"databaseId": 61, "name": "foreign"}])
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "event missing"):
+            qa_live.strict_essentials(deps)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_finalizes_parent_cr_when_exact_parent_is_already_absent(self):
+        world = World()
+        world.ess_sub_gone = True
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        state.essentials_id = "200"
+        state.essentials_database_name = state.run_name
+        state.essentials_database_deleted = True
+        qa_live.strict_recover(deps_for(world), state)
+        self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_refuses_parent_cr_delete_on_bad_read_or_identity(self):
+        for bad_read in (True, False):
+            world = World()
+            world.fixed = [{"id": "999", "name": "xp-ci-123", "status": "active"}]
+            if bad_read:
+                world.get_fixed_subscription = lambda sub: (500, None)
+            state = qa_live.State("xp-ci-123")
+            state.essentials_name = state.run_name
+            state.essentials_id = "200"
+            state.essentials_database_name = state.run_name
+            state.essentials_database_deleted = True
+            qa_live.strict_recover(deps_for(world), state)
+            self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+            self.assertEqual(world.cloud_deletes, [])
 
     def test_strict_waits_for_delayed_database_absence(self):
         world = World()

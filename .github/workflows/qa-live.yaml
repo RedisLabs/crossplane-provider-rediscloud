@@ -20,10 +20,10 @@ on:
           - preflight
           - checkpoint-rehearsal
           - recovery-rehearsal
-          - recovery-gate-check
+          - recovery-rehearsal-mutate
         default: standard
       source_run_id:
-        description: Completed checkpoint rehearsal run ID (recovery-rehearsal only)
+        description: Completed checkpoint rehearsal run ID (recovery rehearsals only)
         required: false
         type: string
       source_attempt:
@@ -43,13 +43,14 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
-  recovery-gate-check:
-    if: inputs.suite == 'recovery-gate-check'
+  recovery-rehearsal-mutate:
+    if: inputs.suite == 'recovery-rehearsal-mutate'
     uses: ./.github/workflows/qa-recover.yaml
     with:
       source_run_id: ${{ inputs.source_run_id }}
       source_attempt: ${{ inputs.source_attempt }}
       recovery_mode: recover-exact
+      rehearsal_only: true
     secrets: inherit
 
   recovery-rehearsal:
@@ -75,12 +76,19 @@ jobs:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
         run: python3 scripts/qa_capture_task_baseline.py | node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"
       - name: Persist rehearsal intent
+        id: rehearsal-artifact
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
           name: ownership-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ownership.enc
           if-no-files-found: error
           retention-days: 1
+      - name: Verify persisted artifact identity
+        env:
+          QA_OWNERSHIP_ARTIFACT_ID: ${{ steps.rehearsal-artifact.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c 'import os,sys; sys.path.insert(0,"scripts"); import qa_live; qa_live.verify_checkpoint_artifact(os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"]); print("ownership artifact verified for this run and commit")'
       - name: Simulate loss after persisted intent
         run: |
           echo 'Intentional rehearsal failure after artifact upload; no Cloud writes occurred.'
@@ -125,12 +133,6 @@ jobs:
     # Leave time for a bounded recovery after a qualification failure.
     timeout-minutes: 240
     steps:
-      - name: Refuse disabled live qualification before Kind
-        if: inputs.suite == 'strict-essentials'
-        run: |
-          echo 'Strict qualification is disabled until runner-loss recovery is durable.'
-          exit 1
-
       - name: Cleanup Disk
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
@@ -142,8 +144,7 @@ jobs:
         with:
           submodules: true
 
-      # This intent is uploaded before any Cloud write. The disabling step
-      # above remains until recovery and account serialization are reviewed.
+      # Persist encrypted ownership intent before any Cloud write.
       - name: Create encrypted ownership intent
         if: inputs.suite == 'strict-essentials'
         env:
@@ -154,6 +155,7 @@ jobs:
         run: python3 scripts/qa_capture_task_baseline.py | node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"
 
       - name: Persist ownership intent before Cloud writes
+        id: ownership
         if: inputs.suite == 'strict-essentials'
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
@@ -178,6 +180,8 @@ jobs:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
           QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
           QA_SUITE: ${{ inputs.suite || 'standard' }}
+          QA_OWNERSHIP_ARTIFACT_ID: ${{ steps.ownership.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
           if [ "$QA_SUITE" = strict-essentials ]; then

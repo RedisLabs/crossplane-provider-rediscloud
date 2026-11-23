@@ -92,6 +92,33 @@ def matches_expected_qa_origin(url: str) -> bool:
     )
 
 
+def verify_checkpoint_artifact(run_id: str) -> None:
+    """Require the uploaded ownership artifact for this exact hosted run."""
+    run = os.environ.get("GITHUB_RUN_ID", "")
+    attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+    artifact_id = os.environ.get("QA_OWNERSHIP_ARTIFACT_ID", "")
+    commit = os.environ.get("GITHUB_SHA", "")
+    if (os.environ.get("GITHUB_ACTIONS") != "true" or
+            os.environ.get("GITHUB_REPOSITORY") != "RedisLabs/crossplane-provider-rediscloud" or
+            not re.fullmatch(r"[1-9][0-9]*", run) or not re.fullmatch(r"[1-9][0-9]*", attempt) or
+            not re.fullmatch(r"[1-9][0-9]*", artifact_id) or not re.fullmatch(r"[a-f0-9]{40}", commit) or
+            run_id != f"{run}-{attempt}"):
+        raise SuiteFailure("strict qualification requires this run's persisted ownership artifact")
+    try:
+        response = subprocess.run(["gh", "api", f"repos/RedisLabs/crossplane-provider-rediscloud/actions/artifacts/{artifact_id}"],
+                                  check=True, capture_output=True, text=True)
+        artifact = json.loads(response.stdout)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError):
+        raise SuiteFailure("ownership artifact could not be verified") from None
+    if not isinstance(artifact, dict) or not isinstance(artifact.get("workflow_run"), dict):
+        raise SuiteFailure("ownership artifact response has unexpected shape")
+    source = artifact["workflow_run"]
+    if (str(artifact.get("id") or "") != artifact_id or artifact.get("expired") is not False or
+            artifact.get("name") != f"ownership-{run}-{attempt}" or str(source.get("id") or "") != run or
+            source.get("head_sha") != commit):
+        raise SuiteFailure("ownership artifact does not match this run and commit")
+
+
 def preflight(credentials: dict) -> None:
     """Authenticate read-only, without a Kubernetes context or any Cloud write."""
     if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
@@ -270,8 +297,8 @@ def strict_ready(obj: dict | None) -> bool:
 
 def strict_identity(obj: dict | None, label: str) -> str:
     metadata = (obj or {}).get("metadata") or {}
-    if not metadata.get("uid") or not metadata.get("finalizers"):
-        raise SuiteFailure(f"{label} has no UID or finalizer")
+    if not metadata.get("uid") or "finalizer.managedresource.crossplane.io" not in (metadata.get("finalizers") or []):
+        raise SuiteFailure(f"{label} has no UID or Crossplane managed-resource finalizer")
     if not strict_ready(obj):
         raise SuiteFailure(f"{label} is not Ready and Synced")
     return str(((obj or {}).get("status") or {}).get("atProvider", {}).get("id") or "")
@@ -801,43 +828,31 @@ def strict_recover(deps, state: State) -> None:
             code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
                 state.essentials_id, state.essentials_database_id))
             if code != 404:
-                if code != 200 or not owned_essentials_subscription(deps, state):
-                    deps.log("recovery incomplete: database or parent identity is unverified; parent preserved")
-                    return
-                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
-                matching = [r for r in rows if str(r.get("name") or "") == f"{state.run_name}-db"]
-                if (list_code != 200 or len(matching) != 1 or
-                        observed_database_id(matching[0], "") != state.essentials_database_id):
-                    deps.log("recovery incomplete: database ownership could not be established")
-                    return
-                deps.log("RECOVERY ONLY: direct API database delete; qualification remains failed")
-                deps.cloud.delete_fixed_database(state.essentials_id, state.essentials_database_id)
-                code = wait_http_404(deps, "recovery database after API delete", lambda: deps.cloud.get_fixed_database(
-                    state.essentials_id, state.essentials_database_id))
-                if code != 404:
-                    deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
-                    return
+                deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
+                return
         else:
             deps.log("recovery incomplete: database identity not established; parent preserved")
             return
     if state.essentials_name and not state.essentials_deleted:
+        if state.essentials_database_name and state.essentials_id:
+            parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
+            if parent_code not in (200, 404):
+                deps.log("recovery incomplete: parent existence and ownership unverified")
+                return
+            if parent_code == 200:
+                if not owned_essentials_subscription(deps, state):
+                    deps.log("recovery incomplete: parent ownership unverified")
+                    return
+                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+                if list_code != 200 or rows:
+                    deps.log("recovery incomplete: child inventory is not completely empty")
+                    return
         deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
         if state.essentials_id:
             code = wait_http_404(deps, "recovery subscription", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
             if code != 404:
-                if code != 200 or not owned_essentials_subscription(deps, state):
-                    deps.log("recovery incomplete: subscription ownership is unverified")
-                    return
-                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
-                if list_code != 200 or rows:
-                    deps.log("recovery incomplete: subscription contains databases or inventory is unavailable")
-                    return
-                deps.log("RECOVERY ONLY: direct API subscription delete; qualification remains failed")
-                deps.cloud.delete_fixed_subscription(state.essentials_id)
-                code = wait_http_404(deps, "recovery subscription after API delete", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
-                if code != 404:
-                    deps.log("recovery incomplete: subscription remains or cannot be read")
-                    return
+                deps.log("recovery incomplete: subscription remains or cannot be read")
+                return
         else:
             deps.log("recovery incomplete: subscription identity not established; absence unverified")
             return
@@ -1625,7 +1640,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SuiteFailure("strict qualification cannot use shared-prefix cleanup")
             if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
                 raise SuiteFailure("strict qualification requires the explicit approved QA endpoint")
-            raise SuiteFailure("strict qualification disabled until runner-loss recovery is durable")
+            verify_checkpoint_artifact(args.run_id)
         deps = build_deps(args, credentials)
         if args.cleanup_only:
             cleanup_only(deps)
