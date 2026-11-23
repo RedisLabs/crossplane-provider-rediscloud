@@ -17,17 +17,21 @@ def verify(intent, run):
         raise ValueError("source run not verified")
 
 
+def verify_remote(intent, run_id, attempt):
+    if not re.fullmatch(r"[1-9][0-9]*", run_id) or not re.fullmatch(r"[1-9][0-9]*", attempt):
+        raise ValueError("invalid run identity")
+    if intent.get("runId") != run_id or intent.get("attempt") != attempt:
+        raise ValueError("checkpoint run mismatch")
+    endpoint = f"repos/RedisLabs/crossplane-provider-rediscloud/actions/runs/{run_id}/attempts/{attempt}"
+    result = subprocess.run(["gh", "api", endpoint], check=True, capture_output=True, text=True)
+    verify(intent, json.loads(result.stdout))
+
+
 def main():
     try:
         path, run_id, attempt = sys.argv[1:]
-        if not re.fullmatch(r"[1-9][0-9]*", run_id) or not re.fullmatch(r"[1-9][0-9]*", attempt):
-            raise ValueError("invalid run identity")
         intent = json.loads(Path(path).read_text())
-        if intent.get("runId") != run_id or intent.get("attempt") != attempt:
-            raise ValueError("checkpoint run mismatch")
-        endpoint = f"repos/RedisLabs/crossplane-provider-rediscloud/actions/runs/{run_id}/attempts/{attempt}"
-        result = subprocess.run(["gh", "api", endpoint], check=True, capture_output=True, text=True)
-        verify(intent, json.loads(result.stdout))
+        verify_remote(intent, run_id, attempt)
         print("source QA workflow attempt authenticated and completed")
         return 0
     except (ValueError, KeyError, OSError, subprocess.CalledProcessError):

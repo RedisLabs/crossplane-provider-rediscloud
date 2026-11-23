@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -27,7 +28,7 @@ class CheckpointTest(unittest.TestCase):
         self.path = str(Path(self.temp.name) / "intent.enc")
         origin = "https://qa.example.invalid"
         self.env = dict(os.environ, QA_CHECKPOINT_KEY=base64.b64encode(bytes(range(32))).decode(),
-                        UPTEST_CLOUD_CREDENTIALS=json.dumps({"url": origin + "/v1", "api_key": "test-only"}),
+                        UPTEST_CLOUD_CREDENTIALS=json.dumps({"url": origin + "/v1", "api_key": "test-only", "secret_key": "test-secret"}),
                         QA_VERIFIED_ORIGIN_HASHES=hashlib.sha256(origin.encode()).hexdigest(),
                         GITHUB_REPOSITORY="RedisLabs/crossplane-provider-rediscloud", GITHUB_RUN_ID="12345",
                         GITHUB_RUN_ATTEMPT="2", GITHUB_SHA="a" * 40, QA_CHECKPOINT_KIND="strict")
@@ -89,6 +90,26 @@ class CheckpointTest(unittest.TestCase):
         self.assertEqual(intent["kind"], "rehearsal")
         with self.assertRaises(ValueError):
             qa_verify_source.verify(intent, {})
+
+    def test_recovery_entry_authenticates_encrypted_intent_and_source_before_mutation(self):
+        self.assertEqual(self.run_node("create", self.path).returncode, 0)
+        argv = ["qa_recovery_resolve.py", self.path, "--recover-exact", "--source-run-id", "12345", "--source-attempt", "2"]
+        with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
+             patch.object(qa_verify_source, "verify_remote", side_effect=ValueError("untrusted")), \
+             patch.object(qa_recovery_resolve, "recover_exact") as mutation:
+            self.assertEqual(qa_recovery_resolve.main(), 1)
+            mutation.assert_not_called()
+        with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
+             patch.object(qa_verify_source, "verify_remote") as verify, \
+             patch.object(qa_recovery_resolve, "recover_exact") as mutation:
+            self.assertEqual(qa_recovery_resolve.main(), 0)
+            verify.assert_called_once()
+            mutation.assert_called_once()
+        Path(self.path).write_text('{"runName":"xp-ci-12345-2"}')
+        with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
+             patch.object(qa_recovery_resolve, "recover_exact") as mutation:
+            self.assertEqual(qa_recovery_resolve.main(), 1)
+            mutation.assert_not_called()
 
 
 class ResolutionTest(unittest.TestCase):
