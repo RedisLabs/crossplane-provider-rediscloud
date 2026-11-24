@@ -17,6 +17,9 @@ import (
 	kexec "k8s.io/utils/exec"
 )
 
+const fixtureName = "fixture"
+const dummyCredential = "fake"
+
 // This uses the pinned provider and Upjet's real workspace, but no cluster or Cloud account.
 func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integration test keeps setup, failure injection and assertions together.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
@@ -25,16 +28,21 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	}
 	var mu sync.Mutex
 	eviction, writes, failReads := "allkeys-lru", 0, false
+	badWrites := 0
 	reads, badAuth := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		if r.Method != http.MethodGet {
 			writes++
+			var body map[string]any
+			if r.Method != http.MethodPut || r.URL.Path != "/v1/fixed/subscriptions/1/databases/2" || r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential || json.NewDecoder(r.Body).Decode(&body) != nil || body["dataEvictionPolicy"] != "allkeys-lru" {
+				badWrites++
+			}
 			http.Error(w, "writes forbidden", http.StatusForbidden)
 			return
 		}
-		if r.Header.Get("X-Api-Key") != "fake" || r.Header.Get("X-Api-Secret-Key") != "fake" {
+		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
 			badAuth++
 			http.Error(w, "invalid fixture credentials", http.StatusUnauthorized)
 			return
@@ -50,7 +58,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
 		case "/v1/fixed/subscriptions/1/databases/2":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"databaseId": 2, "name": "fixture", "protocol": "redis", "provider": "GCP", "region": "us-central1", "status": "active", "dataPersistence": "none", "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				"databaseId": 2, "name": fixtureName, "protocol": "redis", "provider": "GCP", "region": "us-central1", "status": "active", "dataPersistence": "none", "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
 			})
 		default:
 			http.NotFound(w, r)
@@ -66,12 +74,12 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	t.Setenv("TF_CLI_ARGS_plan", "")
 	t.Setenv("TF_CLI_ARGS_apply", "")
 	t.Setenv("REDISCLOUD_URL", server.URL+"/v1")
-	t.Setenv("REDISCLOUD_ACCESS_KEY", "fake")
-	t.Setenv("REDISCLOUD_SECRET_KEY", "fake")
+	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
+	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
 	if writeErr := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": "fake", "secret_key": "fake", "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, "name": "fixture", "data_eviction": "allkeys-lru", "data_persistence": "none", "replication": false}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, "name": fixtureName, "data_eviction": "allkeys-lru", "data_persistence": "none", "replication": false}}}}
 	b, marshalErr := json.Marshal(config)
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
@@ -91,7 +99,8 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	run("init", "-no-color", "-input=false", "-plugin-dir="+plugins)
 	run("import", "-no-color", "rediscloud_essentials_database.test", "1/2")
 	t.Setenv("PATH", fmt.Sprintf("%s%c%s", filepath.Dir(tf), os.PathListSeparator, os.Getenv("PATH")))
-	ws := terraform.NewWorkspace(dir, terraform.WithExecutor(kexec.New()), terraform.WithFilterFn(func(s string) string { return s }))
+	spy := &spyExecutor{Interface: kexec.New()}
+	ws := terraform.NewWorkspace(dir, terraform.WithExecutor(spy), terraform.WithFilterFn(func(s string) string { return s }))
 	refresh := func() {
 		t.Helper()
 		result, err := ws.Refresh(context.Background())
@@ -110,9 +119,24 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	plan(true)
 	refresh()
 	plan(true)
+	callback := &fakeCallback{done: make(chan error, 1)}
+	rec := verifyManagedNoop(t, ws, spy, callback)
+	mu.Lock()
+	noopWrites := writes
+	mu.Unlock()
+	if noopWrites != 0 {
+		t.Fatalf("no-op sent %d fake writes", noopWrites)
+	}
 	mu.Lock()
 	eviction = "noeviction"
 	mu.Unlock()
+	verifyManagedDrift(t, rec, spy, callback)
+	mu.Lock()
+	driftWrites := writes
+	mu.Unlock()
+	if driftWrites == 0 {
+		t.Fatal("managed drift did not reach the reject-only fake API")
+	}
 	refresh()
 	plan(false)
 	mu.Lock()
@@ -123,7 +147,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if writes != 0 || reads == 0 || badAuth != 0 {
-		t.Fatalf("unexpected fake API traffic: writes=%d reads=%d badAuth=%d", writes, reads, badAuth)
+	if writes == 0 || reads == 0 || badAuth != 0 || badWrites != 0 {
+		t.Fatalf("unexpected fake API traffic: writes=%d reads=%d badAuth=%d badWrites=%d", writes, reads, badAuth, badWrites)
 	}
 }
