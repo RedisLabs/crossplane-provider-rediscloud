@@ -19,6 +19,7 @@ import (
 
 const fixtureName = "fixture"
 const dummyCredential = "fake"
+const desiredEviction = "allkeys-lru"
 
 // This uses the pinned provider and Upjet's real workspace, but no cluster or Cloud account.
 func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integration test keeps setup, failure injection and assertions together.
@@ -27,8 +28,10 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		t.Skip("set QA_TEST_TERRAFORM and QA_TEST_PROVIDER_DIR for the credential-free integration test")
 	}
 	var mu sync.Mutex
-	eviction, writes, failReads := "allkeys-lru", 0, false
+	eviction, writes, failReads := desiredEviction, 0, false
 	badWrites := 0
+	databaseUpdates, tagUpdates := 0, 0
+	acceptFixtureUpdate := false
 	reads, badAuth := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -36,10 +39,31 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		if r.Method != http.MethodGet {
 			writes++
 			var body map[string]any
-			if r.Method != http.MethodPut || r.URL.Path != "/v1/fixed/subscriptions/1/databases/2" || r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential || json.NewDecoder(r.Body).Decode(&body) != nil || body["dataEvictionPolicy"] != "allkeys-lru" {
+			validAuth := r.Header.Get("X-Api-Key") == dummyCredential && r.Header.Get("X-Api-Secret-Key") == dummyCredential
+			validBody := json.NewDecoder(r.Body).Decode(&body) == nil
+			databaseUpdate := r.Method == http.MethodPut && r.URL.Path == "/v1/fixed/subscriptions/1/databases/2" && validBody && body["dataEvictionPolicy"] == desiredEviction
+			tagUpdate := r.Method == http.MethodPut && r.URL.Path == "/v1/fixed/subscriptions/1/databases/2/tags" && validBody
+			if !validAuth || (!databaseUpdate && (!acceptFixtureUpdate || !tagUpdate)) {
 				badWrites++
+				http.Error(w, "unexpected fixture write", http.StatusForbidden)
+				return
 			}
-			http.Error(w, "writes forbidden", http.StatusForbidden)
+			if databaseUpdate {
+				databaseUpdates++
+			} else if tagUpdate {
+				tagUpdates++
+			}
+			if !acceptFixtureUpdate {
+				http.Error(w, "writes forbidden", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if databaseUpdate {
+				eviction = desiredEviction
+				_ = json.NewEncoder(w).Encode(map[string]any{"taskId": "fixture-task"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
 			return
 		}
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
@@ -54,6 +78,10 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/v1/tasks/fixture-task":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "processing-completed"})
+		case "/v1/fixed/subscriptions/1":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "name": fixtureName, "status": "active"})
 		case "/v1/fixed/subscriptions/1/databases/2/tags":
 			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
 		case "/v1/fixed/subscriptions/1/databases/2":
@@ -79,7 +107,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	if writeErr := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, "name": fixtureName, "data_eviction": "allkeys-lru", "data_persistence": "none", "replication": false}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, "name": fixtureName, "data_eviction": desiredEviction, "data_persistence": "none", "replication": false}}}}
 	b, marshalErr := json.Marshal(config)
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
@@ -120,7 +148,8 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	refresh()
 	plan(true)
 	callback := &fakeCallback{done: make(chan error, 1)}
-	rec := verifyManagedNoop(t, ws, spy, callback)
+	rec, kube := verifyManagedNoop(t, ws, spy, callback)
+	verifyManagedIdentity(t, kube)
 	mu.Lock()
 	noopWrites := writes
 	mu.Unlock()
@@ -130,7 +159,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	mu.Lock()
 	eviction = "noeviction"
 	mu.Unlock()
-	verifyManagedDrift(t, rec, spy, callback)
+	verifyManagedDrift(t, rec, spy, callback, true)
 	mu.Lock()
 	driftWrites := writes
 	mu.Unlock()
@@ -146,8 +175,28 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		t.Fatalf("failed read must fail refresh: %v", readErr)
 	}
 	mu.Lock()
+	failReads = false
+	acceptFixtureUpdate = true
+	mu.Unlock()
+	verifyManagedDrift(t, rec, spy, callback, false)
+	mu.Lock()
+	if eviction != desiredEviction {
+		mu.Unlock()
+		t.Fatal("fake database did not converge")
+	}
+	completedWrites := writes
+	mu.Unlock()
+	verifyManagedSteady(t, rec, spy)
+	verifyManagedIdentity(t, kube)
+	mu.Lock()
+	if writes != completedWrites {
+		mu.Unlock()
+		t.Fatal("steady reconciles sent additional fake writes")
+	}
+	mu.Unlock()
+	mu.Lock()
 	defer mu.Unlock()
-	if writes == 0 || reads == 0 || badAuth != 0 || badWrites != 0 {
-		t.Fatalf("unexpected fake API traffic: writes=%d reads=%d badAuth=%d badWrites=%d", writes, reads, badAuth, badWrites)
+	if writes == 0 || reads == 0 || badAuth != 0 || badWrites != 0 || databaseUpdates != 2 || tagUpdates != 1 {
+		t.Fatalf("unexpected fake API traffic: writes=%d reads=%d badAuth=%d badWrites=%d dbUpdates=%d tagUpdates=%d", writes, reads, badAuth, badWrites, databaseUpdates, tagUpdates)
 	}
 }
