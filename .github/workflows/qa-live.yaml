@@ -192,6 +192,11 @@ jobs:
     # Leave time for a bounded recovery after a qualification failure.
     timeout-minutes: 240
     steps:
+      - name: Defer standard writes until shared-account serialization exists
+        if: github.event_name == 'schedule' || inputs.suite == 'standard' || inputs.suite == ''
+        run: |
+          echo 'DEFER: shared QA account has no cross-repository writer lock; no live test was run.'
+          exit 1
       - name: Cleanup Disk
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
@@ -237,11 +242,3 @@ jobs:
           else
             python3 scripts/qa_live.py --kubectl "$tool"
           fi
-
-      - name: Delete a leftover xp-ci subscription
-        if: always() && (inputs.suite != 'strict-essentials')
-        env:
-          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
-        run: |
-          tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
-          python3 scripts/qa_live.py --kubectl "$tool" --cleanup-only

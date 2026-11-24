@@ -122,6 +122,43 @@ class World:
         elif kind == "Regions":
             self.objects[(qa_live.REGIONS, name)] = ready("1")
 
+    def create_owned(self, manifest: dict) -> str:
+        kind, api = manifest["kind"], manifest.get("apiVersion", "")
+        resource = {
+            ("Rule", "acl.redis.io/v1beta1"): qa_live.ACL,
+            ("Role", "acl.redis.io/v1beta1"): qa_live.ROLE,
+            ("User", "acl.redis.io/v1beta1"): qa_live.USER,
+            ("Subscription", "rediscloud.redis.io/v1beta1"): qa_live.SUBSCRIPTION,
+            ("Database", "subscription.redis.io/v1beta1"): qa_live.DATABASE,
+            ("Subscription", "essentials.redis.io/v1beta1"): qa_live.ESS_SUBSCRIPTION,
+            ("Database", "essentials.redis.io/v1beta1"): qa_live.ESS_DATABASE,
+            ("Secret", "v1"): "secret",
+            ("PaymentMethod", "lookup.redis.io/v1alpha1"): qa_live.PAYMENT,
+            ("EssentialsPlan", "lookup.redis.io/v1alpha1"): qa_live.PLAN,
+            ("Regions", "lookup.redis.io/v1alpha1"): qa_live.REGIONS,
+            ("ProviderConfig", "rediscloud.redis.io/v1beta1"): qa_live.PROVIDER_CONFIG,
+        }[(kind, api)]
+        name = manifest["metadata"]["name"]
+        if (resource, name) in self.objects:
+            raise qa_live.SuiteFailure("resource already exists")
+        self.apply(manifest)
+        if resource == "secret":
+            self.objects[(resource, name)] = ready("secret")
+        return self.objects[(resource, name)]["metadata"]["uid"]
+
+    def delete_owned(self, resource: str, name: str, uid: str, namespace=None):
+        obj = self.objects.get((resource, name))
+        if not obj or (obj.get("metadata") or {}).get("uid") != uid:
+            raise qa_live.SuiteFailure("UID precondition failed")
+        self.delete(resource, name, namespace)
+
+    def replace_owned(self, resource: str, name: str, uid: str, changes: dict):
+        obj = self.objects.get((resource, name))
+        if not obj or obj["metadata"].get("uid") != uid:
+            raise qa_live.SuiteFailure("owned update identity or version is unverified")
+        self.eviction = changes["dataEviction"]
+        obj["status"]["atProvider"]["dataEviction"] = self.eviction
+
     def delete(self, resource: str, name: str, namespace: str | None = None) -> None:
         self.deleted.append((resource, name))
         if resource == qa_live.SUBSCRIPTION:
@@ -169,12 +206,17 @@ class World:
             return self.subscription_http, None
         if self.subscription_gone:
             return 404, None
-        return 200, {"id": sub_id, "status": "active"}
+        return 200, {"id": sub_id, "name": "xp-ci-123", "status": "active"}
 
     def list_databases(self, sub_id: str):
         if not self.database_applied:
             return 200, []
         return 200, [{"name": self.database_name, "status": self.database_status, "databaseId": "50"}]
+
+    def list_databases_complete(self, sub_id: str):
+        if self.database_gone:
+            return 200, []
+        return self.list_databases(sub_id)
 
     def get_database(self, sub_id: str, db_id: str):
         self.database_gets.append(str(db_id))
@@ -182,7 +224,7 @@ class World:
             return self.database_http, None
         if self.database_gone:
             return 404, None
-        return 200, {"databaseId": db_id, "status": "active"}
+        return 200, {"databaseId": db_id, "name": getattr(self, "database_name", ""), "status": "active"}
 
     def delete_database(self, sub_id: str, db_id: str) -> None:
         self.cloud_deletes.append(f"{sub_id}/{db_id}")
@@ -229,7 +271,7 @@ class World:
     def get_fixed_subscription(self, sub_id: str):
         if self.ess_sub_gone:
             return 404, None
-        return 200, {"id": sub_id, "status": "active"}
+        return 200, {"id": sub_id, "name": "xp-ci-123", "status": "active"}
 
     def list_fixed_databases(self, sub_id: str):
         if self.fixed_databases:
@@ -297,6 +339,16 @@ class QaLiveTest(unittest.TestCase):
         self.assertLess(world.deleted.index((qa_live.ESS_DATABASE, "xp-ci-123")),
                         world.deleted.index((qa_live.ESS_SUBSCRIPTION, "xp-ci-123")))
         self.assertTrue(any("parent HTTP_OK" in line for line in deps.lines))
+        self.assertTrue(any("eviction update verified volatile-lru -> allkeys-lru" in line for line in deps.lines))
+
+    def test_strict_preserves_parent_if_another_child_is_present(self):
+        world = World()
+        world.list_fixed_databases_complete = lambda sub: (200, [{"databaseId": 99, "name": "foreign"}])
+        deps = deps_for(world)
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "inventory is not empty"):
+            qa_live.strict_essentials(deps)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
         self.assertTrue(any("eviction update verified volatile-lru -> allkeys-lru" in line for line in deps.lines))
 
     def test_eviction_update_fails_closed_on_changed_cloud_identity(self):
@@ -629,7 +681,7 @@ class QaLiveTest(unittest.TestCase):
         self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertEqual(world.cloud_deletes, [])
 
-    def test_recovery_finalizes_parent_cr_when_exact_parent_is_already_absent(self):
+    def test_recovery_accepts_parent_when_cloud_and_cr_already_absent(self):
         world = World()
         world.ess_sub_gone = True
         state = qa_live.State("xp-ci-123")
@@ -638,7 +690,7 @@ class QaLiveTest(unittest.TestCase):
         state.essentials_database_name = state.run_name
         state.essentials_database_deleted = True
         qa_live.strict_recover(deps_for(world), state)
-        self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertEqual(world.cloud_deletes, [])
 
     def test_recovery_refuses_parent_cr_delete_on_bad_read_or_identity(self):
@@ -666,6 +718,17 @@ class QaLiveTest(unittest.TestCase):
         self.assertFalse(qa_live.strict_recover(deps_for(world), state))
         self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
 
+    def test_strict_recovery_checks_foreign_children_even_without_recorded_child(self):
+        world = World()
+        world.fixed = [{"id": "200", "name": "xp-ci-123", "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, "xp-ci-123")] = ready("200")
+        world.list_fixed_databases_complete = lambda sub: (200, [{"databaseId": 99, "name": "foreign"}])
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name, state.essentials_id = state.run_name, "200"
+        state.owned_uids[(qa_live.ESS_SUBSCRIPTION, state.run_name, None)] = "test-uid"
+        self.assertFalse(qa_live.strict_recover(deps_for(world), state))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+
     def test_recovery_preserves_cr_until_identity_is_independently_matched(self):
         world = World()
         state = qa_live.State("xp-ci-123")
@@ -675,6 +738,7 @@ class QaLiveTest(unittest.TestCase):
         self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
         world.fixed = [{"id": "200", "name": state.run_name, "status": "active"}]
         world.objects[(qa_live.ESS_SUBSCRIPTION, state.run_name)] = ready("200")
+        state.owned_uids[(qa_live.ESS_SUBSCRIPTION, state.run_name, None)] = "test-uid"
         self.assertTrue(qa_live.strict_recover(deps, state))
         self.assertEqual(state.essentials_id, "200")
         self.assertIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
@@ -690,6 +754,8 @@ class QaLiveTest(unittest.TestCase):
         state.essentials_id = "200"
         state.essentials_database_name = state.run_name
         state.essentials_database_id = "60"
+        state.owned_uids[(qa_live.ESS_SUBSCRIPTION, state.run_name, None)] = "test-uid"
+        state.owned_uids[(qa_live.ESS_DATABASE, state.run_name, None)] = "test-uid"
         self.assertTrue(qa_live.strict_recover(deps_for(world), state))
         self.assertEqual(world.cloud_deletes, [])
 
@@ -724,21 +790,100 @@ class QaLiveTest(unittest.TestCase):
         self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertEqual(world.cloud_deletes, [])
 
+    def test_account_inventory_fails_closed_on_incomplete_responses(self):
+        cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
+        endpoints = (("list_subscriptions", "subscriptions"),
+                     ("list_fixed_subscriptions", "subscriptions"),
+                     ("list_fixed_subscriptions_checked", "subscriptions"),
+                     ("list_acl_roles", "roles"), ("list_acl_users", "users"),
+                     ("list_acl_rules", "redisRules"))
+        for method, key in endpoints:
+            good = {key: [{"id": 1, "name": "other"}]}
+            cloud.request = lambda method, path: (200, good)
+            self.assertEqual(getattr(cloud, method)(), good[key])
+            bad = [(403, None), (200, {}), (200, {key: None}),
+                   (200, {key: [None]}), (200, {key: [{"id": 1}]}),
+                   (200, {key: [{"id": 1, "name": "a"}, {"id": "01", "name": "b"}]}),
+                   (200, {key: [{"id": 1, "name": "a"}, {"id": 2, "name": "a"}]}),
+                   (200, {key: [], "nextPage": "hidden"}),
+                   (200, {key: [], "totalCount": 1}),
+                   (200, {key: [{"id": i + 1, "name": str(i)} for i in range(10000)]})]
+            for response in bad:
+                with self.subTest(endpoint=method, response_type=str(response[0])):
+                    cloud.request = lambda method, path, response=response: response
+                    with self.assertRaises(qa_live.SuiteFailure):
+                        getattr(cloud, method)()
+
+    def test_recovery_refreshes_late_resource_identity_and_refuses_mismatch(self):
+        for fixed in (False, True):
+            with self.subTest(fixed=fixed):
+                world, state = World(), qa_live.State("xp-ci-123")
+                parent = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+                child = qa_live.ESS_DATABASE if fixed else qa_live.DATABASE
+                parent_id, child_id = ("200", "60") if fixed else ("100", "50")
+                setattr(state, "essentials_name" if fixed else "subscription_name", state.run_name)
+                setattr(state, "essentials_database_name" if fixed else "database_name", state.run_name)
+                world.objects[(parent, state.run_name)] = ready(parent_id)
+                world.objects[(child, state.run_name)] = ready(parent_id + "/" + child_id)
+                setattr(world, "fixed" if fixed else "subs", [{"id": parent_id, "name": state.run_name}])
+                if fixed:
+                    world.ess_db_applied, world.ess_db_name = True, state.run_name + "-db"
+                else:
+                    world.database_applied, world.database_name = True, state.run_name + "-db"
+                state.owned_uids[(parent, state.run_name, None)] = "test-uid"
+                state.owned_uids[(child, state.run_name, None)] = "test-uid"
+                qa_live.refresh_recovery_identity(deps_for(world), state)
+                self.assertEqual(getattr(state, "essentials_id" if fixed else "subscription_id"), parent_id)
+                self.assertEqual(getattr(state, "essentials_database_id" if fixed else "database_id"), child_id)
+                setattr(state, "essentials_database_id" if fixed else "database_id", None)
+                world.objects[(child, state.run_name)] = ready("999/" + child_id)
+                qa_live.refresh_recovery_identity(deps_for(world), state)
+                self.assertIsNone(getattr(state, "essentials_database_id" if fixed else "database_id"))
+                self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                self.assertEqual(world.deleted, [])
+
+    def test_missing_cr_requires_successful_preconditioned_delete(self):
+        for fixed in (False, True):
+            with self.subTest(fixed=fixed):
+                world, state = World(), qa_live.State("xp-ci-123")
+                child = qa_live.ESS_DATABASE if fixed else qa_live.DATABASE
+                if fixed:
+                    state.essentials_id, state.essentials_database_id = "200", "60"
+                    state.essentials_database_name = state.run_name
+                    world.ess_db_gone = True
+                else:
+                    state.subscription_id, state.database_id = "100", "50"
+                    state.database_name = state.run_name
+                    world.database_gone = True
+                self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                state.deletion_requested.add((child, state.run_name, None))
+                self.assertTrue(qa_live.cleanup(deps_for(world), state))
+
+    def test_strict_missing_cr_without_confirmed_delete_is_uncertain(self):
+        world, state = World(), qa_live.State("xp-ci-123")
+        state.essentials_id, state.essentials_database_id = "200", "60"
+        state.essentials_database_name = state.run_name
+        world.ess_db_gone = True
+        self.assertFalse(qa_live.strict_recover(deps_for(world), state))
+        self.assertEqual(world.deleted, [])
+
     def test_database_inventory_requires_empty_authenticated_last_page(self):
         cloud = qa_live.RedisCloud("https://example.invalid/v1", "a", "b")
         calls = []
         def request(method, path):
             calls.append(path)
             rows = [{"name": "first"}] if "offset=0" in path else []
-            return 200, {"subscription": {"databases": rows}}
+            return 200, {"subscription": {"subscriptionId": 7, "databases": rows}}
         cloud.request = request
         code, rows = cloud.list_fixed_databases_complete("7")
         self.assertEqual(code, 200)
         self.assertEqual(rows, [{"name": "first"}])
         self.assertEqual(len(calls), 2)
-        cloud.request = lambda method, path: (403, None)
-        with self.assertRaises(qa_live.SuiteFailure):
-            cloud.list_fixed_databases_complete("7")
+        for response in ((403, None), (200, {"subscription": {"subscriptionId": 8, "databases": []}}),
+                         (200, {"subscription": {"subscriptionId": 7}})):
+            cloud.request = lambda method, path, response=response: response
+            with self.assertRaises(qa_live.SuiteFailure):
+                cloud.list_fixed_databases_complete("7")
 
     def test_controller_deletion_event_must_match_original_uid(self):
         world = World()
@@ -762,18 +907,323 @@ class QaLiveTest(unittest.TestCase):
         self.assertIn("still present", str(caught.exception))
         self.assertEqual(world.applied, [])
         self.assertFalse(world.installed)
-        self.assertEqual(world.cloud_deletes, ["9"])
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertEqual(world.deleted, [])
+        self.assertEqual(names(world.subs), ["xp-ci-old"])
 
-    def test_failed_database_deletes_subscription(self):
+    def test_each_foreign_prefix_kind_is_preserved_before_writes(self):
+        for field in ("subs", "fixed", "roles", "users", "rules"):
+            with self.subTest(field=field):
+                world = World()
+                setattr(world, field, [{"id": "999", "name": "xp-ci-other"}])
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.run(deps_for(world))
+                self.assertEqual(world.applied, [])
+                self.assertEqual(world.deleted, [])
+                self.assertEqual(world.cloud_deletes, [])
+                self.assertEqual(names(getattr(world, field)), ["xp-ci-other"])
+
+    def test_schedule_defers_before_setup_and_skips_inventory_step(self):
+        workflow = (REPO / ".github/workflows/qa-live.yaml").read_text()
+        gate = workflow.index("Defer standard writes until shared-account serialization exists")
+        self.assertLess(gate, workflow.index("Cleanup Disk", gate))
+        self.assertIn("github.event_name == 'schedule' || inputs.suite == 'standard' || inputs.suite == ''", workflow[gate:gate + 250])
+        self.assertIn("exit 1", workflow[gate:gate + 350])
+        self.assertNotIn("--cleanup-only", workflow)
+
+    def test_uncertain_database_create_preserves_parent_and_credentials(self):
         world = World()
         world.fail_database = True
         deps = deps_for(world)
         with self.assertRaises(qa_live.SuiteFailure) as caught:
             qa_live.run(deps)
         self.assertIn("database step failed", str(caught.exception))
-        self.assertIn((qa_live.SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertNotIn((qa_live.SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertFalse(any(resource == "providerconfig.rediscloud.redis.io" for resource, _ in world.deleted))
         self.assertTrue(any(item["kind"] == "Subscription" for item in world.applied))
         self.assertFalse(any(item["kind"] == "Database" for item in world.applied))
+
+    def test_unknown_cloud_child_does_not_delete_parent_or_credentials(self):
+        world = World()
+        world.database_http = 200
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.run(deps)
+        self.assertNotIn((qa_live.SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertFalse(any(resource == "providerconfig.rediscloud.redis.io" for resource, _ in world.deleted))
+        self.assertTrue(any("residue is unverified" in line for line in deps.lines))
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_cloud_child_404_with_cr_finalizer_pending_preserves_parent(self):
+        world = World()
+        original_delete = world.delete
+        def pending_finalizer(resource, name, namespace=None):
+            previous = world.objects.get((resource, name))
+            original_delete(resource, name, namespace)
+            if resource == qa_live.DATABASE and previous is not None:
+                world.objects[(resource, name)] = previous
+        world.delete = pending_finalizer
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "database CR still present"):
+            qa_live.run(deps)
+        self.assertNotIn((qa_live.SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertTrue(any("residue is unverified" in line for line in deps.lines))
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_refuses_mismatched_child_cloud_identity(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.subscription_name = state.database_name = state.run_name
+        state.subscription_id, state.database_id = "100", "50"
+        world.objects[(qa_live.DATABASE, state.run_name)] = ready("100/50")
+        world.objects[(qa_live.SUBSCRIPTION, state.run_name)] = ready("100")
+        world.get_database = lambda sub, db: (200, {"databaseId": db, "name": "someone-else"})
+        self.assertFalse(qa_live.cleanup(deps_for(world), state))
+        self.assertEqual(world.deleted, [])
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_standard_cleanup_refuses_replaced_cr_with_same_cloud_identity(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.subscription_name = state.database_name = state.run_name
+        state.subscription_id, state.database_id = "100", "50"
+        state.owned_uids[(qa_live.DATABASE, state.run_name, None)] = "original-uid"
+        world.objects[(qa_live.DATABASE, state.run_name)] = ready("100/50")
+        world.objects[(qa_live.DATABASE, state.run_name)]["metadata"]["uid"] = "replacement-uid"
+        world.get_database = lambda sub, db: (200, {"databaseId": db, "name": "xp-ci-123-db"})
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "UID precondition"):
+            qa_live.cleanup(deps_for(world), state)
+        self.assertNotIn((qa_live.SUBSCRIPTION, state.run_name), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_strict_cleanup_refuses_uid_replacement_after_identity_read(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.essentials_database_name = state.run_name
+        state.essentials_id, state.essentials_database_id = "200", "60"
+        state.owned_uids[(qa_live.ESS_DATABASE, state.run_name, None)] = "test-uid"
+        world.objects[(qa_live.ESS_DATABASE, state.run_name)] = ready("200/60")
+        world.ess_db_name = "xp-ci-123-db"
+        original_delete = world.delete_owned
+        def race(resource, name, uid, namespace=None):
+            world.objects[(resource, name)]["metadata"]["uid"] = "replacement-uid"
+            original_delete(resource, name, uid, namespace)
+        world.delete_owned = race
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "UID precondition"):
+            qa_live.strict_recover(deps_for(world), state)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_strict_proof_preserves_parent_when_database_is_replaced_before_delete(self):
+        world = World()
+        original_delete = world.delete_owned
+        def race(resource, name, uid, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                world.objects[(resource, name)]["metadata"]["uid"] = "replacement-uid"
+            original_delete(resource, name, uid, namespace)
+        world.delete_owned = race
+        deps = deps_for(world)
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "UID precondition"):
+            qa_live.strict_essentials(deps)
+        self.assertNotIn((qa_live.ESS_DATABASE, "xp-ci-123"), world.deleted)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertTrue(any("RECOVERY HOLD TIMED OUT" in line for line in deps.lines))
+
+    def test_kubectl_delete_sends_uid_precondition_in_delete_options(self):
+        world = World()
+        deps = deps_for(world)
+        cluster = qa_live.KubectlCluster("kubectl", qa_live.ALLOWED_CONTEXT, {}, deps)
+        calls = []
+        def run(args, stdin=None, check=True):
+            calls.append((args, json.loads(stdin)))
+            return SimpleNamespace(stdout="{}", returncode=0)
+        cluster._run = run
+        cluster.delete_owned(qa_live.ESS_DATABASE, "xp-ci-123", "original-uid")
+        self.assertEqual(calls[0][0], ["delete", "--raw", "/apis/essentials.redis.io/v1beta1/databases/xp-ci-123", "-f", "-"])
+        self.assertEqual(calls[0][1]["preconditions"], {"uid": "original-uid"})
+
+    def test_owned_update_preserves_uid_and_resource_version_for_atomic_replace(self):
+        world = World()
+        cluster = qa_live.KubectlCluster("kubectl", qa_live.ALLOWED_CONTEXT, {}, deps_for(world))
+        obj = {"apiVersion": "essentials.redis.io/v1beta1", "kind": "Database",
+               "metadata": {"name": "xp-ci-123", "uid": "original-uid", "resourceVersion": "42"},
+               "spec": {"forProvider": {"dataEviction": "volatile-lru"}}}
+        cluster.get = lambda resource, name: obj
+        calls = []
+        cluster._run = lambda args, stdin=None: calls.append((args, json.loads(stdin)))
+        cluster.replace_owned(qa_live.ESS_DATABASE, "xp-ci-123", "original-uid", {"dataEviction": "allkeys-lru"})
+        self.assertEqual(calls[0][0], ["replace", "-f", "-"])
+        self.assertEqual(calls[0][1]["metadata"]["uid"], "original-uid")
+        self.assertEqual(calls[0][1]["metadata"]["resourceVersion"], "42")
+        obj["metadata"]["uid"] = "replacement-uid"
+        with self.assertRaises(qa_live.SuiteFailure):
+            cluster.replace_owned(qa_live.ESS_DATABASE, "xp-ci-123", "original-uid", {"dataEviction": "noeviction"})
+        self.assertEqual(len(calls), 1)
+
+    def test_kubectl_create_requires_exact_server_identity(self):
+        world = World()
+        cluster = qa_live.KubectlCluster("kubectl", qa_live.ALLOWED_CONTEXT, {}, deps_for(world))
+        manifest = qa_live.essentials_database_manifest("xp-ci-123", "200")
+        cluster._run = lambda args, stdin=None: SimpleNamespace(stdout=json.dumps({
+            "apiVersion": manifest["apiVersion"], "kind": manifest["kind"],
+            "metadata": {"name": "xp-ci-123"}}))
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "identity unavailable"):
+            cluster.create_owned(manifest)
+
+    def test_lookup_cleanup_does_not_delete_same_name_replacement(self):
+        world = World()
+        deps = deps_for(world)
+        qa_live.apply_lookups(deps)
+        name = "xp-ci-123-payment"
+        world.objects[(qa_live.PAYMENT, name)]["metadata"]["uid"] = "replacement-uid"
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "UID precondition"):
+            qa_live.delete_lookups(deps)
+        self.assertNotIn((qa_live.PAYMENT, name), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_lookup_cleanup_resumes_after_confirmed_partial_deletion(self):
+        world = World()
+        deps = deps_for(world)
+        qa_live.apply_lookups(deps)
+        original = world.delete_owned
+        attempts = []
+        def fail_once(resource, name, uid, namespace=None):
+            if resource == qa_live.PLAN and not attempts:
+                attempts.append("failed")
+                raise qa_live.SuiteFailure("temporary failure")
+            original(resource, name, uid, namespace)
+        world.delete_owned = fail_once
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "temporary failure"):
+            qa_live.delete_lookups(deps)
+        qa_live.delete_lookups(deps)
+        self.assertEqual(world.deleted.count((qa_live.PAYMENT, "xp-ci-123-payment")), 1)
+        self.assertIn((qa_live.PLAN, "xp-ci-123-plan"), world.deleted)
+        self.assertIn((qa_live.REGIONS, "xp-ci-123-regions"), world.deleted)
+
+    def test_lookup_absence_without_confirmed_delete_stays_uncertain(self):
+        world = World()
+        deps = deps_for(world)
+        qa_live.apply_lookups(deps)
+        world.objects.pop((qa_live.PAYMENT, "xp-ci-123-payment"))
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "absent without a confirmed delete"):
+            qa_live.delete_lookups(deps)
+        self.assertNotIn((qa_live.PLAN, "xp-ci-123-plan"), world.deleted)
+
+    def test_create_owned_refuses_preexisting_resource_and_uid_is_required(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        world.objects[(qa_live.ACL, state.run_name)] = ready("1")
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "already exists"):
+            qa_live.create_owned(deps_for(world), state, qa_live.ACL, qa_live.acl_manifest(state.run_name))
+        self.assertEqual(world.applied, [])
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "UID unavailable"):
+            qa_live.delete_owned(deps_for(world), state, qa_live.ACL, state.run_name)
+
+    def test_recovery_preserves_parent_when_complete_child_inventory_unavailable_or_nonempty(self):
+        for fixed in (False, True):
+            for case in ("foreign", "forbidden", "malformed"):
+                with self.subTest(fixed=fixed, case=case):
+                    world = World()
+                    state = qa_live.State("xp-ci-123")
+                    resource = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+                    parent_id = "200" if fixed else "100"
+                    if fixed:
+                        state.essentials_name, state.essentials_id = state.run_name, parent_id
+                    else:
+                        state.subscription_name, state.subscription_id = state.run_name, parent_id
+                    world.objects[(resource, state.run_name)] = ready(parent_id)
+                    if case == "foreign":
+                        result = lambda sub: (200, [{"databaseId": "42", "name": "foreign"}])
+                    elif case == "forbidden":
+                        result = lambda sub: (403, None)
+                    else:
+                        def result(sub):
+                            raise qa_live.SuiteFailure("incomplete pagination")
+                    if fixed:
+                        world.list_fixed_databases_complete = result
+                    else:
+                        world.list_databases_complete = result
+                    if case == "malformed":
+                        with self.assertRaises(qa_live.SuiteFailure):
+                            qa_live.cleanup(deps_for(world), state)
+                    else:
+                        self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                    self.assertNotIn((resource, state.run_name), world.deleted)
+                    self.assertEqual(world.cloud_deletes, [])
+
+    def test_absent_parent_with_remaining_cr_does_not_trigger_an_unverified_delete(self):
+        for fixed in (False, True):
+            with self.subTest(fixed=fixed):
+                world = World()
+                state = qa_live.State("xp-ci-123")
+                resource = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+                parent_id = "200" if fixed else "100"
+                world.objects[(resource, state.run_name)] = ready(parent_id)
+                if fixed:
+                    state.essentials_name, state.essentials_id = state.run_name, parent_id
+                    world.ess_sub_gone = True
+                else:
+                    state.subscription_name, state.subscription_id = state.run_name, parent_id
+                    world.subscription_gone = True
+                self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                self.assertNotIn((resource, state.run_name), world.deleted)
+
+    def test_pro_parent_inventory_pages_are_complete_and_match_parent(self):
+        cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
+        calls = []
+        def request(method, path):
+            calls.append(path)
+            rows = [{"databaseId": 42}] if "offset=0" in path else []
+            return 200, {"subscription": [{"subscriptionId": 7, "databases": rows}]}
+        cloud.request = request
+        self.assertEqual(cloud.list_databases_complete("7"), (200, [{"databaseId": 42}]))
+        self.assertEqual(len(calls), 2)
+        for response in ((403, None), (200, {"subscription": [{"subscriptionId": 8, "databases": []}]}),
+                         (200, {"subscription": [{"subscriptionId": 7}]})):
+            cloud.request = lambda method, path, response=response: response
+            with self.assertRaises(qa_live.SuiteFailure):
+                cloud.list_databases_complete("7")
+
+    def test_acl_recovery_accepts_delayed_absence_after_proven_delete_request(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.acl_name = state.run_name
+        world.rules = [{"id": "1", "name": state.run_name}]
+        world.objects[(qa_live.ACL, state.run_name)] = ready("1")
+        state.owned_uids[(qa_live.ACL, state.run_name, None)] = "test-uid"
+        world.delete = lambda resource, name, namespace=None: None
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        self.assertFalse(qa_live.cleanup(deps, state))
+        world.rules = []
+        world.objects.pop((qa_live.ACL, state.run_name))
+        self.assertTrue(qa_live.cleanup(deps, state))
+        self.assertIsNone(state.acl_name)
+
+    def test_acl_absence_without_proven_delete_remains_uncertain(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.acl_name = state.run_name
+        self.assertFalse(qa_live.cleanup(deps_for(world), state))
+        self.assertEqual(world.deleted, [])
+
+    def test_acl_delete_with_lost_response_does_not_mark_absence_proven(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.acl_name = state.run_name
+        state.owned_uids[(qa_live.ACL, state.run_name, None)] = "test-uid"
+        world.rules = [{"id": "1", "name": state.run_name}]
+        world.objects[(qa_live.ACL, state.run_name)] = ready("1")
+        def lost(*args, **kwargs):
+            raise qa_live.SuiteFailure("delete response lost")
+        world.delete_owned = lost
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.cleanup(deps_for(world), state)
+        world.rules = []
+        world.objects.pop((qa_live.ACL, state.run_name))
+        self.assertFalse(qa_live.cleanup(deps_for(world), state))
 
     def test_success_check_requires_active_keys_and_404(self):
         ok = qa_live.success_problems("active", "active", ["public_endpoint", "private_endpoint"], 404, 404)
@@ -805,7 +1255,7 @@ class QaLiveTest(unittest.TestCase):
             deps.timeouts[name] = 0
         with self.assertRaises(qa_live.SuiteFailure) as caught:
             qa_live.run(deps)
-        self.assertIn("HTTP 200", str(caught.exception))
+        self.assertIn("absence unverified", str(caught.exception))
 
     def test_run_succeeds_and_logs_key_names_only(self):
         world = World()
@@ -860,14 +1310,14 @@ class QaLiveTest(unittest.TestCase):
             deleted.index((qa_live.ESS_SUBSCRIPTION, "xp-ci-123")),
         )
 
-    def test_failed_essentials_still_deletes_the_subscription(self):
+    def test_uncertain_essentials_create_preserves_parent(self):
         world = World()
         world.fail_essentials = True
         deps = deps_for(world)
         with self.assertRaises(qa_live.SuiteFailure) as caught:
             qa_live.run(deps)
         self.assertIn("essentials step failed", str(caught.exception))
-        self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertTrue(world.subscription_gone)
         self.assertTrue(world.database_gone)
 
@@ -896,17 +1346,19 @@ class QaLiveTest(unittest.TestCase):
             qa_live.run(deps)
         self.assertIn("still present", str(caught.exception))
         self.assertEqual(world.applied, [])
-        self.assertIn("8", world.cloud_deletes)
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertEqual(names(world.fixed), ["xp-ci-old"])
 
-    def test_leftover_essentials_deletes_database_before_subscription(self):
+    def test_leftover_essentials_and_child_are_never_deleted(self):
         world = World()
         world.fixed = [{"id": "8", "name": "xp-ci-old", "status": "active"}]
         world.fixed_databases = [{"databaseId": "61", "name": "xp-ci-old-db", "status": "active"}]
         deps = deps_for(world)
-        qa_live.cleanup_only(deps)
-        self.assertEqual(world.cloud_deletes, ["8/61", "8"])
-        self.assertEqual(world.fixed, [])
-        self.assertEqual(world.fixed_databases, [])
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.cleanup_only(deps)
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertEqual(names(world.fixed), ["xp-ci-old"])
+        self.assertEqual(len(world.fixed_databases), 1)
 
     def test_fixed_database_list_reads_the_subscription_object(self):
         body = {"subscription": {"subscriptionId": 1, "databases": [{"name": "db", "status": "active"}]}}
@@ -917,10 +1369,12 @@ class QaLiveTest(unittest.TestCase):
         world = World()
         world.subs = [{"id": "9", "name": "xp-ci-old", "status": "active"}]
         deps = deps_for(world)
-        qa_live.cleanup_only(deps)
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.cleanup_only(deps)
         self.assertEqual(world.applied, [])
         self.assertFalse(world.installed)
-        self.assertEqual(names(world.subs), [])
+        self.assertEqual(names(world.subs), ["xp-ci-old"])
+        self.assertEqual(world.cloud_deletes, [])
 
     def test_cleanup_only_refuses_when_delete_does_not_clear(self):
         world = World()
