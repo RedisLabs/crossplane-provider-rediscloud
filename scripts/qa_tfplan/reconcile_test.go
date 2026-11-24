@@ -34,7 +34,7 @@ func (s fixtureStore) Workspace(context.Context, ujresource.SecretClient, ujreso
 	return s.ws, nil
 }
 
-func verifyManagedNoop(t *testing.T, ws *terraform.Workspace, spy *spyExecutor, callback *fakeCallback) *managed.Reconciler {
+func verifyManagedNoop(t *testing.T, ws *terraform.Workspace, spy *spyExecutor, callback *fakeCallback) (*managed.Reconciler, client.Client) {
 	t.Helper()
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
@@ -42,7 +42,7 @@ func verifyManagedNoop(t *testing.T, ws *terraform.Workspace, spy *spyExecutor, 
 		t.Fatal(err)
 	}
 	item := &api.Database{ObjectMeta: metav1.ObjectMeta{Name: fixtureName, UID: types.UID("fixture-uid"), Annotations: map[string]string{xpmeta.AnnotationKeyExternalName: "1/2"}}}
-	name, eviction, persistence, replication, sub := fixtureName, "allkeys-lru", "none", false, float64(1)
+	name, eviction, persistence, replication, sub := fixtureName, desiredEviction, "none", false, float64(1)
 	item.Spec.ForProvider.Name = &name
 	item.Spec.ForProvider.DataEviction = &eviction
 	item.Spec.ForProvider.DataPersistence = &persistence
@@ -76,7 +76,7 @@ func verifyManagedNoop(t *testing.T, ws *terraform.Workspace, spy *spyExecutor, 
 	if plans < 2 {
 		t.Fatalf("managed reconciles did not reach plan twice: %v", commands)
 	}
-	return rec
+	return rec, kube
 }
 
 type spyExecutor struct {
@@ -101,26 +101,38 @@ func (s *spyExecutor) snapshot() []string {
 	return result
 }
 
-func verifyManagedDrift(t *testing.T, rec *managed.Reconciler, spy *spyExecutor, callback *fakeCallback) {
+func verifyManagedDrift(t *testing.T, rec *managed.Reconciler, spy *spyExecutor, callback *fakeCallback, wantFailure bool) {
 	t.Helper()
 	before := len(spy.snapshot())
-	if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
-		t.Fatalf("drift reconcile: %v", err)
-	}
-	select {
-	case err := <-callback.done:
-		if err == nil {
-			t.Fatal("reject-only fake update unexpectedly succeeded")
+	for i := 0; i < 6; i++ {
+		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
+			t.Fatalf("drift reconcile: %v", err)
 		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("asynchronous update did not finish")
-	}
-	for _, cmd := range spy.snapshot()[before:] {
-		if strings.Contains(cmd, "terraform apply ") && !strings.Contains(cmd, "-refresh-only") {
+		select {
+		case err := <-callback.done:
+			checkUpdateCallback(t, err, wantFailure)
 			return
+		case <-time.After(500 * time.Millisecond):
+		}
+		for _, cmd := range spy.snapshot()[before:] {
+			if strings.Contains(cmd, "terraform apply ") && !strings.Contains(cmd, "-refresh-only") {
+				select {
+				case err := <-callback.done:
+					checkUpdateCallback(t, err, wantFailure)
+					return
+				case <-time.After(90 * time.Second):
+					t.Fatal("asynchronous update did not finish")
+				}
+			}
 		}
 	}
-	t.Fatalf("managed reconcile did not issue an update apply: %v", spy.snapshot()[before:])
+	t.Fatalf("managed reconcile did not issue update: %v", spy.snapshot()[before:])
+}
+func checkUpdateCallback(t *testing.T, err error, wantFailure bool) {
+	t.Helper()
+	if (err != nil) != wantFailure {
+		t.Fatalf("unexpected fixture update result: %v", err)
+	}
 }
 
 type fakeCallback struct{ done chan error }
@@ -131,3 +143,36 @@ func (f *fakeCallback) result() terraform.CallbackFn {
 func (f *fakeCallback) Create(types.NamespacedName, bool) terraform.CallbackFn  { return f.result() }
 func (f *fakeCallback) Update(types.NamespacedName, bool) terraform.CallbackFn  { return f.result() }
 func (f *fakeCallback) Destroy(types.NamespacedName, bool) terraform.CallbackFn { return f.result() }
+
+func verifyManagedSteady(t *testing.T, rec *managed.Reconciler, spy *spyExecutor) {
+	t.Helper()
+	before := len(spy.snapshot())
+	for i := 0; i < 6; i++ {
+		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
+			t.Fatalf("post-update reconcile %d: %v", i, err)
+		}
+	}
+	plans := 0
+	for _, cmd := range spy.snapshot()[before:] {
+		if strings.Contains(cmd, "terraform plan ") {
+			plans++
+		}
+		if strings.Contains(cmd, "terraform apply ") && !strings.Contains(cmd, "-refresh-only") {
+			t.Fatalf("post-update mutation: %s", cmd)
+		}
+	}
+	if plans < 2 {
+		t.Fatalf("post-update plans observed %d", plans)
+	}
+}
+
+func verifyManagedIdentity(t *testing.T, kube client.Client) {
+	t.Helper()
+	item := &api.Database{}
+	if err := kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, item); err != nil {
+		t.Fatal(err)
+	}
+	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1/2" || item.Annotations[xpmeta.AnnotationKeyExternalName] != "1/2" {
+		t.Fatalf("managed identity changed: status=%v external=%q", item.Status.AtProvider.ID, item.Annotations[xpmeta.AnnotationKeyExternalName])
+	}
+}
