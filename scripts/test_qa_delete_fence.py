@@ -1,5 +1,10 @@
 import threading
 import unittest
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import qa_delete_fence as fence
@@ -109,6 +114,38 @@ class DeleteFenceTest(unittest.TestCase):
         self.assertEqual(fence.inspect_fence(store, self.ref, "d" * 40), "unknown")
         store.read = lambda ref: (_ for _ in ()).throw(TimeoutError())
         self.assertEqual(fence.inspect_fence(store, self.ref, self.sha), "unknown")
+
+    def test_process_loss_after_reservation_refuses_new_process(self):
+        # This demonstrates the contract with a persistent local test double,
+        # not GitHub ref retention or hosted runner-loss semantics.
+        program = """
+import os, sys
+import qa_delete_fence as fence
+class FileStore:
+    def create(self, ref, sha):
+        try:
+            fd = os.open(sys.argv[1], os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            return False
+        with os.fdopen(fd, 'w') as out:
+            out.write(sha)
+            out.flush()
+            os.fsync(out.fileno())
+        return True
+    def read(self, ref):
+        with open(sys.argv[1]) as source:
+            return source.read()
+try:
+    fence.reserve_once(FileStore(), sys.argv[2], sys.argv[3])
+except fence.FenceUncertain:
+    sys.exit(23)
+os._exit(47)
+"""
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parent))
+        with tempfile.TemporaryDirectory() as tmp:
+            args = [sys.executable, "-c", program, str(Path(tmp) / "marker"), self.ref, self.sha]
+            self.assertEqual(subprocess.run(args, env=env, check=False).returncode, 47)
+            self.assertEqual(subprocess.run(args, env=env, check=False).returncode, 23)
 
 
 if __name__ == "__main__":
