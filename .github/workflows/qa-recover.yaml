@@ -13,6 +13,10 @@ on:
         required: false
         type: string
         default: inspect
+      rehearsal_only:
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -47,11 +51,6 @@ jobs:
         run: |
           echo 'Unknown recovery mode.'
           exit 1
-      - name: Refuse disabled recovery mutation
-        if: inputs.recovery_mode == 'recover-exact'
-        run: |
-          echo 'Recovery mutation is disabled until hosted failure tests and review are complete.'
-          exit 1
       - name: Validate source identity
         env:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
@@ -73,8 +72,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
+          QA_REHEARSAL_ONLY: ${{ inputs.rehearsal_only || false }}
         run: |
           node scripts/qa_checkpoint.mjs resolve "$RUNNER_TEMP/qa-recovery/ownership.enc" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT"
+          python3 scripts/qa_verify_source.py --enforce-rehearsal "$RUNNER_TEMP/qa-recovery/ownership.enc.resolved"
           python3 scripts/qa_verify_source.py "$RUNNER_TEMP/qa-recovery/ownership.enc.resolved" "$SOURCE_RUN_ID" "$SOURCE_ATTEMPT"
       - name: Discover exact owned resources without mutation
         if: inputs.recovery_mode == 'inspect'

@@ -4,15 +4,20 @@
 from __future__ import annotations
 
 import unittest
+import base64
 import hashlib
+import hmac
 import json
+import tempfile
 import threading
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
 import qa_live
+import qa_capture_task_baseline
 
 REPO = Path(__file__).resolve().parents[1]
 PAYMENT_ID = "should-not-print"
@@ -250,7 +255,7 @@ class World:
         self.fixed_database_gets.append(str(db_id))
         if self.ess_db_gone:
             return 404, None
-        return 200, {"databaseId": db_id, "status": "active"}
+        return 200, {"databaseId": db_id, "name": self.ess_db_name, "status": "active"}
 
 
 def ready(obj_id: str) -> dict:
@@ -270,6 +275,8 @@ def deps_for(world: World, run_id: str = "123") -> qa_live.Deps:
     deps._now = clock.now
     deps._sleep = clock.sleep
     deps.poll = 1.0
+    deps.recovery_poll = 1.0
+    deps.timeouts["recovery_hold"] = 0
     deps.log = lambda message: deps.lines.append(qa_live.redact(message, deps.secrets))
     return deps
 
@@ -314,6 +321,9 @@ class QaLiveTest(unittest.TestCase):
             qa_live.strict_identity(obj, "subscription")
         obj = ready("200")
         obj["metadata"]["finalizers"] = []
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.strict_identity(obj, "subscription")
+        obj["metadata"]["finalizers"] = ["unrelated.example/finalizer"]
         with self.assertRaises(qa_live.SuiteFailure):
             qa_live.strict_identity(obj, "subscription")
 
@@ -397,13 +407,97 @@ class QaLiveTest(unittest.TestCase):
             self.assertEqual(qa_live.main(["--preflight-only"]), 0)
             build.assert_not_called()
 
-    def test_strict_live_is_disabled_even_for_a_verified_origin(self):
+    def test_task_diagnostic_outputs_only_safe_status_and_time(self):
+        rows = {
+            "sensitive-task-id": {"commandType": "fixedDatabaseDeleteRequest", "status": "processing-in-progress", "timestamp": "2026-11-23T22:30:00Z", "description": "sensitive-description"},
+            "old-id": {"commandType": "fixedDatabaseDeleteRequest", "status": "processing-error", "timestamp": "2026-11-22T22:00:00Z"},
+            "bad-id": {"commandType": "fixedDatabaseDeleteRequest", "status": "injected-private-value", "timestamp": "invalid"},
+        }
+        lines = []
+        credentials = {"api_key": "private-account-key", "secret_key": "private-secret", "url": "https://qa.example.invalid/v1"}
+        encoded = base64.b64encode(b"k" * 32).decode()
+        with patch.dict("os.environ", {"QA_ACCOUNT_FINGERPRINT_KEY": encoded}), \
+             patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
+             patch.object(qa_capture_task_baseline, "task_rows", return_value=rows), \
+             patch.object(qa_live.RedisCloud, "request", return_value=(200, {"accountId": 9876})):
+            qa_live.task_diagnostic(credentials, datetime(2026, 11, 23, 23, 0, tzinfo=timezone.utc), lines.append)
+        text = "\n".join(lines)
+        self.assertIn("task count=1; invalid timestamps=1", text)
+        self.assertIn("status=processing-in-progress", text)
+        self.assertIn(hmac.new(b"k" * 32, b"9876", hashlib.sha256).hexdigest(), text)
+        for secret in ("sensitive-task-id", "sensitive-description", "private-account-key", "private-secret", "injected-private-value"):
+            self.assertNotIn(secret, text)
+
+    def test_task_diagnostic_redacts_foreign_module_failure(self):
+        class ForeignFailure(Exception):
+            pass
+        credentials = {"api_key": "a", "secret_key": "b", "url": "https://qa.example.invalid/v1"}
+        with patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
+             patch.object(qa_capture_task_baseline, "qa_live", SimpleNamespace(SuiteFailure=ForeignFailure)), \
+             patch.object(qa_capture_task_baseline, "task_rows", side_effect=ForeignFailure("private detail")):
+            with self.assertRaises(qa_live.SuiteFailure) as caught:
+                qa_live.task_diagnostic(credentials)
+        self.assertNotIn("private detail", str(caught.exception))
+
+    def test_strict_mode_requires_verified_origin_before_invocation(self):
         with patch.object(qa_live, "load_credentials", return_value={
             "api_key": "a", "secret_key": "b", "url": "https://qa.example.invalid/v1"
         }), patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
-             patch.object(qa_live, "build_deps") as build:
-            self.assertEqual(qa_live.main(["--strict-essentials"]), 1)
-            build.assert_not_called()
+             patch.object(qa_live, "verify_checkpoint_artifact") as checkpoint, \
+             patch.object(qa_live, "build_deps") as build, \
+             patch.object(qa_live, "strict_essentials") as strict:
+            self.assertEqual(qa_live.main(["--strict-essentials"]), 0)
+            checkpoint.assert_called_once()
+            strict.assert_called_once_with(build.return_value)
+
+    def test_strict_requires_persisted_artifact_for_exact_run_and_commit(self):
+        key = b"x" * 32
+        creds = {"api_key": "account", "url": "https://qa.example.invalid/v1"}
+        env = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "RedisLabs/crossplane-provider-rediscloud",
+               "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2", "GITHUB_SHA": "a" * 40,
+               "QA_OWNERSHIP_ARTIFACT_ID": "456", "QA_CHECKPOINT_KEY": base64.b64encode(key).decode()}
+        intent = {"kind": "strict", "commit": "a" * 40,
+                  "originHash": hashlib.sha256(b"https://qa.example.invalid").hexdigest(),
+                  "credentialBinding": hmac.new(key, b"account", hashlib.sha256).hexdigest()}
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "ownership.enc"
+            source.write_text("ciphertext")
+            env["QA_OWNERSHIP_ARTIFACT_PATH"] = str(source)
+            def decrypt(command, **kwargs):
+                Path(command[3] + ".resolved").write_text(json.dumps(intent))
+            with patch.dict("os.environ", env), patch.object(qa_live.subprocess, "run", side_effect=decrypt) as run:
+                qa_live.verify_checkpoint_artifact("123-2", creds)
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-1", creds)
+                intent["kind"] = "rehearsal"
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                intent["kind"] = "strict"
+                intent["commit"] = "b" * 40
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                intent["commit"] = "a" * 40
+                intent["originHash"] = "0" * 64
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                intent["originHash"] = hashlib.sha256(b"https://qa.example.invalid").hexdigest()
+                intent["credentialBinding"] = "0" * 64
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+            with patch.dict("os.environ", dict(env, QA_OWNERSHIP_ARTIFACT_ID="")), \
+                 patch.object(qa_live.subprocess, "run") as run:
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                run.assert_not_called()
+
+    def test_strict_writer_requires_successful_checkpoint_job(self):
+        workflow = (REPO / ".github/workflows/qa-live.yaml").read_text()
+        writer = workflow[workflow.index("  qa-live:"):]
+        self.assertIn("needs: prepare-strict", writer)
+        self.assertIn("needs.prepare-strict.result == 'success'", writer)
+        self.assertIn("!cancelled()", writer)
+        self.assertLess(writer.index("Retrieve persisted ownership intent before Cloud writes"),
+                        writer.index("Create and delete the QA objects"))
 
     def test_strict_recovers_only_its_exact_resources_and_still_fails(self):
         world = World()
@@ -418,9 +512,147 @@ class QaLiveTest(unittest.TestCase):
         deps.timeouts["delete"] = 0
         with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
             qa_live.strict_essentials(deps)
-        self.assertEqual(world.cloud_deletes, ["200/60", "200"])
-        self.assertTrue(any("qualification remains failed" in line for line in deps.lines))
-        self.assertTrue(any("preserving provider credentials" in line for line in deps.lines))
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertTrue(any("parent preserved" in line for line in deps.lines))
+
+    def test_strict_holds_controller_and_credentials_while_cleanup_is_unresolved(self):
+        world = World()
+        original_delete = world.delete
+        def stuck_db(resource, name, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                world.deleted.append((resource, name))
+                return
+            original_delete(resource, name, namespace)
+        world.delete = stuck_db
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        deps.timeouts["recovery_hold"] = 2
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
+            qa_live.strict_essentials(deps)
+        self.assertGreaterEqual(deps.now(), 2)
+        self.assertTrue(any("RECOVERY HOLD:" in line for line in deps.lines))
+        self.assertTrue(any("RECOVERY HOLD TIMED OUT" in line for line in deps.lines))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertNotIn(("secret", "provider-secret"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_cr_recovery_retry_can_finish_but_never_turns_failure_into_pass(self):
+        world = World()
+        original_delete = world.delete
+        calls = []
+        def delayed_delete(resource, name, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                calls.append(1)
+                if len(calls) <= 2:
+                    world.deleted.append((resource, name))
+                    return
+            original_delete(resource, name, namespace)
+        world.delete = delayed_delete
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        deps.timeouts["recovery_hold"] = 2
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
+            qa_live.strict_essentials(deps)
+        self.assertTrue(any("RECOVERY HOLD:" in line for line in deps.lines))
+        self.assertGreaterEqual(deps.now(), 1)
+        self.assertTrue(any("recovery complete; original qualification remains FAILED" in line for line in deps.lines))
+        self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_hold_deadline_caps_each_cleanup_poll(self):
+        world = World()
+        original_delete = world.delete
+        def stuck_db(resource, name, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                world.deleted.append((resource, name))
+                return
+            original_delete(resource, name, namespace)
+        world.delete = stuck_db
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 5
+        deps.timeouts["recovery_hold"] = 2
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.strict_essentials(deps)
+        self.assertEqual(deps.now(), 7)
+        self.assertTrue(any("RECOVERY HOLD TIMED OUT" in line for line in deps.lines))
+
+    def test_recovery_preserves_parent_if_other_children_remain(self):
+        world = World()
+        deps = deps_for(world)
+        def missing_event(uid, label):
+            if label == "database":
+                raise qa_live.SuiteFailure("database event missing")
+        world.require_deleted_event = missing_event
+        world.list_fixed_databases_complete = lambda sub: (200, [{"databaseId": 61, "name": "foreign"}])
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "event missing"):
+            qa_live.strict_essentials(deps)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_finalizes_parent_cr_when_exact_parent_is_already_absent(self):
+        world = World()
+        world.ess_sub_gone = True
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        state.essentials_id = "200"
+        state.essentials_database_name = state.run_name
+        state.essentials_database_deleted = True
+        qa_live.strict_recover(deps_for(world), state)
+        self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_refuses_parent_cr_delete_on_bad_read_or_identity(self):
+        for bad_read in (True, False):
+            world = World()
+            world.fixed = [{"id": "999", "name": "xp-ci-123", "status": "active"}]
+            if bad_read:
+                world.get_fixed_subscription = lambda sub: (500, None)
+            state = qa_live.State("xp-ci-123")
+            state.essentials_name = state.run_name
+            state.essentials_id = "200"
+            state.essentials_database_name = state.run_name
+            state.essentials_database_deleted = True
+            qa_live.strict_recover(deps_for(world), state)
+            self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+            self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_refuses_parent_without_matching_cloud_identity_even_without_child(self):
+        world = World()
+        world.fixed = [{"id": "999", "name": "xp-ci-123", "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, "xp-ci-123")] = ready("200")
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        state.essentials_id = "200"
+        self.assertFalse(qa_live.strict_recover(deps_for(world), state))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+
+    def test_recovery_preserves_cr_until_identity_is_independently_matched(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        deps = deps_for(world)
+        self.assertFalse(qa_live.strict_recover(deps, state))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+        world.fixed = [{"id": "200", "name": state.run_name, "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, state.run_name)] = ready("200")
+        self.assertTrue(qa_live.strict_recover(deps, state))
+        self.assertEqual(state.essentials_id, "200")
+        self.assertIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+
+    def test_recovery_accepts_id_alias_on_exact_database_read(self):
+        world = World()
+        world.fixed = [{"id": "200", "name": "xp-ci-123", "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, "xp-ci-123")] = ready("200")
+        world.objects[(qa_live.ESS_DATABASE, "xp-ci-123")] = ready("200/60")
+        world.get_fixed_database = lambda sub, db: (404, None) if world.ess_db_gone else (200, {"id": 60, "name": "xp-ci-123-db"})
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        state.essentials_id = "200"
+        state.essentials_database_name = state.run_name
+        state.essentials_database_id = "60"
+        self.assertTrue(qa_live.strict_recover(deps_for(world), state))
+        self.assertEqual(world.cloud_deletes, [])
 
     def test_strict_waits_for_delayed_database_absence(self):
         world = World()
@@ -449,6 +681,9 @@ class QaLiveTest(unittest.TestCase):
         with self.assertRaisesRegex(qa_live.SuiteFailure, "parent differs"):
             qa_live.strict_essentials(deps)
         self.assertFalse(any("qualification passed" in line for line in deps.lines))
+        self.assertNotIn((qa_live.ESS_DATABASE, "xp-ci-123"), world.deleted)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
 
     def test_database_inventory_requires_empty_authenticated_last_page(self):
         cloud = qa_live.RedisCloud("https://example.invalid/v1", "a", "b")

@@ -112,10 +112,18 @@ class CheckpointTest(unittest.TestCase):
             self.assertEqual(qa_recovery_resolve.main(), 1)
             mutation.assert_not_called()
 
-    def test_hosted_recovery_mutation_has_an_early_disabled_gate(self):
+    def test_hosted_recovery_requires_source_authentication_first(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/qa-recover.yaml").read_text()
-        self.assertLess(workflow.index("Refuse disabled recovery mutation"), workflow.index("Retrieve encrypted ownership intent"))
-        self.assertLess(workflow.index("Refuse disabled recovery mutation"), workflow.index("Recover exact owned resources"))
+        self.assertLess(workflow.index("Authenticate checkpoint and originating workflow"), workflow.index("Recover exact owned resources"))
+
+    def test_rehearsal_route_rejects_strict_source_before_any_recovery(self):
+        path = Path(self.temp.name) / "kind.json"
+        argv = ["qa_verify_source.py", "--enforce-rehearsal", str(path)]
+        with patch.dict(os.environ, {"QA_REHEARSAL_ONLY": "true"}), patch.object(sys, "argv", argv):
+            path.write_text('{"kind":"strict"}')
+            self.assertEqual(qa_verify_source.main(), 1)
+            path.write_text('{"kind":"rehearsal"}')
+            self.assertEqual(qa_verify_source.main(), 0)
 
 
 class ResolutionTest(unittest.TestCase):

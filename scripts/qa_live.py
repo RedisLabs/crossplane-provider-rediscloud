@@ -14,7 +14,9 @@ the payment method id.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import hmac
 import http.client
 import json
 import os
@@ -23,10 +25,12 @@ import secrets
 import string
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PREFIX = "xp-ci-"
@@ -92,6 +96,39 @@ def matches_expected_qa_origin(url: str) -> bool:
     )
 
 
+def verify_checkpoint_artifact(run_id: str, credentials: dict, expected_kind: str = "strict") -> None:
+    """Authenticate the artifact downloaded from this exact hosted run."""
+    run = os.environ.get("GITHUB_RUN_ID", "")
+    attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+    artifact_id = os.environ.get("QA_OWNERSHIP_ARTIFACT_ID", "")
+    artifact_path = os.environ.get("QA_OWNERSHIP_ARTIFACT_PATH", "")
+    commit = os.environ.get("GITHUB_SHA", "")
+    if (os.environ.get("GITHUB_ACTIONS") != "true" or
+            os.environ.get("GITHUB_REPOSITORY") != "RedisLabs/crossplane-provider-rediscloud" or
+            not re.fullmatch(r"[1-9][0-9]*", run) or not re.fullmatch(r"[1-9][0-9]*", attempt) or
+            not re.fullmatch(r"[1-9][0-9]*", artifact_id) or not artifact_path or not re.fullmatch(r"[a-f0-9]{40}", commit) or
+            run_id != f"{run}-{attempt}"):
+        raise SuiteFailure("strict qualification requires this run's persisted ownership artifact")
+    try:
+        with tempfile.TemporaryDirectory(prefix="qa-ownership-") as tmp:
+            encrypted = Path(tmp) / "ownership.enc"
+            encrypted.write_bytes(Path(artifact_path).read_bytes())
+            script = Path(__file__).with_name("qa_checkpoint.mjs")
+            subprocess.run(["node", str(script), "resolve", str(encrypted), run, attempt],
+                           check=True, capture_output=True, text=True)
+            intent = json.loads(Path(str(encrypted) + ".resolved").read_text())
+        key = base64.b64decode(os.environ.get("QA_CHECKPOINT_KEY", ""), validate=True)
+        parts = urllib.parse.urlsplit(credentials.get("url") or "")
+        origin_hash = hashlib.sha256(f"{parts.scheme}://{parts.netloc}".encode()).hexdigest()
+        binding = hmac.new(key, credentials["api_key"].encode(), hashlib.sha256).hexdigest()
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError):
+        raise SuiteFailure("ownership artifact could not be authenticated") from None
+    if (len(key) != 32 or intent.get("kind") != expected_kind or intent.get("commit") != commit or
+            intent.get("originHash") != origin_hash or
+            not hmac.compare_digest(binding, str(intent.get("credentialBinding") or ""))):
+        raise SuiteFailure("ownership artifact does not match this run, commit and account")
+
+
 def preflight(credentials: dict) -> None:
     """Authenticate read-only, without a Kubernetes context or any Cloud write."""
     if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
@@ -141,6 +178,58 @@ def preflight(credentials: dict) -> None:
         print("authenticated database pagination reached an empty page", flush=True)
     else:
         print("database pagination not exercised: account has no Essentials subscription", flush=True)
+
+
+def task_diagnostic(credentials: dict, clock=None, output=print) -> None:
+    """Read recent fixed-database delete task states without printing IDs."""
+    if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
+        raise SuiteFailure("task diagnostic requires a verified QA endpoint")
+    import qa_capture_task_baseline
+    cloud = RedisCloud(credentials["url"], credentials["api_key"], credentials["secret_key"])
+    try:
+        rows = qa_capture_task_baseline.task_rows(cloud)
+    except qa_capture_task_baseline.qa_live.SuiteFailure:
+        raise SuiteFailure("task diagnostic could not read tasks") from None
+    now = clock or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=2)
+    valid_status = {"initialized", "received", "processing-in-progress", "processing-completed", "processing-error"}
+    found = []
+    invalid_timestamps = 0
+    for row in rows.values():
+        if row.get("commandType") != "fixedDatabaseDeleteRequest":
+            continue
+        try:
+            timestamp = datetime.fromisoformat(str(row.get("timestamp") or "").replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                raise ValueError("timezone required")
+            timestamp = timestamp.astimezone(timezone.utc)
+        except ValueError:
+            invalid_timestamps += 1
+            continue
+        if cutoff <= timestamp <= now:
+            status = row.get("status") if row.get("status") in valid_status else "other"
+            found.append((timestamp, status))
+    output(f"recent fixedDatabaseDeleteRequest task count={len(found)}; invalid timestamps={invalid_timestamps}")
+    for timestamp, status in sorted(found, reverse=True)[:50]:
+        output(f"fixedDatabaseDeleteRequest status={status} timestamp={timestamp.isoformat().replace('+00:00', 'Z')}")
+    if len(found) > 50:
+        output("additional matching tasks omitted from display")
+    encoded_key = os.environ.get("QA_ACCOUNT_FINGERPRINT_KEY", "")
+    try:
+        key = base64.b64decode(encoded_key, validate=True)
+    except ValueError:
+        key = b""
+    if len(key) == 32:
+        code, body = cloud.request("GET", "/subscriptions")
+        account_id = body.get("accountId") if code == 200 and isinstance(body, dict) else None
+        if isinstance(account_id, bool) or not isinstance(account_id, (int, str)) or not str(account_id).isdigit() or int(account_id) < 1:
+            output("account comparison unavailable: authenticated account ID not returned")
+        else:
+            normalized = str(int(account_id))
+            fingerprint = hmac.new(key, normalized.encode(), hashlib.sha256).hexdigest()
+            output(f"opaque account-ID comparison HMAC={fingerprint}")
+    else:
+        output("account comparison unavailable: shared fingerprint key missing or invalid")
 
 
 def redact(text: str, secrets: list[str]) -> str:
@@ -270,8 +359,8 @@ def strict_ready(obj: dict | None) -> bool:
 
 def strict_identity(obj: dict | None, label: str) -> str:
     metadata = (obj or {}).get("metadata") or {}
-    if not metadata.get("uid") or not metadata.get("finalizers"):
-        raise SuiteFailure(f"{label} has no UID or finalizer")
+    if not metadata.get("uid") or "finalizer.managedresource.crossplane.io" not in (metadata.get("finalizers") or []):
+        raise SuiteFailure(f"{label} has no UID or Crossplane managed-resource finalizer")
     if not strict_ready(obj):
         raise SuiteFailure(f"{label} is not Ready and Synced")
     return str(((obj or {}).get("status") or {}).get("atProvider", {}).get("id") or "")
@@ -783,75 +872,126 @@ def strict_essentials(deps) -> None:
             raise SuiteFailure("run-owned subscription remains in inventory")
         deps.log("strict essentials qualification passed; run-owned subscription inventory empty")
     except Exception:
-        deps.log("strict qualification FAILED; attempting run-owned recovery, CR first")
-        try:
-            strict_recover(deps, state)
-        except Exception:
-            deps.log("recovery encountered an error; residue is unknown, preserving credentials")
+        deps.log("strict qualification FAILED; retaining controller and credentials for CR recovery")
+        deadline = deps.now() + deps.timeouts["recovery_hold"]
+        deps.recovery_deadline = deadline
+        while True:
+            try:
+                complete = strict_recover(deps, state)
+            except Exception:
+                complete = False
+                deps.log("recovery encountered an error; residue is unknown")
+            if complete:
+                deps.log("recovery complete; original qualification remains FAILED")
+                break
+            if deps.now() >= deadline:
+                deps.log("RECOVERY HOLD TIMED OUT: residue is unverified; use this Actions run and its encrypted ownership artifact for follow-up")
+                break
+            deps.log("RECOVERY HOLD: cleanup unresolved; retaining controller and credentials")
+            deps.sleep(min(deps.recovery_poll, max(0, deadline - deps.now())))
+        deps.recovery_deadline = None
         raise
     else:
         delete_lookups(deps)
 
 
-def strict_recover(deps, state: State) -> None:
+def strict_recover(deps, state: State) -> bool:
     """Recover only exact identities created by this run; never convert failure to pass."""
+    refresh_recovery_identity(deps, state)
     if state.essentials_database_name and not state.essentials_database_deleted:
+        if not state.essentials_id or not state.essentials_database_id:
+            deps.log("recovery incomplete: database identity not established; an asynchronous create may still finish, so CR and parent are preserved")
+            return False
+        cr = deps.cluster.get(ESS_DATABASE, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if cr is not None and cr_id != f"{state.essentials_id}/{state.essentials_database_id}":
+            deps.log("recovery incomplete: database CR identity differs; CR and parent preserved")
+            return False
+        cloud_code, cloud_db = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
+        if cloud_code not in (200, 404) or (cloud_code == 200 and
+                (not isinstance(cloud_db, dict) or
+                 observed_database_id(cloud_db, "") != state.essentials_database_id or
+                 cloud_db.get("name") != f"{state.run_name}-db")):
+            deps.log("recovery incomplete: database Cloud identity unverified; CR and parent preserved")
+            return False
         deps.cluster.delete(ESS_DATABASE, state.run_name)
-        if state.essentials_id and state.essentials_database_id:
-            code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
-                state.essentials_id, state.essentials_database_id))
-            if code != 404:
-                if code != 200 or not owned_essentials_subscription(deps, state):
-                    deps.log("recovery incomplete: database or parent identity is unverified; parent preserved")
-                    return
-                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
-                matching = [r for r in rows if str(r.get("name") or "") == f"{state.run_name}-db"]
-                if (list_code != 200 or len(matching) != 1 or
-                        observed_database_id(matching[0], "") != state.essentials_database_id):
-                    deps.log("recovery incomplete: database ownership could not be established")
-                    return
-                deps.log("RECOVERY ONLY: direct API database delete; qualification remains failed")
-                deps.cloud.delete_fixed_database(state.essentials_id, state.essentials_database_id)
-                code = wait_http_404(deps, "recovery database after API delete", lambda: deps.cloud.get_fixed_database(
-                    state.essentials_id, state.essentials_database_id))
-                if code != 404:
-                    deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
-                    return
-        else:
-            deps.log("recovery incomplete: database identity not established; parent preserved")
-            return
+        code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
+            state.essentials_id, state.essentials_database_id))
+        if code != 404:
+            deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
+            return False
+        if not wait_until(deps, "recovery database CR finalization", deps.timeouts["delete"],
+                          lambda: deps.cluster.get(ESS_DATABASE, state.run_name) is None):
+            deps.log("recovery incomplete: database CR remains; parent preserved")
+            return False
     if state.essentials_name and not state.essentials_deleted:
+        if not state.essentials_id:
+            deps.log("recovery incomplete: subscription identity not established; CR preserved")
+            return False
+        cr = deps.cluster.get(ESS_SUBSCRIPTION, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if cr is not None and cr_id != state.essentials_id:
+            deps.log("recovery incomplete: subscription CR identity differs; CR preserved")
+            return False
+        parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
+        if parent_code not in (200, 404):
+            deps.log("recovery incomplete: parent existence and ownership unverified")
+            return False
+        if parent_code == 200:
+            if not owned_essentials_subscription(deps, state):
+                deps.log("recovery incomplete: parent ownership unverified")
+                return False
+            if state.essentials_database_name:
+                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+                if list_code != 200 or rows:
+                    deps.log("recovery incomplete: child inventory is not completely empty")
+                    return False
         deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
         if state.essentials_id:
             code = wait_http_404(deps, "recovery subscription", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
             if code != 404:
-                if code != 200 or not owned_essentials_subscription(deps, state):
-                    deps.log("recovery incomplete: subscription ownership is unverified")
-                    return
-                list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
-                if list_code != 200 or rows:
-                    deps.log("recovery incomplete: subscription contains databases or inventory is unavailable")
-                    return
-                deps.log("RECOVERY ONLY: direct API subscription delete; qualification remains failed")
-                deps.cloud.delete_fixed_subscription(state.essentials_id)
-                code = wait_http_404(deps, "recovery subscription after API delete", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
-                if code != 404:
-                    deps.log("recovery incomplete: subscription remains or cannot be read")
-                    return
+                deps.log("recovery incomplete: subscription remains or cannot be read")
+                return False
         else:
             deps.log("recovery incomplete: subscription identity not established; absence unverified")
-            return
+            return False
     if find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name):
         deps.log("recovery incomplete: run-owned subscription remains in inventory")
-        return
+        return False
     for resource, name in ((ESS_DATABASE, state.essentials_database_name),
                            (ESS_SUBSCRIPTION, state.essentials_name)):
         if name and not wait_until(deps, "recovery CR finalization", deps.timeouts["delete"],
                                    lambda resource=resource, name=name: deps.cluster.get(resource, name) is None):
             deps.log("recovery incomplete: CR remains; preserving provider credentials")
-            return
+            return False
     deps.log("recovery: no run-owned subscription found")
     delete_lookups(deps)
+    return True
+
+
+def refresh_recovery_identity(deps, state: State) -> None:
+    """Bind only a CR identity independently matched to this run's Cloud name."""
+    if state.essentials_name and not state.essentials_id:
+        cr = deps.cluster.get(ESS_SUBSCRIPTION, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        row = find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name)
+        if cr_id and row and str(row.get("id") or "") == cr_id:
+            state.essentials_id = cr_id
+            deps.remember_secret(cr_id)
+            deps.log("recovery matched subscription identity")
+    if (state.essentials_id and state.essentials_database_name and not state.essentials_database_deleted
+            and not state.essentials_database_id):
+        cr = deps.cluster.get(ESS_DATABASE, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+        row = find_named(rows, f"{state.run_name}-db")
+        if code == 200 and row and cr_id:
+            db_id = observed_database_id(row, "")
+            if cr_id == f"{state.essentials_id}/{db_id}":
+                state.essentials_database_id = db_id
+                deps.remember_secret(cr_id)
+                deps.remember_secret(db_id)
+                deps.log("recovery matched database and parent identity")
 
 
 def owned_essentials_subscription(deps, state: State) -> bool:
@@ -978,6 +1118,8 @@ def cleanup(deps, state: State) -> None:
 
 def wait_until(deps, label: str, timeout: float, ready) -> bool:
     deadline = deps.now() + timeout
+    if deps.recovery_deadline is not None:
+        deadline = min(deadline, deps.recovery_deadline)
     while True:
         if ready():
             return True
@@ -1285,12 +1427,15 @@ class Deps:
         self.secrets = list(secrets or [])
         self.lines = []
         self.poll = 30.0
+        self.recovery_poll = 60.0
+        self.recovery_deadline = None
         self.timeouts = {
             "lookup": 300.0,
             "acl": 300.0,
             "subscription": 1800.0,
             "database": 1200.0,
             "delete": 900.0,
+            "recovery_hold": 3600.0,
         }
         self.lookups_applied = False
         self._now = time.monotonic
@@ -1607,6 +1752,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--cleanup-only", action="store_true")
     parser.add_argument("--strict-essentials", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--task-diagnostic", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -1615,6 +1761,11 @@ def main(argv: list[str] | None = None) -> int:
     deps = None
     try:
         credentials = load_credentials(args.credentials_file, os.environ.get("UPTEST_CLOUD_CREDENTIALS"))
+        if args.task_diagnostic:
+            if args.cleanup_only or args.strict_essentials or args.preflight_only:
+                raise SuiteFailure("task diagnostic cannot be combined with other modes")
+            task_diagnostic(credentials)
+            return 0
         if args.preflight_only:
             if args.cleanup_only or args.strict_essentials:
                 raise SuiteFailure("preflight cannot be combined with mutating modes")
@@ -1625,7 +1776,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SuiteFailure("strict qualification cannot use shared-prefix cleanup")
             if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
                 raise SuiteFailure("strict qualification requires the explicit approved QA endpoint")
-            raise SuiteFailure("strict qualification disabled until runner-loss recovery is durable")
+            verify_checkpoint_artifact(args.run_id, credentials)
         deps = build_deps(args, credentials)
         if args.cleanup_only:
             cleanup_only(deps)

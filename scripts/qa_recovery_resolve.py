@@ -123,8 +123,7 @@ def discover(cloud, intent, log):
 def recover_exact(cloud, intent, log, timeout=900, poll=15, now=time.monotonic, sleep=time.sleep):
     """Recover one proven pair; never infer ownership from a shared prefix.
 
-    This helper is not exposed by the workflow until source authentication,
-    cloud serialization and independent hosted failure tests are complete.
+    The workflow authenticates the source; the coordinator serializes writers.
     """
     new_tasks, missing = task_delta(cloud, intent, log)
     details = {}

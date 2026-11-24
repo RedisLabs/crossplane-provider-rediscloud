@@ -4,7 +4,7 @@
 
 **Date:** 2026-11-24. **Status:** Proposed. **Ticket:** RED-225344.
 
-**Live execution is disabled.** A durable, encrypted ownership checkpoint and a separate recovery path are required before a runner can safely lose its local state. The read-only preflight may be dispatched independently.
+**Dispatch prerequisite:** The coordinator must first finish Operator GCP qualification, verify its clean inventory, and ensure no Cloud writer in either repository is active. The read-only preflight may run independently. Qualification uploads and retrieves its encrypted ownership intent and task baseline before Cloud writes, then authenticates the downloaded intent against the run, attempt, commit and account before installing the provider credentials.
 
 ## Problem and goals
 
@@ -14,7 +14,7 @@ The standard Nightly QA suite deletes any resource matching its shared prefix du
 
 The workflow builds this commit's provider in hosted Kind. It requires an independently verified QA origin that matches the credential's URL with an HTTPS `/v1` path and rejects the default public endpoint. It verifies that the read-only plan lookup returns GCP and us-central1, then creates CRs with `deletionPolicy: Delete`. It requires Ready and Synced, UID and finalizer, matching parent and child identities, and authenticated HTTP 200 for each exact resource. The database CR is deleted first, and the parent must remain HTTP 200 until the database becomes HTTP 404 and its CR disappears. The database list is paginated to an empty authenticated page before deleting the parent. The parent must then become HTTP 404 and its CR disappear; the account's fixed-subscription list must not contain the run name.
 
-Failure remains failure. Recovery retries CR deletion first. Direct API recovery is limited to the exact resource ID and name created by the run, requires a verified parent and a complete empty database list before subscription deletion, and is explicitly recorded. A failed or ambiguous read leaves absence unverified and preserves the parent and controller credentials. The workflow does not invoke shared-prefix cleanup for this mode.
+Failure remains failure. The original job holds the controller and credentials while retrying CR-only recovery for a bounded 60-minute window. It preserves a CR whose exact Cloud identity is not yet established, and preserves the parent if the database is not independently absent or its child inventory is incomplete. If the hold expires, it reports unverified residue and preserves the Actions run and encrypted intent for recovery. The job does not directly delete Cloud resources. A separate recovery workflow can directly delete only a pair whose source, credentials, exact identities, task evidence and active state are verified; a prior delete or ambiguous task refuses mutation. A failed or ambiguous read leaves absence unverified. The workflow does not invoke shared-prefix cleanup for this mode.
 
 ## Operations and validation
 

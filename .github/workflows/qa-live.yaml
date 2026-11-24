@@ -18,12 +18,14 @@ on:
           - standard
           - strict-essentials
           - preflight
+          - task-diagnostic
           - checkpoint-rehearsal
+          - checkpoint-writer-rehearsal
           - recovery-rehearsal
-          - recovery-gate-check
+          - recovery-rehearsal-mutate
         default: standard
       source_run_id:
-        description: Completed checkpoint rehearsal run ID (recovery-rehearsal only)
+        description: Completed checkpoint rehearsal run ID (recovery rehearsals only)
         required: false
         type: string
       source_attempt:
@@ -43,13 +45,28 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
-  recovery-gate-check:
-    if: inputs.suite == 'recovery-gate-check'
+  task-diagnostic:
+    if: inputs.suite == 'task-diagnostic'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Inspect recent database delete task states
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+          QA_ACCOUNT_FINGERPRINT_KEY: ${{ secrets.QA_ACCOUNT_FINGERPRINT_KEY }}
+        run: python3 scripts/qa_live.py --task-diagnostic
+
+  recovery-rehearsal-mutate:
+    if: inputs.suite == 'recovery-rehearsal-mutate'
     uses: ./.github/workflows/qa-recover.yaml
     with:
       source_run_id: ${{ inputs.source_run_id }}
       source_attempt: ${{ inputs.source_attempt }}
       recovery_mode: recover-exact
+      rehearsal_only: true
     secrets: inherit
 
   recovery-rehearsal:
@@ -75,6 +92,7 @@ jobs:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
         run: python3 scripts/qa_capture_task_baseline.py | node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"
       - name: Persist rehearsal intent
+        id: rehearsal-artifact
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
           name: ownership-${{ github.run_id }}-${{ github.run_attempt }}
@@ -119,18 +137,61 @@ jobs:
           QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
         run: python3 scripts/qa_live.py --preflight-only
 
+  prepare-strict:
+    if: inputs.suite == 'strict-essentials' || inputs.suite == 'checkpoint-writer-rehearsal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      artifact-id: ${{ steps.ownership.outputs.artifact-id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Create encrypted ownership intent
+        env:
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+          QA_CHECKPOINT_KIND: ${{ inputs.suite == 'strict-essentials' && 'strict' || 'rehearsal' }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: python3 scripts/qa_capture_task_baseline.py | node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"
+      - name: Persist ownership intent before Cloud writes
+        id: ownership
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: ownership-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ownership.enc
+          if-no-files-found: error
+          retention-days: 90
+
+  verify-writer-rehearsal:
+    needs: prepare-strict
+    if: inputs.suite == 'checkpoint-writer-rehearsal'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Retrieve ownership intent from completed producer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.prepare-strict.outputs.artifact-id }}
+          path: ${{ runner.temp }}/verified-ownership
+          merge-multiple: true
+      - name: Verify persisted artifact identity
+        env:
+          QA_OWNERSHIP_ARTIFACT_ID: ${{ needs.prepare-strict.outputs.artifact-id }}
+          QA_OWNERSHIP_ARTIFACT_PATH: ${{ runner.temp }}/verified-ownership/ownership.enc
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+        run: |
+          python3 -c 'import os,sys; sys.path.insert(0,"scripts"); import qa_live; c=qa_live.load_credentials(None,os.environ.get("UPTEST_CLOUD_CREDENTIALS")); qa_live.verify_checkpoint_artifact(os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"],c,"rehearsal"); print("ownership artifact verified for this run and commit")'
+
   qa-live:
-    if: inputs.suite == '' || inputs.suite == 'standard' || inputs.suite == 'strict-essentials'
+    needs: prepare-strict
+    if: ${{ !cancelled() && (inputs.suite == '' || inputs.suite == 'standard' || (inputs.suite == 'strict-essentials' && needs.prepare-strict.result == 'success')) }}
     runs-on: ubuntu-24.04
     # Leave time for a bounded recovery after a qualification failure.
     timeout-minutes: 240
     steps:
-      - name: Refuse disabled live qualification before Kind
-        if: inputs.suite == 'strict-essentials'
-        run: |
-          echo 'Strict qualification is disabled until runner-loss recovery is durable.'
-          exit 1
-
       - name: Cleanup Disk
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
@@ -142,25 +203,13 @@ jobs:
         with:
           submodules: true
 
-      # This intent is uploaded before any Cloud write. The disabling step
-      # above remains until recovery and account serialization are reviewed.
-      - name: Create encrypted ownership intent
+      - name: Retrieve persisted ownership intent before Cloud writes
         if: inputs.suite == 'strict-essentials'
-        env:
-          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
-          QA_CHECKPOINT_KIND: strict
-          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
-          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
-        run: python3 scripts/qa_capture_task_baseline.py | node scripts/qa_checkpoint.mjs create "$RUNNER_TEMP/ownership.enc"
-
-      - name: Persist ownership intent before Cloud writes
-        if: inputs.suite == 'strict-essentials'
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ownership-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ownership.enc
-          if-no-files-found: error
-          retention-days: 90
+          artifact-ids: ${{ needs.prepare-strict.outputs.artifact-id }}
+          path: ${{ runner.temp }}/verified-ownership
+          merge-multiple: true
 
       - name: Setup Go
         uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
@@ -178,6 +227,9 @@ jobs:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
           QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
           QA_SUITE: ${{ inputs.suite || 'standard' }}
+          QA_OWNERSHIP_ARTIFACT_ID: ${{ needs.prepare-strict.outputs.artifact-id }}
+          QA_OWNERSHIP_ARTIFACT_PATH: ${{ runner.temp }}/verified-ownership/ownership.enc
+          QA_CHECKPOINT_KEY: ${{ secrets.QA_CHECKPOINT_KEY }}
         run: |
           tool=$(ls .cache/tools/*/kubectl-* | head -n 1)
           if [ "$QA_SUITE" = strict-essentials ]; then

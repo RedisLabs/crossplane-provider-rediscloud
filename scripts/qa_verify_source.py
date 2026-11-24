@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify an encrypted checkpoint belongs to a completed QA workflow attempt."""
 import json
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +30,11 @@ def verify_remote(intent, run_id, attempt):
 
 def main():
     try:
+        if len(sys.argv) == 3 and sys.argv[1] == "--enforce-rehearsal":
+            intent = json.loads(Path(sys.argv[2]).read_text())
+            if os.environ.get("QA_REHEARSAL_ONLY") == "true" and intent.get("kind") != "rehearsal":
+                raise ValueError("strict source cannot be used for a rehearsal")
+            return 0
         path, run_id, attempt = sys.argv[1:]
         intent = json.loads(Path(path).read_text())
         verify_remote(intent, run_id, attempt)
