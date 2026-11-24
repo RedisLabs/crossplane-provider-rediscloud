@@ -1139,8 +1139,8 @@ def cleanup(deps, state: State) -> bool:
         if not cr or not row or not cr_id or str(row.get("id") or "") != cr_id:
             deps.log("recovery named-resource identity unknown; preserving credentials")
             return False
-        state.named_deletion_requested.add((resource, name))
         delete_owned(deps, state, resource, name)
+        state.named_deletion_requested.add((resource, name))
         return wait_until(deps, "recovery named resource", deps.timeouts["delete"],
                           lambda: deps.cluster.get(resource, name) is None and
                           find_named(list_rows(), name) is None)

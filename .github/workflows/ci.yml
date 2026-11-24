@@ -224,6 +224,13 @@ jobs:
       - name: Test one-shot recovery fences without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_delete_fence.py'
 
+      - name: Rehearse UID delete preconditions against local HTTP with pinned kubectl
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/kubectl" https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl
+          echo '6a12d6c39e4a611a3687ee24d8c733961bb4bae1ae975f5204400c0a6930c6fc  '"$RUNNER_TEMP/kubectl" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/kubectl"
+          QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl" python3 -m unittest discover -s scripts -p 'test_qa_kubectl_http.py'
+
       - name: Run Unit Tests
         run: make -j2 test
 

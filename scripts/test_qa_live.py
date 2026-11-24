@@ -1104,6 +1104,22 @@ class QaLiveTest(unittest.TestCase):
         self.assertFalse(qa_live.cleanup(deps_for(world), state))
         self.assertEqual(world.deleted, [])
 
+    def test_acl_delete_with_lost_response_does_not_mark_absence_proven(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.acl_name = state.run_name
+        state.owned_uids[(qa_live.ACL, state.run_name, None)] = "test-uid"
+        world.rules = [{"id": "1", "name": state.run_name}]
+        world.objects[(qa_live.ACL, state.run_name)] = ready("1")
+        def lost(*args, **kwargs):
+            raise qa_live.SuiteFailure("delete response lost")
+        world.delete_owned = lost
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.cleanup(deps_for(world), state)
+        world.rules = []
+        world.objects.pop((qa_live.ACL, state.run_name))
+        self.assertFalse(qa_live.cleanup(deps_for(world), state))
+
     def test_success_check_requires_active_keys_and_404(self):
         ok = qa_live.success_problems("active", "active", ["public_endpoint", "private_endpoint"], 404, 404)
         self.assertEqual(ok, [])
