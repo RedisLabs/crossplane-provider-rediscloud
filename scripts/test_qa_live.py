@@ -751,9 +751,11 @@ class QaLiveTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(rows, [{"name": "first"}])
         self.assertEqual(len(calls), 2)
-        cloud.request = lambda method, path: (403, None)
-        with self.assertRaises(qa_live.SuiteFailure):
-            cloud.list_fixed_databases_complete("7")
+        for response in ((403, None), (200, {"subscription": {"subscriptionId": 8, "databases": []}}),
+                         (200, {"subscription": {"subscriptionId": 7}})):
+            cloud.request = lambda method, path, response=response: response
+            with self.assertRaises(qa_live.SuiteFailure):
+                cloud.list_fixed_databases_complete("7")
 
     def test_controller_deletion_event_must_match_original_uid(self):
         world = World()
