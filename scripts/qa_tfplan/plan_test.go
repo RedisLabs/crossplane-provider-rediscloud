@@ -122,19 +122,21 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	callback := &fakeCallback{done: make(chan error, 1)}
 	rec := verifyManagedNoop(t, ws, spy, callback)
 	mu.Lock()
-	if writes != 0 {
-		t.Fatalf("no-op sent %d fake writes", writes)
-	}
+	noopWrites := writes
 	mu.Unlock()
+	if noopWrites != 0 {
+		t.Fatalf("no-op sent %d fake writes", noopWrites)
+	}
 	mu.Lock()
 	eviction = "noeviction"
 	mu.Unlock()
 	verifyManagedDrift(t, rec, spy, callback)
 	mu.Lock()
-	if writes == 0 {
+	driftWrites := writes
+	mu.Unlock()
+	if driftWrites == 0 {
 		t.Fatal("managed drift did not reach the reject-only fake API")
 	}
-	mu.Unlock()
 	refresh()
 	plan(false)
 	mu.Lock()
