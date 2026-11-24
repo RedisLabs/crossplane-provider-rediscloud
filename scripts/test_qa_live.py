@@ -488,6 +488,15 @@ class QaLiveTest(unittest.TestCase):
                     qa_live.verify_checkpoint_artifact("123-2", creds)
                 run.assert_not_called()
 
+    def test_strict_writer_requires_successful_checkpoint_job(self):
+        workflow = (REPO / ".github/workflows/qa-live.yaml").read_text()
+        writer = workflow[workflow.index("  qa-live:"):]
+        self.assertIn("needs: prepare-strict", writer)
+        self.assertIn("needs.prepare-strict.result == 'success'", writer)
+        self.assertIn("!cancelled()", writer)
+        self.assertLess(writer.index("Retrieve persisted ownership intent before Cloud writes"),
+                        writer.index("Create and delete the QA objects"))
+
     def test_strict_recovers_only_its_exact_resources_and_still_fails(self):
         world = World()
         original_delete = world.delete
