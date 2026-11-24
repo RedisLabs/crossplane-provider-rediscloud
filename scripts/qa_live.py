@@ -902,6 +902,18 @@ def strict_recover(deps, state: State) -> bool:
         if not state.essentials_id or not state.essentials_database_id:
             deps.log("recovery incomplete: database identity not established; an asynchronous create may still finish, so CR and parent are preserved")
             return False
+        cr = deps.cluster.get(ESS_DATABASE, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if cr is not None and cr_id != f"{state.essentials_id}/{state.essentials_database_id}":
+            deps.log("recovery incomplete: database CR identity differs; CR and parent preserved")
+            return False
+        cloud_code, cloud_db = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
+        if cloud_code not in (200, 404) or (cloud_code == 200 and
+                (not isinstance(cloud_db, dict) or
+                 str(cloud_db.get("databaseId") or "") != state.essentials_database_id or
+                 cloud_db.get("name") != f"{state.run_name}-db")):
+            deps.log("recovery incomplete: database Cloud identity unverified; CR and parent preserved")
+            return False
         deps.cluster.delete(ESS_DATABASE, state.run_name)
         code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
             state.essentials_id, state.essentials_database_id))
@@ -916,15 +928,20 @@ def strict_recover(deps, state: State) -> bool:
         if not state.essentials_id:
             deps.log("recovery incomplete: subscription identity not established; CR preserved")
             return False
-        if state.essentials_database_name and state.essentials_id:
-            parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
-            if parent_code not in (200, 404):
-                deps.log("recovery incomplete: parent existence and ownership unverified")
+        cr = deps.cluster.get(ESS_SUBSCRIPTION, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if cr is not None and cr_id != state.essentials_id:
+            deps.log("recovery incomplete: subscription CR identity differs; CR preserved")
+            return False
+        parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
+        if parent_code not in (200, 404):
+            deps.log("recovery incomplete: parent existence and ownership unverified")
+            return False
+        if parent_code == 200:
+            if not owned_essentials_subscription(deps, state):
+                deps.log("recovery incomplete: parent ownership unverified")
                 return False
-            if parent_code == 200:
-                if not owned_essentials_subscription(deps, state):
-                    deps.log("recovery incomplete: parent ownership unverified")
-                    return False
+            if state.essentials_database_name:
                 list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
                 if list_code != 200 or rows:
                     deps.log("recovery incomplete: child inventory is not completely empty")

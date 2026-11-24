@@ -255,7 +255,7 @@ class World:
         self.fixed_database_gets.append(str(db_id))
         if self.ess_db_gone:
             return 404, None
-        return 200, {"databaseId": db_id, "status": "active"}
+        return 200, {"databaseId": db_id, "name": self.ess_db_name, "status": "active"}
 
 
 def ready(obj_id: str) -> dict:
@@ -617,6 +617,16 @@ class QaLiveTest(unittest.TestCase):
             self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
             self.assertEqual(world.cloud_deletes, [])
 
+    def test_recovery_refuses_parent_without_matching_cloud_identity_even_without_child(self):
+        world = World()
+        world.fixed = [{"id": "999", "name": "xp-ci-123", "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, "xp-ci-123")] = ready("200")
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        state.essentials_id = "200"
+        self.assertFalse(qa_live.strict_recover(deps_for(world), state))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+
     def test_recovery_preserves_cr_until_identity_is_independently_matched(self):
         world = World()
         state = qa_live.State("xp-ci-123")
@@ -657,6 +667,9 @@ class QaLiveTest(unittest.TestCase):
         with self.assertRaisesRegex(qa_live.SuiteFailure, "parent differs"):
             qa_live.strict_essentials(deps)
         self.assertFalse(any("qualification passed" in line for line in deps.lines))
+        self.assertNotIn((qa_live.ESS_DATABASE, "xp-ci-123"), world.deleted)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
 
     def test_database_inventory_requires_empty_authenticated_last_page(self):
         cloud = qa_live.RedisCloud("https://example.invalid/v1", "a", "b")
