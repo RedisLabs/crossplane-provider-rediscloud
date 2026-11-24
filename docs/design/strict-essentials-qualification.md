@@ -37,3 +37,10 @@ Account subscription and ACL prefix inventories validate the authenticated respo
 The shared account still has no cross-repository writer lock. Both scheduled and manually selected standard modes therefore fail immediately with an explicit DEFER before provider setup or Cloud reads/writes. The workflow can be re-enabled after the Operator run and cleanup complete, but scheduled standard tests will remain deferred until serialization is implemented and reviewed. The strict proof remains separately gated and must still be coordinated across repositories. Credential-free tests exercise unrelated resources, uncertain cleanup, CR finalizers and the workflow gate; they are not live Cloud qualification.
 
 Roll back by reverting this change only after independently preventing scheduled account overlap and shared-prefix deletion. There is no new API or architecture decision; existing provider and Redis Cloud ownership contracts remain in force.
+### Credential-free no-op and drift check
+
+A separate CI test runs the pinned Terraform CLI and Redis Cloud provider against a loopback fake Cloud API. It imports one fixed Essentials database, runs the actual Upjet workspace refresh and plan twice with unchanged data, then changes only the fake eviction-policy response and requires the plan to report drift. A failed Cloud read must fail refresh; every fake API mutation is rejected and counted. No Cloud credentials, Kind or account resources are used. The package and Terraform archive digests are pinned in the workflow.
+
+This tests the Terraform/Upjet workspace decision, not the managed Kubernetes reconciler, a real Cloud service, or automatic remediation. The live update proof remains separate; unchanged reconciliation without extra real Cloud writes and correction of out-of-band drift remain unverified.
+
+The Operator drift contract records `DriftDetected` and avoids resending on an unchanged reconcile; this workspace test only detects Terraform plan drift and observes no requests sent by refresh/plan to the fake API. It does not establish equivalent Crossplane conditions, no-op controller scheduling or real Cloud write suppression.
