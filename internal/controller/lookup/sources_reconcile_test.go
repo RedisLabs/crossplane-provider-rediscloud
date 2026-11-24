@@ -182,6 +182,66 @@ func TestPrivateServiceConnectEndpointsReconcileRequestsGCPScript(t *testing.T) 
 	}
 }
 
+// The local API fixture exercises the real lookup reconciler without a Cloud account.
+func TestPrivateServiceConnectEndpointsClearsStaleObservationAndRecovers(t *testing.T) {
+	var calls []string
+	denyScript := false
+	fixture := taskRoutes(t, &calls, map[string]taskBody{
+		"/subscriptions/1001/private-service-connect/9":                             {task: "endpoints", resource: `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`},
+		"/subscriptions/1001/private-service-connect/9/endpoints/3/creationScripts": {task: "script", resource: `{"script":{"terraformGcp":{"serviceAttachments":[{"name":"example-attachment"}]}}}`},
+	})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected fixture mutation: %s", r.Method)
+			http.Error(w, "read-only fixture", http.StatusForbidden)
+			return
+		}
+		if denyScript && strings.Contains(r.URL.Path, "creationScripts") {
+			calls = append(calls, r.Method+" "+r.URL.RequestURI())
+			http.Error(w, "fixture denied", http.StatusForbidden)
+			return
+		}
+		fixture.ServeHTTP(w, r)
+	})
+	kube := lookupClient(t, handler, &lookupv1alpha1.PrivateServiceConnectEndpoints{
+		ObjectMeta: metav1.ObjectMeta{Name: "example-psc-endpoints"},
+		Spec: lookupv1alpha1.PrivateServiceConnectEndpointsSpec{
+			ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig},
+			ForProvider:       lookupv1alpha1.PrivateServiceConnectEndpointsParameters{SubscriptionID: "1001", PrivateServiceConnectServiceID: "9"},
+		},
+	})
+	r := &PrivateServiceConnectEndpointsReconciler{Client: kube}
+	read := func() *lookupv1alpha1.PrivateServiceConnectEndpoints {
+		t.Helper()
+		got := &lookupv1alpha1.PrivateServiceConnectEndpoints{}
+		if err := kube.Get(context.Background(), types.NamespacedName{Name: "example-psc-endpoints"}, got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if err := reconcileReady(t, r.Reconcile, "example-psc-endpoints"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); len(got.Status.AtProvider.Endpoints) != 1 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionTrue {
+		t.Fatalf("initial observation = %#v", got.Status.AtProvider)
+	}
+	denyScript = true
+	result, err := r.Reconcile(context.Background(), request("example-psc-endpoints"))
+	if err != nil || result.RequeueAfter != requeueFailed {
+		t.Fatalf("failed read result = %#v, %v", result, err)
+	}
+	if got := read(); got.Status.AtProvider.ID != "" || len(got.Status.AtProvider.Endpoints) != 0 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionFalse {
+		t.Fatalf("stale observation survived denied script: %#v", got.Status.AtProvider)
+	}
+	denyScript = false
+	if err := reconcileReady(t, r.Reconcile, "example-psc-endpoints"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got.Status.AtProvider.ID != "1001/9" || len(got.Status.AtProvider.Endpoints) != 1 || len(got.Status.AtProvider.Endpoints[0].ServiceAttachments) != 1 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionTrue {
+		t.Fatalf("recovered observation = %#v", got.Status.AtProvider)
+	}
+}
+
 func TestTransitGatewayReconcileDoesNotSendTimeout(t *testing.T) {
 	var calls []string
 	kube := lookupClient(t, taskRoutes(t, &calls, map[string]taskBody{
