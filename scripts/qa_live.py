@@ -186,7 +186,10 @@ def task_diagnostic(credentials: dict, clock=None, output=print) -> None:
         raise SuiteFailure("task diagnostic requires a verified QA endpoint")
     import qa_capture_task_baseline
     cloud = RedisCloud(credentials["url"], credentials["api_key"], credentials["secret_key"])
-    rows = qa_capture_task_baseline.task_rows(cloud)
+    try:
+        rows = qa_capture_task_baseline.task_rows(cloud)
+    except qa_capture_task_baseline.qa_live.SuiteFailure:
+        raise SuiteFailure("task diagnostic could not read tasks") from None
     now = clock or datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=2)
     valid_status = {"initialized", "received", "processing-in-progress", "processing-completed", "processing-error"}
@@ -217,8 +220,14 @@ def task_diagnostic(credentials: dict, clock=None, output=print) -> None:
     except ValueError:
         key = b""
     if len(key) == 32:
-        fingerprint = hmac.new(key, credentials["api_key"].encode(), hashlib.sha256).hexdigest()
-        output(f"opaque account comparison HMAC={fingerprint}")
+        code, body = cloud.request("GET", "/subscriptions")
+        account_id = body.get("accountId") if code == 200 and isinstance(body, dict) else None
+        if isinstance(account_id, bool) or not isinstance(account_id, (int, str)) or not str(account_id).isdigit() or int(account_id) < 1:
+            output("account comparison unavailable: authenticated account ID not returned")
+        else:
+            normalized = str(int(account_id))
+            fingerprint = hmac.new(key, normalized.encode(), hashlib.sha256).hexdigest()
+            output(f"opaque account-ID comparison HMAC={fingerprint}")
     else:
         output("account comparison unavailable: shared fingerprint key missing or invalid")
 

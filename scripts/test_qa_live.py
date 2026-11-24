@@ -416,14 +416,26 @@ class QaLiveTest(unittest.TestCase):
         encoded = base64.b64encode(b"k" * 32).decode()
         with patch.dict("os.environ", {"QA_ACCOUNT_FINGERPRINT_KEY": encoded}), \
              patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
-             patch.object(qa_capture_task_baseline, "task_rows", return_value=rows):
+             patch.object(qa_capture_task_baseline, "task_rows", return_value=rows), \
+             patch.object(qa_live.RedisCloud, "request", return_value=(200, {"accountId": 9876})):
             qa_live.task_diagnostic(credentials, datetime(2026, 11, 23, 23, 0, tzinfo=timezone.utc), lines.append)
         text = "\n".join(lines)
         self.assertIn("task count=1; invalid timestamps=1", text)
         self.assertIn("status=processing-in-progress", text)
-        self.assertIn(hmac.new(b"k" * 32, b"private-account-key", hashlib.sha256).hexdigest(), text)
+        self.assertIn(hmac.new(b"k" * 32, b"9876", hashlib.sha256).hexdigest(), text)
         for secret in ("sensitive-task-id", "sensitive-description", "private-account-key", "private-secret", "injected-private-value"):
             self.assertNotIn(secret, text)
+
+    def test_task_diagnostic_redacts_foreign_module_failure(self):
+        class ForeignFailure(Exception):
+            pass
+        credentials = {"api_key": "a", "secret_key": "b", "url": "https://qa.example.invalid/v1"}
+        with patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
+             patch.object(qa_capture_task_baseline, "qa_live", SimpleNamespace(SuiteFailure=ForeignFailure)), \
+             patch.object(qa_capture_task_baseline, "task_rows", side_effect=ForeignFailure("private detail")):
+            with self.assertRaises(qa_live.SuiteFailure) as caught:
+                qa_live.task_diagnostic(credentials)
+        self.assertNotIn("private detail", str(caught.exception))
 
     def test_strict_mode_requires_verified_origin_before_invocation(self):
         with patch.object(qa_live, "load_credentials", return_value={
