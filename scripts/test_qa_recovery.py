@@ -91,29 +91,19 @@ class CheckpointTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             qa_verify_source.verify(intent, {})
 
-    def test_recovery_entry_authenticates_encrypted_intent_and_source_before_mutation(self):
-        self.assertEqual(self.run_node("create", self.path).returncode, 0)
-        argv = ["qa_recovery_resolve.py", self.path, "--recover-exact", "--source-run-id", "12345", "--source-attempt", "2"]
-        with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
-             patch.object(qa_verify_source, "verify_remote", side_effect=ValueError("untrusted")), \
-             patch.object(qa_recovery_resolve, "recover_exact") as mutation:
-            self.assertEqual(qa_recovery_resolve.main(), 1)
-            mutation.assert_not_called()
-
-        with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
-             patch.object(qa_verify_source, "verify_remote") as verify, \
-             patch.object(qa_recovery_resolve, "recover_exact") as mutation:
-            self.assertEqual(qa_recovery_resolve.main(), 0)
-            verify.assert_called_once()
-            mutation.assert_called_once()
-        Path(self.path).write_text('{"runName":"xp-ci-12345-2"}')
-        with patch.dict(os.environ, self.env), patch.object(sys, "argv", argv), \
-             patch.object(qa_recovery_resolve, "recover_exact") as mutation:
-            self.assertEqual(qa_recovery_resolve.main(), 1)
-            mutation.assert_not_called()
+    def test_recovery_entry_refuses_same_run_id_on_every_attempt_before_credentials(self):
+        for attempt in ("1", "2", "3"):
+            argv = ["qa_recovery_resolve.py", self.path, "--recover-exact", "--source-run-id", "12345", "--source-attempt", attempt]
+            with self.subTest(attempt=attempt), patch.object(sys, "argv", argv), \
+                 patch.object(qa_live, "load_credentials") as credentials, \
+                 patch.object(qa_recovery_resolve, "recover_exact") as mutation:
+                self.assertEqual(qa_recovery_resolve.main(), 1)
+                credentials.assert_not_called()
+                mutation.assert_not_called()
 
     def test_hosted_recovery_requires_source_authentication_first(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/qa-recover.yaml").read_text()
+        self.assertLess(workflow.index("Refuse direct recovery until replay protection is durable"), workflow.index("Retrieve encrypted ownership intent"))
         self.assertLess(workflow.index("Authenticate checkpoint and originating workflow"), workflow.index("Recover exact owned resources"))
 
     def test_rehearsal_route_rejects_strict_source_before_any_recovery(self):

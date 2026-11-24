@@ -11,9 +11,7 @@ import hmac
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
 import time
 import urllib.parse
 from pathlib import Path
@@ -21,7 +19,6 @@ from datetime import datetime, timedelta, timezone
 
 import qa_live
 import qa_capture_task_baseline
-import qa_verify_source
 
 
 def resolve(cloud, intent, log, details=None):
@@ -179,20 +176,8 @@ def main():
     args = parser.parse_args()
     try:
         if args.recover_exact:
-            if not args.source_run_id or not args.source_attempt:
-                raise qa_live.SuiteFailure("recovery requires the source run and attempt")
-            # Re-authenticate the encrypted artifact inside the mutating path;
-            # never trust a caller-supplied plaintext ownership file.
-            with tempfile.TemporaryDirectory(prefix="qa-recovery-") as tmp:
-                encrypted = Path(tmp) / "ownership.enc"
-                encrypted.write_bytes(Path(args.intent).read_bytes())
-                script = Path(__file__).with_name("qa_checkpoint.mjs")
-                subprocess.run(["node", str(script), "resolve", str(encrypted), args.source_run_id,
-                                args.source_attempt], check=True, capture_output=True, text=True)
-                intent = json.loads(Path(str(encrypted) + ".resolved").read_text())
-            qa_verify_source.verify_remote(intent, args.source_run_id, args.source_attempt)
-        else:
-            intent = json.loads(Path(args.intent).read_text())
+            raise qa_live.SuiteFailure("direct recovery disabled until durable DELETE replay protection exists")
+        intent = json.loads(Path(args.intent).read_text())
         credentials = qa_live.load_credentials(None, os.environ.get("UPTEST_CLOUD_CREDENTIALS"))
         url = credentials.get("url") or ""
         if not qa_live.matches_expected_qa_origin(url):
@@ -210,11 +195,8 @@ def main():
         cloud = qa_live.RedisCloud(url, credentials["api_key"], credentials["secret_key"])
         # A successful discovery is not cleanup; a missing resource after
         # runner loss remains unresolved while creation could still finish.
-        if args.recover_exact:
-            recover_exact(cloud, intent, print)
-            return 0
         return discover(cloud, intent, print)
-    except (qa_live.SuiteFailure, OSError, ValueError, KeyError, subprocess.CalledProcessError):
+    except (qa_live.SuiteFailure, OSError, ValueError, KeyError):
         print("recovery incomplete or ambiguous; consult the operation log and verify inventory", file=sys.stderr)
         return 1
 
