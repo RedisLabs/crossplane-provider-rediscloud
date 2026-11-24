@@ -452,6 +452,7 @@ def run(deps) -> None:
         raise SuiteFailure("payment method lookup has no id")
     deps.remember_secret(payment_id)
     state = State(f"{PREFIX}{deps.run_id}")
+    cleanup_complete = True
     try:
         create_acl(deps, state)
         run_subscription(deps, state, payment_id)
@@ -464,6 +465,8 @@ def run(deps) -> None:
         if missing_keys:
             raise SuiteFailure("missing secret key " + ",".join(missing_keys))
         database_code = delete_database(deps, state)
+        if database_code != 404:
+            raise SuiteFailure("database absence unverified; preserving parent")
         subscription_code = delete_subscription(deps, state)
         problems = success_problems("active", "active", keys, database_code, subscription_code)
         if problems:
@@ -471,83 +474,40 @@ def run(deps) -> None:
         run_essentials(deps, state, payment_id)
         deps.log("qa live ok")
     except Exception:
-        cleanup(deps, state)
+        cleanup_complete = False
+        deadline = deps.now() + deps.timeouts["recovery_hold"]
+        deps.recovery_deadline = deadline
+        while True:
+            try:
+                cleanup_complete = cleanup(deps, state)
+            except Exception:
+                cleanup_complete = False
+                deps.log("standard recovery uncertain; preserving controller and credentials")
+            if cleanup_complete or deps.now() >= deadline:
+                break
+            deps.log("standard recovery hold: unresolved; retaining controller and credentials")
+            deps.sleep(min(deps.recovery_poll, max(0, deadline - deps.now())))
+        deps.recovery_deadline = None
+        if not cleanup_complete:
+            deps.log("standard recovery hold timed out; residue is unverified")
         raise
     finally:
-        delete_lookups(deps)
+        if cleanup_complete:
+            delete_lookups(deps)
 
 
 def cleanup_only(deps) -> None:
-    """Delete leftover xp-ci- objects. Do not create anything."""
+    """Report shared-prefix leftovers without deleting unowned resources."""
     if not clear_or_refuse(deps):
-        raise SuiteFailure("xp-ci- subscription still present")
-    deps.log("cleanup ok")
+        raise SuiteFailure("xp-ci- resources still present; ownership unverified")
+    deps.log("authenticated shared-prefix inventory empty")
 
 
 def clear_or_refuse(deps) -> bool:
-    if not prefixed_leftovers(deps):
-        return True
-    deps.log("deleting leftover xp-ci- objects")
-    delete_prefixed(deps, deps.cloud.list_acl_users(), USER, deps.cloud.delete_acl_user)
-    delete_prefixed(deps, deps.cloud.list_acl_roles(), ROLE, deps.cloud.delete_acl_role)
-    delete_prefixed(deps, deps.cloud.list_acl_rules(), ACL, deps.cloud.delete_acl_rule)
-    for sub in names_with_prefix(deps.cloud.list_subscriptions()):
-        name = str(sub.get("name") or "")
-        deps.cluster.delete(DATABASE, name)
-        deps.cluster.delete(SUBSCRIPTION, name)
-        sub_id = sub.get("id")
-        if sub_id is not None:
-            if not delete_leftover_databases(
-                deps,
-                str(sub_id),
-                deps.cloud.list_databases,
-                deps.cloud.delete_database,
-            ):
-                deps.log("xp-ci- subscription still present; refusing to create")
-                return False
-            deps.cloud.delete_subscription(str(sub_id))
-    for sub in names_with_prefix(deps.cloud.list_fixed_subscriptions()):
-        name = str(sub.get("name") or "")
-        deps.cluster.delete(ESS_DATABASE, name)
-        deps.cluster.delete(ESS_SUBSCRIPTION, name)
-        sub_id = sub.get("id")
-        if sub_id is not None:
-            if not delete_leftover_databases(
-                deps,
-                str(sub_id),
-                deps.cloud.list_fixed_databases,
-                deps.cloud.delete_fixed_database,
-            ):
-                deps.log("xp-ci- subscription still present; refusing to create")
-                return False
-            deps.cloud.delete_fixed_subscription(str(sub_id))
-    if not wait_until(
-        deps,
-        "leftover xp-ci- objects to disappear",
-        deps.timeouts["delete"],
-        lambda: not prefixed_leftovers(deps),
-    ):
-        deps.log("xp-ci- subscription still present; refusing to create")
+    if prefixed_leftovers(deps):
+        deps.log("pre-existing xp-ci- resources; refusing mutation without ownership")
         return False
     return True
-
-
-def delete_leftover_databases(deps, sub_id: str, list_dbs, delete_db) -> bool:
-    _code, databases = list_dbs(sub_id)
-    if not databases:
-        return True
-    for row in databases:
-        db_id = row.get("databaseId")
-        if db_id is None:
-            db_id = row.get("id")
-        if db_id is not None:
-            delete_db(sub_id, str(db_id))
-    return wait_until(
-        deps,
-        "leftover xp-ci- databases to disappear",
-        deps.timeouts["delete"],
-        lambda: not list_dbs(sub_id)[1],
-    )
 
 
 def prefixed_leftovers(deps) -> bool:
@@ -561,15 +521,6 @@ def prefixed_leftovers(deps) -> bool:
             deps.cloud.list_acl_rules(),
         )
     )
-
-
-def delete_prefixed(deps, rows: list, resource: str, cloud_delete) -> None:
-    for row in names_with_prefix(rows):
-        name = str(row.get("name") or "")
-        deps.cluster.delete(resource, name)
-        row_id = row.get("id")
-        if row_id is not None:
-            cloud_delete(str(row_id))
 
 
 def create_acl(deps, state: State) -> None:
@@ -695,6 +646,9 @@ def delete_database(deps, state: State) -> int:
         f"database {state.database_name}",
         lambda: deps.cloud.get_database(state.subscription_id, state.database_id),
     )
+    if code == 404 and not wait_until(deps, "database CR finalization", deps.timeouts["delete"],
+                                      lambda: deps.cluster.get(DATABASE, state.database_name) is None):
+        raise SuiteFailure("database CR still present; preserving parent")
     state.database_deleted = code == 404
     return code
 
@@ -707,6 +661,9 @@ def delete_subscription(deps, state: State) -> int:
         f"subscription {state.subscription_name}",
         lambda: deps.cloud.get_subscription(state.subscription_id),
     )
+    if code == 404 and not wait_until(deps, "subscription CR finalization", deps.timeouts["delete"],
+                                      lambda: deps.cluster.get(SUBSCRIPTION, state.subscription_name) is None):
+        raise SuiteFailure("subscription CR still present")
     state.subscription_deleted = code == 404
     return code
 
@@ -1077,6 +1034,11 @@ def run_essentials(deps, state: State, payment_id: str) -> None:
         lambda: deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id),
     )
     state.essentials_database_deleted = database_code == 404
+    if database_code != 404:
+        raise SuiteFailure("essentials database absence unverified; preserving parent")
+    if not wait_until(deps, "essentials database CR finalization", deps.timeouts["delete"],
+                      lambda: deps.cluster.get(ESS_DATABASE, state.run_name) is None):
+        raise SuiteFailure("essentials database CR still present; preserving parent")
     deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
     subscription_code = wait_http_404(
         deps,
@@ -1084,6 +1046,10 @@ def run_essentials(deps, state: State, payment_id: str) -> None:
         lambda: deps.cloud.get_fixed_subscription(state.essentials_id),
     )
     state.essentials_deleted = subscription_code == 404
+    if subscription_code == 404 and not wait_until(
+            deps, "essentials subscription CR finalization", deps.timeouts["delete"],
+            lambda: deps.cluster.get(ESS_SUBSCRIPTION, state.run_name) is None):
+        raise SuiteFailure("essentials subscription CR still present")
     if database_code != 404 or subscription_code != 404:
         raise SuiteFailure(
             f"essentials delete HTTP database {database_code} subscription {subscription_code}"
@@ -1124,34 +1090,105 @@ def essentials_database_is_active(deps, state: State, holder: dict) -> bool:
     return False
 
 
-def cleanup(deps, state: State) -> None:
-    if state.user_name:
-        deps.cluster.delete(USER, state.user_name)
-        state.user_name = None
+def cleanup(deps, state: State) -> bool:
+    """CR-only recovery of this run, preserving parents on unknown child state."""
+    def named(resource, name, list_rows):
+        if not name:
+            return True
+        cr = deps.cluster.get(resource, name)
+        row = find_named(list_rows(), name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if not cr or not row or not cr_id or str(row.get("id") or "") != cr_id:
+            deps.log("recovery named-resource identity unknown; preserving credentials")
+            return False
+        deps.cluster.delete(resource, name)
+        return wait_until(deps, "recovery named resource", deps.timeouts["delete"],
+                          lambda: deps.cluster.get(resource, name) is None and
+                          find_named(list_rows(), name) is None)
+
+    if not named(USER, state.user_name, deps.cloud.list_acl_users):
+        return False
+    state.user_name = None
     if state.password_secret:
         deps.cluster.delete("secret", state.password_secret, namespace="default")
         state.password_secret = None
-    if state.role_name:
-        deps.cluster.delete(ROLE, state.role_name)
-        state.role_name = None
-    if state.essentials_database_name and not state.essentials_database_deleted:
-        deps.cluster.delete(ESS_DATABASE, state.essentials_database_name)
-        state.essentials_database_deleted = True
-    if state.essentials_name and not state.essentials_deleted:
-        deps.cluster.delete(ESS_SUBSCRIPTION, state.essentials_name)
-        state.essentials_deleted = True
-    if state.database_name and not state.database_deleted:
-        deps.log(f"cleanup delete database {state.database_name}")
-        deps.cluster.delete(DATABASE, state.database_name)
-        state.database_deleted = True
-    if state.subscription_name and not state.subscription_deleted:
-        deps.log(f"cleanup delete subscription {state.subscription_name}")
-        deps.cluster.delete(SUBSCRIPTION, state.subscription_name)
-        state.subscription_deleted = True
-    if state.acl_name:
-        deps.log(f"cleanup delete ACL {state.acl_name}")
-        deps.cluster.delete(ACL, state.acl_name)
-        state.acl_name = None
+    if not named(ROLE, state.role_name, deps.cloud.list_acl_roles):
+        return False
+    state.role_name = None
+
+    def child(resource, name, parent_id, child_id, getter):
+        if not name:
+            return True
+        if not parent_id or not child_id:
+            deps.log("recovery child identity unknown; parent preserved")
+            return False
+        cr = deps.cluster.get(resource, name)
+        code, body = getter(parent_id, child_id)
+        if code == 404 and cr is None:
+            return True
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if cr_id != f"{parent_id}/{child_id}" or code not in (200, 404):
+            deps.log("recovery child identity or Cloud read unverified; parent preserved")
+            return False
+        if code == 200 and (not isinstance(body, dict) or
+                observed_database_id(body, "") != child_id or body.get("name") != f"{state.run_name}-db"):
+            deps.log("recovery child Cloud identity mismatched; parent preserved")
+            return False
+        deps.cluster.delete(resource, name)
+        def gone():
+            code, _ = getter(parent_id, child_id)
+            if code not in (200, 404):
+                raise SuiteFailure("recovery child Cloud read failed")
+            return code == 404 and deps.cluster.get(resource, name) is None
+        return wait_until(deps, "recovery child absence", deps.timeouts["delete"], gone)
+
+    def parent(resource, name, parent_id, getter):
+        if not name:
+            return True
+        if not parent_id:
+            deps.log("recovery parent identity unknown; CR preserved")
+            return False
+        cr = deps.cluster.get(resource, name)
+        code, body = getter(parent_id)
+        if code == 404 and cr is None:
+            return True
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        if cr_id != parent_id or code not in (200, 404):
+            deps.log("recovery parent identity or Cloud read unverified")
+            return False
+        if code == 200 and (not isinstance(body, dict) or
+                str(body.get("id") or "") != parent_id or body.get("name") != state.run_name):
+            deps.log("recovery parent Cloud identity mismatched")
+            return False
+        deps.cluster.delete(resource, name)
+        def gone():
+            code, _ = getter(parent_id)
+            if code not in (200, 404):
+                raise SuiteFailure("recovery parent Cloud read failed")
+            return code == 404 and deps.cluster.get(resource, name) is None
+        return wait_until(deps, "recovery parent absence", deps.timeouts["delete"], gone)
+
+    if not child(ESS_DATABASE, state.essentials_database_name, state.essentials_id,
+                 state.essentials_database_id, deps.cloud.get_fixed_database):
+        return False
+    state.essentials_database_name = None
+    if not parent(ESS_SUBSCRIPTION, state.essentials_name, state.essentials_id,
+                  deps.cloud.get_fixed_subscription):
+        return False
+    state.essentials_name = None
+    if not child(DATABASE, state.database_name, state.subscription_id,
+                 state.database_id, deps.cloud.get_database):
+        return False
+    state.database_name = None
+    if not parent(SUBSCRIPTION, state.subscription_name, state.subscription_id,
+                  deps.cloud.get_subscription):
+        return False
+    state.subscription_name = None
+    if not named(ACL, state.acl_name, deps.cloud.list_acl_rules):
+        return False
+    state.acl_name = None
+    deps.log("standard CR-only recovery verified; original qualification remains failed")
+    return True
 
 
 def wait_until(deps, label: str, timeout: float, ready) -> bool:
