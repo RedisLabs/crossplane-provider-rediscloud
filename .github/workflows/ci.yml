@@ -221,6 +221,9 @@ jobs:
       - name: Test durable QA ownership recovery without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_recovery.py'
 
+      - name: Test one-shot recovery fences without Cloud credentials
+        run: python3 -m unittest discover -s scripts -p 'test_qa_delete_fence.py'
+
       - name: Run Unit Tests
         run: make -j2 test
 
