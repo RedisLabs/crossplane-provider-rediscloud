@@ -873,7 +873,7 @@ class QaLiveTest(unittest.TestCase):
         def request(method, path):
             calls.append(path)
             rows = [{"databaseId": 42, "name": "first"}] if "offset=0" in path else []
-            return 200, {"subscription": {"subscriptionId": 7, "databases": rows}}
+            return 200, {"subscription": {"subscriptionId": 7, "databases": rows, "numberOfDatabases": 1}}
         cloud.request = request
         code, rows = cloud.list_fixed_databases_complete("7")
         self.assertEqual(code, 200)
@@ -897,6 +897,7 @@ class QaLiveTest(unittest.TestCase):
                          envelope([], nextPage="unknown"), envelope([], nextToken="unknown"),
                          envelope([], truncated=True), envelope([], isTruncated=True),
                          envelope([], hasNext=True), envelope([], links={"next": "x"}),
+                         envelope([{"databaseId": 42, "name": "first"}]),
                          envelope([{"databaseId": 42}]), envelope([{"databaseId": 0, "name": "x"}]),
                          envelope([{"databaseId": n + 1, "name": str(n)} for n in range(101)])]
             for body in bad_pages:
@@ -904,17 +905,17 @@ class QaLiveTest(unittest.TestCase):
                     cloud.request = lambda method, path, body=body: (200, body)
                     with self.assertRaises(qa_live.SuiteFailure):
                         method("7")
-            calls = iter([envelope([{"databaseId": 42, "name": "first"}]),
-                          envelope([{"databaseId": 42, "name": "first"}])])
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], total=2),
+                          envelope([{"databaseId": 42, "name": "first"}], total=2)])
             cloud.request = lambda method, path: (200, next(calls))
             with self.assertRaises(qa_live.SuiteFailure):
                 method("7")
-            calls = iter([envelope([{"databaseId": 42, "name": "first"}], hasMore=True),
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], hasMore=True, total=2),
                           envelope([])])
             cloud.request = lambda method, path: (200, next(calls))
             with self.assertRaises(qa_live.SuiteFailure):
                 method("7")
-            calls = iter([envelope([{"databaseId": 42, "name": "first"}], hasMore=False),
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], hasMore=False, total=2),
                           envelope([{"databaseId": 43, "name": "second"}])])
             cloud.request = lambda method, path: (200, next(calls))
             with self.assertRaises(qa_live.SuiteFailure):
@@ -1237,7 +1238,7 @@ class QaLiveTest(unittest.TestCase):
         def request(method, path):
             calls.append(path)
             rows = [{"databaseId": 42, "name": "first"}] if "offset=0" in path else []
-            return 200, {"subscription": [{"subscriptionId": 7, "databases": rows}]}
+            return 200, {"subscription": [{"subscriptionId": 7, "databases": rows, "numberOfDatabases": 1}]}
         cloud.request = request
         self.assertEqual(cloud.list_databases_complete("7"), (200, [{"databaseId": 42, "name": "first"}]))
         self.assertEqual(len(calls), 2)

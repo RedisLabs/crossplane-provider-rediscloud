@@ -378,6 +378,8 @@ def validated_database_page(body, parent, rows, seen, offset, limit, totals, met
     metadata["hasMore"] = next(iter(flags)) if flags else None
     if len(totals) > 1:
         raise SuiteFailure(f"{label} counts conflict")
+    if page and len(page) < limit and not totals:
+        raise SuiteFailure(f"{label} short page without a verified total")
     for row in page:
         if not isinstance(row, dict):
             raise SuiteFailure(f"{label} row malformed")
