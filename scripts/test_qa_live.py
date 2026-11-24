@@ -1006,6 +1006,34 @@ class QaLiveTest(unittest.TestCase):
         self.assertNotIn((qa_live.PAYMENT, name), world.deleted)
         self.assertEqual(world.cloud_deletes, [])
 
+    def test_lookup_cleanup_resumes_after_confirmed_partial_deletion(self):
+        world = World()
+        deps = deps_for(world)
+        qa_live.apply_lookups(deps)
+        original = world.delete_owned
+        attempts = []
+        def fail_once(resource, name, uid, namespace=None):
+            if resource == qa_live.PLAN and not attempts:
+                attempts.append("failed")
+                raise qa_live.SuiteFailure("temporary failure")
+            original(resource, name, uid, namespace)
+        world.delete_owned = fail_once
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "temporary failure"):
+            qa_live.delete_lookups(deps)
+        qa_live.delete_lookups(deps)
+        self.assertEqual(world.deleted.count((qa_live.PAYMENT, "xp-ci-123-payment")), 1)
+        self.assertIn((qa_live.PLAN, "xp-ci-123-plan"), world.deleted)
+        self.assertIn((qa_live.REGIONS, "xp-ci-123-regions"), world.deleted)
+
+    def test_lookup_absence_without_confirmed_delete_stays_uncertain(self):
+        world = World()
+        deps = deps_for(world)
+        qa_live.apply_lookups(deps)
+        world.objects.pop((qa_live.PAYMENT, "xp-ci-123-payment"))
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "absent without a confirmed delete"):
+            qa_live.delete_lookups(deps)
+        self.assertNotIn((qa_live.PLAN, "xp-ci-123-plan"), world.deleted)
+
     def test_create_owned_refuses_preexisting_resource_and_uid_is_required(self):
         world = World()
         state = qa_live.State("xp-ci-123")

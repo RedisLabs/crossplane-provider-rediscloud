@@ -1290,18 +1290,24 @@ def delete_lookups(deps) -> None:
     if not getattr(deps, "lookups_applied", False):
         return
     run_id = deps.run_id
+    def remove_aux(resource, name, namespace=None):
+        key = (resource, name, namespace)
+        if key not in deps.aux_state.owned_uids:
+            return
+        if deps.cluster.get(resource, name, namespace=namespace) is None:
+            raise SuiteFailure("auxiliary resource absent without a confirmed delete")
+        delete_owned(deps, deps.aux_state, resource, name, namespace)
+        # Remove only after a confirmed UID-preconditioned API response.
+        deps.aux_state.owned_uids.pop(key)
     for resource, suffix in (
         (PAYMENT, "payment"),
         (PLAN, "plan"),
         (REGIONS, "regions"),
     ):
         name = f"{PREFIX}{run_id}-{suffix}"
-        if (resource, name, None) in deps.aux_state.owned_uids:
-            delete_owned(deps, deps.aux_state, resource, name)
-    if (PROVIDER_CONFIG, "default", None) in deps.aux_state.owned_uids:
-        delete_owned(deps, deps.aux_state, PROVIDER_CONFIG, "default")
-    if ("secret", "provider-secret", "upbound-system") in deps.aux_state.owned_uids:
-        delete_owned(deps, deps.aux_state, "secret", "provider-secret", namespace="upbound-system")
+        remove_aux(resource, name)
+    remove_aux(PROVIDER_CONFIG, "default")
+    remove_aux("secret", "provider-secret", namespace="upbound-system")
 
 
 def acl_manifest(name: str) -> dict:
