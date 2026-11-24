@@ -640,6 +640,20 @@ class QaLiveTest(unittest.TestCase):
         self.assertEqual(state.essentials_id, "200")
         self.assertIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
 
+    def test_recovery_accepts_id_alias_on_exact_database_read(self):
+        world = World()
+        world.fixed = [{"id": "200", "name": "xp-ci-123", "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, "xp-ci-123")] = ready("200")
+        world.objects[(qa_live.ESS_DATABASE, "xp-ci-123")] = ready("200/60")
+        world.get_fixed_database = lambda sub, db: (404, None) if world.ess_db_gone else (200, {"id": 60, "name": "xp-ci-123-db"})
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        state.essentials_id = "200"
+        state.essentials_database_name = state.run_name
+        state.essentials_database_id = "60"
+        self.assertTrue(qa_live.strict_recover(deps_for(world), state))
+        self.assertEqual(world.cloud_deletes, [])
+
     def test_strict_waits_for_delayed_database_absence(self):
         world = World()
         get_db = world.get_fixed_database

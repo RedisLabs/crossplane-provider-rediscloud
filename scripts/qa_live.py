@@ -910,7 +910,7 @@ def strict_recover(deps, state: State) -> bool:
         cloud_code, cloud_db = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
         if cloud_code not in (200, 404) or (cloud_code == 200 and
                 (not isinstance(cloud_db, dict) or
-                 str(cloud_db.get("databaseId") or "") != state.essentials_database_id or
+                 observed_database_id(cloud_db, "") != state.essentials_database_id or
                  cloud_db.get("name") != f"{state.run_name}-db")):
             deps.log("recovery incomplete: database Cloud identity unverified; CR and parent preserved")
             return False
