@@ -790,6 +790,83 @@ class QaLiveTest(unittest.TestCase):
         self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertEqual(world.cloud_deletes, [])
 
+    def test_account_inventory_fails_closed_on_incomplete_responses(self):
+        cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
+        endpoints = (("list_subscriptions", "subscriptions"),
+                     ("list_fixed_subscriptions", "subscriptions"),
+                     ("list_fixed_subscriptions_checked", "subscriptions"),
+                     ("list_acl_roles", "roles"), ("list_acl_users", "users"),
+                     ("list_acl_rules", "redisRules"))
+        for method, key in endpoints:
+            good = {key: [{"id": 1, "name": "other"}]}
+            cloud.request = lambda method, path: (200, good)
+            self.assertEqual(getattr(cloud, method)(), good[key])
+            bad = [(403, None), (200, {}), (200, {key: None}),
+                   (200, {key: [None]}), (200, {key: [{"id": 1}]}),
+                   (200, {key: [{"id": 1, "name": "a"}, {"id": "01", "name": "b"}]}),
+                   (200, {key: [{"id": 1, "name": "a"}, {"id": 2, "name": "a"}]}),
+                   (200, {key: [], "nextPage": "hidden"}),
+                   (200, {key: [], "totalCount": 1}),
+                   (200, {key: [{"id": i + 1, "name": str(i)} for i in range(10000)]})]
+            for response in bad:
+                with self.subTest(endpoint=method, response_type=str(response[0])):
+                    cloud.request = lambda method, path, response=response: response
+                    with self.assertRaises(qa_live.SuiteFailure):
+                        getattr(cloud, method)()
+
+    def test_recovery_refreshes_late_resource_identity_and_refuses_mismatch(self):
+        for fixed in (False, True):
+            with self.subTest(fixed=fixed):
+                world, state = World(), qa_live.State("xp-ci-123")
+                parent = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+                child = qa_live.ESS_DATABASE if fixed else qa_live.DATABASE
+                parent_id, child_id = ("200", "60") if fixed else ("100", "50")
+                setattr(state, "essentials_name" if fixed else "subscription_name", state.run_name)
+                setattr(state, "essentials_database_name" if fixed else "database_name", state.run_name)
+                world.objects[(parent, state.run_name)] = ready(parent_id)
+                world.objects[(child, state.run_name)] = ready(parent_id + "/" + child_id)
+                setattr(world, "fixed" if fixed else "subs", [{"id": parent_id, "name": state.run_name}])
+                if fixed:
+                    world.ess_db_applied, world.ess_db_name = True, state.run_name + "-db"
+                else:
+                    world.database_applied, world.database_name = True, state.run_name + "-db"
+                state.owned_uids[(parent, state.run_name, None)] = "test-uid"
+                state.owned_uids[(child, state.run_name, None)] = "test-uid"
+                qa_live.refresh_recovery_identity(deps_for(world), state)
+                self.assertEqual(getattr(state, "essentials_id" if fixed else "subscription_id"), parent_id)
+                self.assertEqual(getattr(state, "essentials_database_id" if fixed else "database_id"), child_id)
+                setattr(state, "essentials_database_id" if fixed else "database_id", None)
+                world.objects[(child, state.run_name)] = ready("999/" + child_id)
+                qa_live.refresh_recovery_identity(deps_for(world), state)
+                self.assertIsNone(getattr(state, "essentials_database_id" if fixed else "database_id"))
+                self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                self.assertEqual(world.deleted, [])
+
+    def test_missing_cr_requires_successful_preconditioned_delete(self):
+        for fixed in (False, True):
+            with self.subTest(fixed=fixed):
+                world, state = World(), qa_live.State("xp-ci-123")
+                child = qa_live.ESS_DATABASE if fixed else qa_live.DATABASE
+                if fixed:
+                    state.essentials_id, state.essentials_database_id = "200", "60"
+                    state.essentials_database_name = state.run_name
+                    world.ess_db_gone = True
+                else:
+                    state.subscription_id, state.database_id = "100", "50"
+                    state.database_name = state.run_name
+                    world.database_gone = True
+                self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                state.deletion_requested.add((child, state.run_name, None))
+                self.assertTrue(qa_live.cleanup(deps_for(world), state))
+
+    def test_strict_missing_cr_without_confirmed_delete_is_uncertain(self):
+        world, state = World(), qa_live.State("xp-ci-123")
+        state.essentials_id, state.essentials_database_id = "200", "60"
+        state.essentials_database_name = state.run_name
+        world.ess_db_gone = True
+        self.assertFalse(qa_live.strict_recover(deps_for(world), state))
+        self.assertEqual(world.deleted, [])
+
     def test_database_inventory_requires_empty_authenticated_last_page(self):
         cloud = qa_live.RedisCloud("https://example.invalid/v1", "a", "b")
         calls = []
