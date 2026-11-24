@@ -894,7 +894,9 @@ class QaLiveTest(unittest.TestCase):
                 return {"subscription": parent if fixed else [parent]}
             bad_pages = [envelope([], numberOfDatabases=1), envelope([], totalCount=1),
                          envelope([], hasMore=True), envelope([], offset=1),
-                         envelope([], nextPage="unknown"), envelope([], links={"next": "x"}),
+                         envelope([], nextPage="unknown"), envelope([], nextToken="unknown"),
+                         envelope([], truncated=True), envelope([], isTruncated=True),
+                         envelope([], hasNext=True), envelope([], links={"next": "x"}),
                          envelope([{"databaseId": 42}]), envelope([{"databaseId": 0, "name": "x"}]),
                          envelope([{"databaseId": n + 1, "name": str(n)} for n in range(101)])]
             for body in bad_pages:

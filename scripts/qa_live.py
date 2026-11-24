@@ -353,9 +353,14 @@ def validated_database_page(body, parent, rows, seen, offset, limit, totals, met
                 if type(count) is not int or count < 0:
                     raise SuiteFailure(f"{label} count malformed")
                 totals.add(count)
-        for key in ("next", "nextPage", "nextPageToken", "cursor"):
+        for key in ("next", "nextPage", "nextPageToken", "nextToken", "cursor"):
             if obj.get(key):
                 raise SuiteFailure(f"{label} pagination metadata unsupported")
+        for key in ("truncated", "isTruncated"):
+            if key in obj and (type(obj[key]) is not bool or obj[key]):
+                raise SuiteFailure(f"{label} truncation unverified")
+        if "hasNext" in obj and (type(obj["hasNext"]) is not bool or obj["hasNext"]):
+            raise SuiteFailure(f"{label} pagination metadata unsupported")
         if "hasMore" in obj:
             if type(obj["hasMore"]) is not bool:
                 raise SuiteFailure(f"{label} hasMore malformed")
