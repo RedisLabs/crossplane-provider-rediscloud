@@ -655,6 +655,9 @@ def delete_database(deps, state: State) -> int:
 
 
 def delete_subscription(deps, state: State) -> int:
+    code, children = deps.cloud.list_databases_complete(state.subscription_id)
+    if code != 200 or children:
+        raise SuiteFailure("subscription child inventory is not verified empty; preserving parent")
     deps.log(f"deleting subscription {state.subscription_name}")
     deps.cluster.delete(SUBSCRIPTION, state.subscription_name)
     code = wait_http_404(
@@ -813,9 +816,9 @@ def strict_essentials(deps) -> None:
         state.essentials_database_deleted = True
         deps.cluster.require_deleted_event(db["metadata"]["uid"], "database")
         _, db_inventory = deps.cloud.list_fixed_databases_complete(state.essentials_id)
-        if find_named(db_inventory, f"{state.run_name}-db"):
-            raise SuiteFailure("run-owned database remains in paginated inventory")
-        deps.log("authenticated database inventory complete; run-owned database absent")
+        if db_inventory:
+            raise SuiteFailure("database inventory is not empty; preserving parent")
+        deps.log("authenticated database inventory complete; all child databases absent")
         deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
         def subscription_gone():
             code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
@@ -1040,6 +1043,9 @@ def run_essentials(deps, state: State, payment_id: str) -> None:
     if not wait_until(deps, "essentials database CR finalization", deps.timeouts["delete"],
                       lambda: deps.cluster.get(ESS_DATABASE, state.run_name) is None):
         raise SuiteFailure("essentials database CR still present; preserving parent")
+    list_code, children = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+    if list_code != 200 or children:
+        raise SuiteFailure("essentials child inventory is not verified empty; preserving parent")
     deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
     subscription_code = wait_http_404(
         deps,
@@ -1146,7 +1152,7 @@ def cleanup(deps, state: State) -> bool:
             return code == 404 and deps.cluster.get(resource, name) is None
         return wait_until(deps, "recovery child absence", deps.timeouts["delete"], gone)
 
-    def parent(resource, name, parent_id, getter):
+    def parent(resource, name, parent_id, getter, list_children):
         if not name:
             return True
         if not parent_id:
@@ -1164,6 +1170,11 @@ def cleanup(deps, state: State) -> bool:
                 str(body.get("id") or "") != parent_id or body.get("name") != state.run_name):
             deps.log("recovery parent Cloud identity mismatched")
             return False
+        if code == 200:
+            list_code, children = list_children(parent_id)
+            if list_code != 200 or children:
+                deps.log("recovery child inventory unverified or nonempty; parent preserved")
+                return False
         deps.cluster.delete(resource, name)
         def gone():
             code, _ = getter(parent_id)
@@ -1177,7 +1188,7 @@ def cleanup(deps, state: State) -> bool:
         return False
     state.essentials_database_name = None
     if not parent(ESS_SUBSCRIPTION, state.essentials_name, state.essentials_id,
-                  deps.cloud.get_fixed_subscription):
+                  deps.cloud.get_fixed_subscription, deps.cloud.list_fixed_databases_complete):
         return False
     state.essentials_name = None
     if not child(DATABASE, state.database_name, state.subscription_id,
@@ -1185,7 +1196,7 @@ def cleanup(deps, state: State) -> bool:
         return False
     state.database_name = None
     if not parent(SUBSCRIPTION, state.subscription_name, state.subscription_id,
-                  deps.cloud.get_subscription):
+                  deps.cloud.get_subscription, deps.cloud.list_databases_complete):
         return False
     state.subscription_name = None
     if not named(ACL, state.acl_name, deps.cloud.list_acl_rules):
@@ -1589,6 +1600,27 @@ class RedisCloud:
             raise SuiteFailure(f"list databases HTTP {code}")
         return code, database_rows(body)
 
+    def list_databases_complete(self, sub_id: str):
+        # The official Go iterator uses limit/offset and checks the returned
+        # subscription ID. A 404 or malformed page is never an empty inventory.
+        rows = []
+        limit = 100
+        for offset in range(0, 10000, limit):
+            code, body = self.request("GET", f"/subscriptions/{sub_id}/databases?limit={limit}&offset={offset}")
+            if code != 200:
+                raise SuiteFailure(f"list databases page HTTP {code}")
+            subscriptions = body.get("subscription") if isinstance(body, dict) else None
+            if (not isinstance(subscriptions, list) or len(subscriptions) != 1 or
+                    not isinstance(subscriptions[0], dict) or
+                    str(subscriptions[0].get("subscriptionId") or "") != str(sub_id) or
+                    not isinstance(subscriptions[0].get("databases"), list)):
+                raise SuiteFailure("list databases page has unexpected shape or parent")
+            page = subscriptions[0]["databases"]
+            if not page:
+                return 200, rows
+            rows.extend(page)
+        raise SuiteFailure("list databases pagination did not terminate")
+
     def get_database(self, sub_id: str, db_id: str):
         return self.request("GET", f"/subscriptions/{sub_id}/databases/{db_id}")
 
@@ -1655,6 +1687,7 @@ class RedisCloud:
             if code != 200:
                 raise SuiteFailure(f"list essentials databases page HTTP {code}")
             if (not isinstance(body, dict) or not isinstance(body.get("subscription"), dict) or
+                    str(body["subscription"].get("subscriptionId") or "") != str(sub_id) or
                     not isinstance(body["subscription"].get("databases"), list)):
                 raise SuiteFailure("list essentials databases page has unexpected shape")
             page = body["subscription"]["databases"]

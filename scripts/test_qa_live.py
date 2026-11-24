@@ -176,6 +176,11 @@ class World:
             return 200, []
         return 200, [{"name": self.database_name, "status": self.database_status, "databaseId": "50"}]
 
+    def list_databases_complete(self, sub_id: str):
+        if self.database_gone:
+            return 200, []
+        return self.list_databases(sub_id)
+
     def get_database(self, sub_id: str, db_id: str):
         self.database_gets.append(str(db_id))
         if self.database_http is not None:
@@ -297,6 +302,16 @@ class QaLiveTest(unittest.TestCase):
         self.assertLess(world.deleted.index((qa_live.ESS_DATABASE, "xp-ci-123")),
                         world.deleted.index((qa_live.ESS_SUBSCRIPTION, "xp-ci-123")))
         self.assertTrue(any("parent HTTP_OK" in line for line in deps.lines))
+        self.assertTrue(any("eviction update verified volatile-lru -> allkeys-lru" in line for line in deps.lines))
+
+    def test_strict_preserves_parent_if_another_child_is_present(self):
+        world = World()
+        world.list_fixed_databases_complete = lambda sub: (200, [{"databaseId": 99, "name": "foreign"}])
+        deps = deps_for(world)
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "inventory is not empty"):
+            qa_live.strict_essentials(deps)
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
         self.assertTrue(any("eviction update verified volatile-lru -> allkeys-lru" in line for line in deps.lines))
 
     def test_eviction_update_fails_closed_on_changed_cloud_identity(self):
@@ -730,7 +745,7 @@ class QaLiveTest(unittest.TestCase):
         def request(method, path):
             calls.append(path)
             rows = [{"name": "first"}] if "offset=0" in path else []
-            return 200, {"subscription": {"databases": rows}}
+            return 200, {"subscription": {"subscriptionId": 7, "databases": rows}}
         cloud.request = request
         code, rows = cloud.list_fixed_databases_complete("7")
         self.assertEqual(code, 200)
@@ -838,6 +853,54 @@ class QaLiveTest(unittest.TestCase):
         self.assertFalse(qa_live.cleanup(deps_for(world), state))
         self.assertEqual(world.deleted, [])
         self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_preserves_parent_when_complete_child_inventory_unavailable_or_nonempty(self):
+        for fixed in (False, True):
+            for case in ("foreign", "forbidden", "malformed"):
+                with self.subTest(fixed=fixed, case=case):
+                    world = World()
+                    state = qa_live.State("xp-ci-123")
+                    resource = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+                    parent_id = "200" if fixed else "100"
+                    if fixed:
+                        state.essentials_name, state.essentials_id = state.run_name, parent_id
+                    else:
+                        state.subscription_name, state.subscription_id = state.run_name, parent_id
+                    world.objects[(resource, state.run_name)] = ready(parent_id)
+                    if case == "foreign":
+                        result = lambda sub: (200, [{"databaseId": "42", "name": "foreign"}])
+                    elif case == "forbidden":
+                        result = lambda sub: (403, None)
+                    else:
+                        def result(sub):
+                            raise qa_live.SuiteFailure("incomplete pagination")
+                    if fixed:
+                        world.list_fixed_databases_complete = result
+                    else:
+                        world.list_databases_complete = result
+                    if case == "malformed":
+                        with self.assertRaises(qa_live.SuiteFailure):
+                            qa_live.cleanup(deps_for(world), state)
+                    else:
+                        self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                    self.assertNotIn((resource, state.run_name), world.deleted)
+                    self.assertEqual(world.cloud_deletes, [])
+
+    def test_pro_parent_inventory_pages_are_complete_and_match_parent(self):
+        cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
+        calls = []
+        def request(method, path):
+            calls.append(path)
+            rows = [{"databaseId": 42}] if "offset=0" in path else []
+            return 200, {"subscription": [{"subscriptionId": 7, "databases": rows}]}
+        cloud.request = request
+        self.assertEqual(cloud.list_databases_complete("7"), (200, [{"databaseId": 42}]))
+        self.assertEqual(len(calls), 2)
+        for response in ((403, None), (200, {"subscription": [{"subscriptionId": 8, "databases": []}]}),
+                         (200, {"subscription": [{"subscriptionId": 7}]})):
+            cloud.request = lambda method, path, response=response: response
+            with self.assertRaises(qa_live.SuiteFailure):
+                cloud.list_databases_complete("7")
 
     def test_acl_recovery_accepts_delayed_absence_after_proven_delete_request(self):
         world = World()
