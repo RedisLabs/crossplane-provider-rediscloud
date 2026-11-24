@@ -46,6 +46,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Refuse direct recovery until replay protection is durable
+        if: inputs.recovery_mode == 'recover-exact'
+        run: |
+          echo 'Direct recovery disabled: an earlier DELETE may have an uncertain outcome. Use read-only inspection and manual investigation.'
+          exit 1
       - name: Reject unknown recovery mode
         if: inputs.recovery_mode != 'inspect' && inputs.recovery_mode != 'recover-exact'
         run: |
