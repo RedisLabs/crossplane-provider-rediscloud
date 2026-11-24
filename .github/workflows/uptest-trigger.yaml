@@ -44,6 +44,10 @@ jobs:
       example_hash: ${{ steps.get-example-list-name.outputs.example-hash }}
 
     steps:
+      - name: Defer shared-account Uptest until serialization exists
+        run: |
+          echo 'DEFER: shared QA account has no cross-repository writer lock; no live test was run.'
+          exit 1
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
@@ -98,6 +102,10 @@ jobs:
     if: ${{ (needs.check-permissions.outputs.permission == 'admin' || needs.check-permissions.outputs.permission == 'write') && github.event.issue.pull_request != null && contains(github.event.comment.body, '/test-examples')}}
     runs-on: ubuntu-24.04
     steps:
+      - name: Defer shared-account Uptest before setup
+        run: |
+          echo 'DEFER: shared QA account has no cross-repository writer lock; no live test was run.'
+          exit 1
       - name: Cleanup Disk
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
@@ -147,10 +155,10 @@ jobs:
             -f state='success' \
             -f target_url='https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
             -f description='Passed' \
-            -f context="Uptest-${{ needs.get-example-list.outputs.example-hash }}"
+            -f context="Uptest-${{ needs.get-example-list.outputs.example_hash }}"
 
       - name: Create Failed Status Check
-        if: failure()
+        if: failure() && steps.checkout-pr.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -161,16 +169,17 @@ jobs:
             -f state='failure' \
             -f target_url='https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
             -f description='Failed' \
-            -f context="Uptest-${{ needs.get-example-list.outputs.example-hash }}"
+            -f context="Uptest-${{ needs.get-example-list.outputs.example_hash }}"
 
       - name: Collect Cluster Dump
-        if: failure()
+        id: collect-cluster-dump
+        if: failure() && steps.run-uptest.outcome == 'failure'
         run: |
           make controlplane.dump
           tar -czf cluster-dump.tar.gz _output/cluster-dump
 
       - name: Upload Cluster Dump
-        if: failure()
+        if: failure() && steps.collect-cluster-dump.outcome == 'success'
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
           name: cluster-dump-uptest

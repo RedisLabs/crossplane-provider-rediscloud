@@ -4,7 +4,7 @@ This document describes the CI/CD pipeline and testing infrastructure for the Cr
 
 ## Automatic tests
 
-CI runs on every pull request and does not call Redis Cloud. Nightly QA calls the QA Redis Cloud account on a schedule. Uptest runs only when someone with write access asks for it on a pull request.
+CI runs on every pull request and does not call Redis Cloud. Nightly QA and comment-triggered Uptest are currently deferred before setup or Cloud writes because the shared QA account has no enforced cross-repository writer lock. The workflow reports DEFER as a failure; read-only diagnostics remain available. The descriptions of live cases below describe the intended suites once a safe lock is implemented, not current execution. Historical workflow reruns can use older code and must not be started as a workaround.
 
 ### CI
 
@@ -46,7 +46,7 @@ A coverage file is uploaded to Codecov from `unit-tests`. That upload does not f
 
 Name: workflow `.github/workflows/qa-live.yaml`. The script is `scripts/qa_live.py`.
 
-It runs at 06:17 UTC, and from Actions → Run workflow. It does not run on pull requests, and it is not a required check. It builds the provider on a kind cluster and uses the `UPTEST_CLOUD_CREDENTIALS` secret. Logs print status codes and secret key names. They do not print secret values.
+Its schedule is 06:17 UTC, and it can be dispatched from Actions → Run workflow. Live suites currently defer before building the provider or loading credentials. It does not run on pull requests and is not a required check. When enabled safely, it builds the provider on a kind cluster and uses the `UPTEST_CLOUD_CREDENTIALS` secret. Logs print status codes and secret key names, not secret values.
 
 Live cases, in order, on the QA Redis Cloud account:
 
@@ -124,6 +124,8 @@ The main CI pipeline runs on every push to main/release branches and on pull req
 
 Triggered via PR comments with `/test-examples="<path>"`:
 
+The live suite is currently deferred before setup; the following describes its intended behavior after serialization is established.
+
 - Permission-based access control (write/admin only)
 - Dynamic example selection based on paths
 - Creates GitHub status checks for test results
@@ -150,7 +152,7 @@ A manual run can set `dry_run` to print the decision without opening a pull requ
 
 ### Nightly QA (`.github/workflows/qa-live.yaml`)
 
-Runs at 06:17 UTC, and from Actions → Run workflow. It does not run on pull requests. The job builds the provider on a kind cluster and runs `scripts/qa_live.py`, which creates and deletes one ACL rule, role, and user, one Pro subscription and database, and one Essentials subscription and database on the QA account. The credential comes from the `UPTEST_CLOUD_CREDENTIALS` secret. The script requires secret keys `public_endpoint` and `private_endpoint`. `port` is not required. `attribute.password` may also be present because the sensitive-field mapping owns the password. This workflow is not a required status check.
+Scheduled for 06:17 UTC and dispatchable from Actions → Run workflow, but live suites currently defer before setup. When safely enabled, the job builds the provider on a kind cluster and runs `scripts/qa_live.py`, which creates and deletes one ACL rule, role, and user, one Pro subscription and database, and one Essentials subscription and database on the QA account. The credential comes from the `UPTEST_CLOUD_CREDENTIALS` secret. The script requires secret keys `public_endpoint` and `private_endpoint`. `port` is not required. `attribute.password` may also be present because the sensitive-field mapping owns the password. This workflow is not a required status check.
 
 ## Testing
 

@@ -144,6 +144,11 @@ jobs:
     outputs:
       artifact-id: ${{ steps.ownership.outputs.artifact-id }}
     steps:
+      - name: Defer strict live writes until shared-account serialization exists
+        if: inputs.suite == 'strict-essentials'
+        run: |
+          echo 'DEFER: shared QA account has no cross-repository writer lock; no live test was run.'
+          exit 1
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Create encrypted ownership intent
@@ -192,8 +197,8 @@ jobs:
     # Leave time for a bounded recovery after a qualification failure.
     timeout-minutes: 240
     steps:
-      - name: Defer standard writes until shared-account serialization exists
-        if: github.event_name == 'schedule' || inputs.suite == 'standard' || inputs.suite == ''
+      - name: Defer live writes until shared-account serialization exists
+        if: github.event_name == 'schedule' || inputs.suite == 'standard' || inputs.suite == '' || inputs.suite == 'strict-essentials'
         run: |
           echo 'DEFER: shared QA account has no cross-repository writer lock; no live test was run.'
           exit 1

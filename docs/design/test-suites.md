@@ -23,9 +23,9 @@ This file describes the tests in this Crossplane provider: which suite runs when
 | Suite | When this provider runs it | Terraform today |
 | --- | --- | --- |
 | [CI](#ci) | Every pull request. Required check [`ci-success`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/.github/workflows/ci.yml). No Redis Cloud account. | Every non-draft pull request, before smoke. Also no Redis Cloud account. |
-| [Acceptance smoke](#acceptance-smoke) | Nightly at 06:17 UTC, and from Actions → Run workflow. [`scripts/qa_live.py`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/scripts/qa_live.py). ACL rule, role, and user, one Pro subscription and database, and one Essentials subscription and database. Create and delete. | Every pull request that changes code, unless it is a draft or labeled `skip-tests`. The slice is wider. See [gaps](#gaps-against-the-terraform-smoke). |
+| [Acceptance smoke](#acceptance-smoke) | Deferred until shared-account serialization is verified. Normally Nightly at 06:17 UTC, and from Actions → Run workflow. [`scripts/qa_live.py`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/scripts/qa_live.py). ACL rule, role, and user, one Pro subscription and database, and one Essentials subscription and database. Create and delete. | Every pull request that changes code, unless it is a draft or labeled `skip-tests`. The slice is wider. See [gaps](#gaps-against-the-terraform-smoke). |
 | [Acceptance](#acceptance) | Not scheduled. | Every push to `main`, plus a manual run. Wider than smoke. See [gaps](#gaps-against-terraform-on-main). |
-| [Uptest](#uptest) | A write or admin comment on a pull request: `/test-examples="<path>"`. [`uptest-trigger.yaml`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/.github/workflows/uptest-trigger.yaml). | Terraform has no Uptest. It uses the acceptance tests linked below. |
+| [Uptest](#uptest) | Deferred until shared-account serialization is verified. Normally a write or admin comment on a pull request: `/test-examples="<path>"`. [`uptest-trigger.yaml`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/.github/workflows/uptest-trigger.yaml). | Terraform has no Uptest. It uses the acceptance tests linked below. |
 
 A red nightly run does not unmerge. The same choice is recorded in [testing-gate.md](testing-gate.md).
 
@@ -126,7 +126,7 @@ These tests exist in the Terraform provider. A push to Terraform `main` does not
 
 ## Uptest
 
-When: a write or admin comment on a pull request, `/test-examples="<path>"`. Workflow: [`.github/workflows/uptest-trigger.yaml`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/.github/workflows/uptest-trigger.yaml). Not required.
+Currently deferred until shared-account serialization is verified. Normally triggered by a write or admin comment on a pull request, `/test-examples="<path>"`. Workflow: [`.github/workflows/uptest-trigger.yaml`](https://github.com/RedisLabs/crossplane-provider-rediscloud/blob/main/.github/workflows/uptest-trigger.yaml). Not required.
 
 A passing path verifies that the provider installs, the manifest is accepted, the controller reaches Ready, and delete removes the object.
 
