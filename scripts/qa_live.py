@@ -936,6 +936,9 @@ def strict_recover(deps, state: State) -> bool:
         if parent_code not in (200, 404):
             deps.log("recovery incomplete: parent existence and ownership unverified")
             return False
+        if parent_code == 404 and cr is not None:
+            deps.log("recovery incomplete: parent is absent but CR remains; child inventory cannot be verified")
+            return False
         if parent_code == 200:
             if not owned_essentials_subscription(deps, state):
                 deps.log("recovery incomplete: parent ownership unverified")
@@ -1162,6 +1165,9 @@ def cleanup(deps, state: State) -> bool:
         code, body = getter(parent_id)
         if code == 404 and cr is None:
             return True
+        if code == 404:
+            deps.log("recovery parent absent but CR remains; child inventory cannot be verified")
+            return False
         cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
         if cr_id != parent_id or code not in (200, 404):
             deps.log("recovery parent identity or Cloud read unverified")

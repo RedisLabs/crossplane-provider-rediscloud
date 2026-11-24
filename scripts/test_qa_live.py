@@ -888,6 +888,23 @@ class QaLiveTest(unittest.TestCase):
                     self.assertNotIn((resource, state.run_name), world.deleted)
                     self.assertEqual(world.cloud_deletes, [])
 
+    def test_absent_parent_with_remaining_cr_does_not_trigger_an_unverified_delete(self):
+        for fixed in (False, True):
+            with self.subTest(fixed=fixed):
+                world = World()
+                state = qa_live.State("xp-ci-123")
+                resource = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+                parent_id = "200" if fixed else "100"
+                world.objects[(resource, state.run_name)] = ready(parent_id)
+                if fixed:
+                    state.essentials_name, state.essentials_id = state.run_name, parent_id
+                    world.ess_sub_gone = True
+                else:
+                    state.subscription_name, state.subscription_id = state.run_name, parent_id
+                    world.subscription_gone = True
+                self.assertFalse(qa_live.cleanup(deps_for(world), state))
+                self.assertNotIn((resource, state.run_name), world.deleted)
+
     def test_pro_parent_inventory_pages_are_complete_and_match_parent(self):
         cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
         calls = []
