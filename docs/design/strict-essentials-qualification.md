@@ -43,4 +43,4 @@ A separate CI test runs the pinned Terraform CLI and Redis Cloud provider agains
 
 This tests the Terraform/Upjet workspace decision, not the managed Kubernetes reconciler, a real Cloud service, or automatic remediation. The live update proof remains separate; unchanged reconciliation without extra real Cloud writes and correction of out-of-band drift remain unverified.
 
-The Operator drift contract records `DriftDetected` and avoids resending on an unchanged reconcile; this workspace test only detects Terraform plan drift and observes no requests sent by refresh/plan to the fake API. It does not establish equivalent Crossplane conditions, no-op controller scheduling or real Cloud write suppression.
+The Operator drift contract records `DriftDetected` and avoids resending on an unchanged reconcile; this workspace test only detects Terraform plan drift and observes no mutation requests sent by refresh/plan to the fake API. It does not establish equivalent Crossplane conditions, no-op controller scheduling or real Cloud write suppression.
