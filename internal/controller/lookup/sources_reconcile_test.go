@@ -222,23 +222,31 @@ func TestPrivateServiceConnectEndpointsClearsStaleObservationAndRecovers(t *test
 	if err := reconcileReady(t, r.Reconcile, "example-psc-endpoints"); err != nil {
 		t.Fatal(err)
 	}
-	if got := read(); len(got.Status.AtProvider.Endpoints) != 1 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionTrue {
-		t.Fatalf("initial observation = %#v", got.Status.AtProvider)
-	}
+	assertPSCReady(t, read())
 	denyScript = true
 	result, err := r.Reconcile(context.Background(), request("example-psc-endpoints"))
 	if err != nil || result.RequeueAfter != requeueFailed {
 		t.Fatalf("failed read result = %#v, %v", result, err)
 	}
-	if got := read(); got.Status.AtProvider.ID != "" || len(got.Status.AtProvider.Endpoints) != 0 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionFalse {
-		t.Fatalf("stale observation survived denied script: %#v", got.Status.AtProvider)
-	}
+	assertPSCUnavailable(t, read())
 	denyScript = false
 	if err := reconcileReady(t, r.Reconcile, "example-psc-endpoints"); err != nil {
 		t.Fatal(err)
 	}
-	if got := read(); got.Status.AtProvider.ID != "1001/9" || len(got.Status.AtProvider.Endpoints) != 1 || len(got.Status.AtProvider.Endpoints[0].ServiceAttachments) != 1 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionTrue {
-		t.Fatalf("recovered observation = %#v", got.Status.AtProvider)
+	assertPSCReady(t, read())
+}
+
+func assertPSCReady(t *testing.T, got *lookupv1alpha1.PrivateServiceConnectEndpoints) {
+	t.Helper()
+	if got.Status.AtProvider.ID != "1001/9" || len(got.Status.AtProvider.Endpoints) != 1 || len(got.Status.AtProvider.Endpoints[0].ServiceAttachments) != 1 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionTrue {
+		t.Fatalf("ready observation = %#v", got.Status.AtProvider)
+	}
+}
+
+func assertPSCUnavailable(t *testing.T, got *lookupv1alpha1.PrivateServiceConnectEndpoints) {
+	t.Helper()
+	if got.Status.AtProvider.ID != "" || len(got.Status.AtProvider.Endpoints) != 0 || got.Status.GetCondition(xpv1.TypeReady).Status != corev1.ConditionFalse {
+		t.Fatalf("stale observation survived denied script: %#v", got.Status.AtProvider)
 	}
 }
 
