@@ -275,6 +275,8 @@ def deps_for(world: World, run_id: str = "123") -> qa_live.Deps:
     deps._now = clock.now
     deps._sleep = clock.sleep
     deps.poll = 1.0
+    deps.recovery_poll = 1.0
+    deps.timeouts["recovery_hold"] = 0
     deps.log = lambda message: deps.lines.append(qa_live.redact(message, deps.secrets))
     return deps
 
@@ -514,6 +516,48 @@ class QaLiveTest(unittest.TestCase):
         self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertTrue(any("parent preserved" in line for line in deps.lines))
 
+    def test_strict_holds_controller_and_credentials_while_cleanup_is_unresolved(self):
+        world = World()
+        original_delete = world.delete
+        def stuck_db(resource, name, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                world.deleted.append((resource, name))
+                return
+            original_delete(resource, name, namespace)
+        world.delete = stuck_db
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        deps.timeouts["recovery_hold"] = 2
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
+            qa_live.strict_essentials(deps)
+        self.assertGreaterEqual(deps.now(), 2)
+        self.assertTrue(any("RECOVERY HOLD:" in line for line in deps.lines))
+        self.assertTrue(any("RECOVERY HOLD TIMED OUT" in line for line in deps.lines))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertNotIn(("secret", "provider-secret"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_cr_recovery_retry_can_finish_but_never_turns_failure_into_pass(self):
+        world = World()
+        original_delete = world.delete
+        calls = []
+        def delayed_delete(resource, name, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                calls.append(1)
+                if len(calls) == 1:
+                    world.deleted.append((resource, name))
+                    return
+            original_delete(resource, name, namespace)
+        world.delete = delayed_delete
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        deps.timeouts["recovery_hold"] = 2
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
+            qa_live.strict_essentials(deps)
+        self.assertTrue(any("recovery complete; original qualification remains FAILED" in line for line in deps.lines))
+        self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+        self.assertEqual(world.cloud_deletes, [])
+
     def test_recovery_preserves_parent_if_other_children_remain(self):
         world = World()
         deps = deps_for(world)
@@ -553,6 +597,19 @@ class QaLiveTest(unittest.TestCase):
             qa_live.strict_recover(deps_for(world), state)
             self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
             self.assertEqual(world.cloud_deletes, [])
+
+    def test_recovery_preserves_cr_until_identity_is_independently_matched(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.essentials_name = state.run_name
+        deps = deps_for(world)
+        self.assertFalse(qa_live.strict_recover(deps, state))
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
+        world.fixed = [{"id": "200", "name": state.run_name, "status": "active"}]
+        world.objects[(qa_live.ESS_SUBSCRIPTION, state.run_name)] = ready("200")
+        self.assertTrue(qa_live.strict_recover(deps, state))
+        self.assertEqual(state.essentials_id, "200")
+        self.assertIn((qa_live.ESS_SUBSCRIPTION, state.run_name), world.deleted)
 
     def test_strict_waits_for_delayed_database_absence(self):
         world = World()

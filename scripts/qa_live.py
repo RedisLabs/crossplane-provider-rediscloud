@@ -872,63 +872,111 @@ def strict_essentials(deps) -> None:
             raise SuiteFailure("run-owned subscription remains in inventory")
         deps.log("strict essentials qualification passed; run-owned subscription inventory empty")
     except Exception:
-        deps.log("strict qualification FAILED; attempting run-owned recovery, CR first")
-        try:
-            strict_recover(deps, state)
-        except Exception:
-            deps.log("recovery encountered an error; residue is unknown, preserving credentials")
+        deps.log("strict qualification FAILED; retaining controller and credentials for CR recovery")
+        deadline = deps.now() + deps.timeouts["recovery_hold"]
+        while True:
+            try:
+                complete = strict_recover(deps, state)
+            except Exception:
+                complete = False
+                deps.log("recovery encountered an error; residue is unknown")
+            if complete:
+                deps.log("recovery complete; original qualification remains FAILED")
+                break
+            if deps.now() >= deadline:
+                deps.log("RECOVERY HOLD TIMED OUT: residue is unverified; use this Actions run and its encrypted ownership artifact for follow-up")
+                break
+            deps.log("RECOVERY HOLD: cleanup unresolved; retaining controller and credentials")
+            deps.sleep(deps.recovery_poll)
         raise
     else:
         delete_lookups(deps)
 
 
-def strict_recover(deps, state: State) -> None:
+def strict_recover(deps, state: State) -> bool:
     """Recover only exact identities created by this run; never convert failure to pass."""
+    refresh_recovery_identity(deps, state)
     if state.essentials_database_name and not state.essentials_database_deleted:
+        if not state.essentials_id or not state.essentials_database_id:
+            deps.log("recovery incomplete: database identity not established; CR and parent preserved")
+            return False
         deps.cluster.delete(ESS_DATABASE, state.run_name)
         if state.essentials_id and state.essentials_database_id:
             code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
                 state.essentials_id, state.essentials_database_id))
             if code != 404:
                 deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
-                return
+                return False
+            if not wait_until(deps, "recovery database CR finalization", deps.timeouts["delete"],
+                              lambda: deps.cluster.get(ESS_DATABASE, state.run_name) is None):
+                deps.log("recovery incomplete: database CR remains; parent preserved")
+                return False
         else:
             deps.log("recovery incomplete: database identity not established; parent preserved")
-            return
+            return False
     if state.essentials_name and not state.essentials_deleted:
+        if not state.essentials_id:
+            deps.log("recovery incomplete: subscription identity not established; CR preserved")
+            return False
         if state.essentials_database_name and state.essentials_id:
             parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
             if parent_code not in (200, 404):
                 deps.log("recovery incomplete: parent existence and ownership unverified")
-                return
+                return False
             if parent_code == 200:
                 if not owned_essentials_subscription(deps, state):
                     deps.log("recovery incomplete: parent ownership unverified")
-                    return
+                    return False
                 list_code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
                 if list_code != 200 or rows:
                     deps.log("recovery incomplete: child inventory is not completely empty")
-                    return
+                    return False
         deps.cluster.delete(ESS_SUBSCRIPTION, state.run_name)
         if state.essentials_id:
             code = wait_http_404(deps, "recovery subscription", lambda: deps.cloud.get_fixed_subscription(state.essentials_id))
             if code != 404:
                 deps.log("recovery incomplete: subscription remains or cannot be read")
-                return
+                return False
         else:
             deps.log("recovery incomplete: subscription identity not established; absence unverified")
-            return
+            return False
     if find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name):
         deps.log("recovery incomplete: run-owned subscription remains in inventory")
-        return
+        return False
     for resource, name in ((ESS_DATABASE, state.essentials_database_name),
                            (ESS_SUBSCRIPTION, state.essentials_name)):
         if name and not wait_until(deps, "recovery CR finalization", deps.timeouts["delete"],
                                    lambda resource=resource, name=name: deps.cluster.get(resource, name) is None):
             deps.log("recovery incomplete: CR remains; preserving provider credentials")
-            return
+            return False
     deps.log("recovery: no run-owned subscription found")
     delete_lookups(deps)
+    return True
+
+
+def refresh_recovery_identity(deps, state: State) -> None:
+    """Bind only a CR identity independently matched to this run's Cloud name."""
+    if state.essentials_name and not state.essentials_id:
+        cr = deps.cluster.get(ESS_SUBSCRIPTION, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        row = find_named(deps.cloud.list_fixed_subscriptions_checked(), state.run_name)
+        if cr_id and row and str(row.get("id") or "") == cr_id:
+            state.essentials_id = cr_id
+            deps.remember_secret(cr_id)
+            deps.log("recovery matched subscription identity")
+    if (state.essentials_id and state.essentials_database_name and not state.essentials_database_deleted
+            and not state.essentials_database_id):
+        cr = deps.cluster.get(ESS_DATABASE, state.run_name)
+        cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
+        code, rows = deps.cloud.list_fixed_databases_complete(state.essentials_id)
+        row = find_named(rows, f"{state.run_name}-db")
+        if code == 200 and row and cr_id:
+            db_id = observed_database_id(row, "")
+            if cr_id == f"{state.essentials_id}/{db_id}":
+                state.essentials_database_id = db_id
+                deps.remember_secret(cr_id)
+                deps.remember_secret(db_id)
+                deps.log("recovery matched database and parent identity")
 
 
 def owned_essentials_subscription(deps, state: State) -> bool:
@@ -1362,12 +1410,14 @@ class Deps:
         self.secrets = list(secrets or [])
         self.lines = []
         self.poll = 30.0
+        self.recovery_poll = 60.0
         self.timeouts = {
             "lookup": 300.0,
             "acl": 300.0,
             "subscription": 1800.0,
             "database": 1200.0,
             "delete": 900.0,
+            "recovery_hold": 3600.0,
         }
         self.lookups_applied = False
         self._now = time.monotonic
