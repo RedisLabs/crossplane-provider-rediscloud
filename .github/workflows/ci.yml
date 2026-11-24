@@ -231,6 +231,14 @@ jobs:
           chmod +x "$RUNNER_TEMP/kubectl"
           QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl" python3 -m unittest discover -s scripts -p 'test_qa_kubectl_http.py'
 
+      - name: Verify UID preconditions against an isolated Kubernetes API server
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/envtest.tgz" https://github.com/kubernetes-sigs/controller-tools/releases/download/envtest-v1.36.2/envtest-v1.36.2-linux-amd64.tar.gz
+          echo '5e99f4eef3d6f9d4dd063730299f708c98da8801f2f14d8fc762cb354f30c332  '"$RUNNER_TEMP/envtest.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/envtest"
+          tar -xzf "$RUNNER_TEMP/envtest.tgz" --strip-components=2 -C "$RUNNER_TEMP/envtest" controller-tools/envtest/etcd controller-tools/envtest/kube-apiserver
+          KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest" QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl" go test -p 2 ./scripts/qa_envtest -run TestUIDPreconditionAgainstAPIServer -count=1 -v
+
       - name: Run Unit Tests
         run: make -j2 test
 

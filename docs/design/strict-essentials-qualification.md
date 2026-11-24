@@ -30,6 +30,8 @@ Both standard and strict paths create rather than apply over existing managed CR
 
 A credential-free test invokes the pinned kubectl v1.33.5 against a local HTTP test double and verifies that each resource path and DeleteOptions UID reaches the server and that a simulated replacement returns HTTP 409. This checks the kubectl transport and client error handling; it does not establish real API-server enforcement or live QA cleanup.
 
+A separate credential-free envtest starts a real isolated Kubernetes API server and etcd without Kind, deletes and recreates a Secret with the same name, and verifies that the actual QA deletion wrapper receives Conflict for the old UID, preserves the replacement, and can delete with its current UID. This establishes API-server precondition enforcement for that Secret, not live qualification of the managed CR paths.
+
 The shared account still has no cross-repository writer lock. Both scheduled and manually selected standard modes therefore fail immediately with an explicit DEFER before provider setup or Cloud reads/writes. The workflow can be re-enabled after the Operator run and cleanup complete, but scheduled standard tests will remain deferred until serialization is implemented and reviewed. The strict proof remains separately gated and must still be coordinated across repositories. Credential-free tests exercise unrelated resources, uncertain cleanup, CR finalizers and the workflow gate; they are not live Cloud qualification.
 
 Roll back by reverting this change only after independently preventing scheduled account overlap and shared-prefix deletion. There is no new API or architecture decision; existing provider and Redis Cloud ownership contracts remain in force.
