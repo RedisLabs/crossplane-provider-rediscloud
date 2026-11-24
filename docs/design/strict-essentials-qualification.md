@@ -14,9 +14,11 @@ The standard Nightly QA suite deletes any resource matching its shared prefix du
 
 The workflow builds this commit's provider in hosted Kind. It requires an independently verified QA origin that matches the credential's URL with an HTTPS `/v1` path and rejects the default public endpoint. It verifies that the read-only plan lookup returns GCP and us-central1, then creates CRs with `deletionPolicy: Delete`. It requires Ready and Synced, UID and finalizer, matching parent and child identities, and authenticated HTTP 200 for each exact resource. The database CR is deleted first, and the parent must remain HTTP 200 until the database becomes HTTP 404 and its CR disappears. The database list is paginated to an empty authenticated page before deleting the parent. The parent must then become HTTP 404 and its CR disappear; the account's fixed-subscription list must not contain the run name.
 
+Before deletion, the case changes the database eviction policy to a different supported value. It requires the original CR UID and parent/database IDs, Ready and Synced conditions, and matching controller and authenticated Cloud observations. It does not establish no-op reconciliation or the absence of additional writes. Other update fields, including rename and password rotation, remain unqualified by this case.
+
 Failure remains failure. The original job holds the controller and credentials while retrying CR-only recovery for a bounded 60-minute window. It preserves a CR whose exact Cloud identity is not yet established, and preserves the parent if the database is not independently absent or its child inventory is incomplete. If the hold expires, it reports unverified residue and preserves the Actions run and encrypted intent for recovery. The job does not directly delete Cloud resources. The separate recovery workflow currently permits read-only discovery only. A failed or ambiguous read leaves absence unverified. The workflow does not invoke shared-prefix cleanup for this mode.
 
-The separate direct recovery mode is currently disabled because task visibility cannot rule out an earlier uncertain DELETE. Use read-only discovery and manual investigation after runner loss until a durable replay guard is available.
+The separate direct recovery mode is disabled because task visibility cannot rule out an earlier uncertain DELETE. Use read-only discovery and manual investigation after runner loss until a durable replay guard is available.
 
 ## Operations and validation
 

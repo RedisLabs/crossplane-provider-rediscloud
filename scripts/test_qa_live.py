@@ -67,6 +67,7 @@ class World:
         self.ess_db_applied = False
         self.ess_sub_gone = False
         self.ess_db_gone = False
+        self.eviction = "volatile-lru"
 
     def install_provider_config(self) -> None:
         self.installed = True
@@ -105,6 +106,8 @@ class World:
             self.ess_db_applied = True
             self.ess_db_name = manifest["spec"]["forProvider"]["name"]
             self.objects[(qa_live.ESS_DATABASE, name)] = ready("200/60")
+            self.eviction = manifest["spec"]["forProvider"].get("dataEviction", self.eviction)
+            self.objects[(qa_live.ESS_DATABASE, name)]["status"]["atProvider"]["dataEviction"] = self.eviction
         elif kind == "Database":
             self.database_applied = True
             self.database_name = manifest["spec"]["forProvider"]["name"]
@@ -255,7 +258,8 @@ class World:
         self.fixed_database_gets.append(str(db_id))
         if self.ess_db_gone:
             return 404, None
-        return 200, {"databaseId": db_id, "name": self.ess_db_name, "status": "active"}
+        return 200, {"databaseId": db_id, "name": self.ess_db_name, "status": "active",
+                     "dataEvictionPolicy": self.eviction}
 
 
 def ready(obj_id: str) -> dict:
@@ -293,6 +297,41 @@ class QaLiveTest(unittest.TestCase):
         self.assertLess(world.deleted.index((qa_live.ESS_DATABASE, "xp-ci-123")),
                         world.deleted.index((qa_live.ESS_SUBSCRIPTION, "xp-ci-123")))
         self.assertTrue(any("parent HTTP_OK" in line for line in deps.lines))
+        self.assertTrue(any("eviction update verified volatile-lru -> allkeys-lru" in line for line in deps.lines))
+
+    def test_eviction_update_fails_closed_on_changed_cloud_identity(self):
+        world = World()
+        original = world.get_fixed_database
+        reads = 0
+        def changed(sub, db):
+            nonlocal reads
+            reads += 1
+            code, body = original(sub, db)
+            if reads >= 3 and code == 200:
+                body["databaseId"] = "different"
+            return code, body
+        world.get_fixed_database = changed
+        deps = deps_for(world)
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "identity changed"):
+            qa_live.strict_essentials(deps)
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertNotIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
+
+    def test_eviction_update_requires_cloud_and_controller_agreement(self):
+        world = World()
+        original = world.get_fixed_database
+        def stale(sub, db):
+            code, body = original(sub, db)
+            if body:
+                body["dataEvictionPolicy"] = "volatile-lru"
+            return code, body
+        world.get_fixed_database = stale
+        deps = deps_for(world)
+        deps.timeouts["database"] = 2
+        with self.assertRaisesRegex(qa_live.SuiteFailure, "did not converge"):
+            qa_live.strict_essentials(deps)
+        self.assertEqual(world.cloud_deletes, [])
+        self.assertTrue(any("original qualification remains FAILED" in line for line in deps.lines))
 
     def test_strict_refuses_existing_essentials_without_mutation(self):
         world = World()
