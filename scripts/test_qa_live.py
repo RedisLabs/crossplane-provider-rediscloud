@@ -544,7 +544,7 @@ class QaLiveTest(unittest.TestCase):
         def delayed_delete(resource, name, namespace=None):
             if resource == qa_live.ESS_DATABASE:
                 calls.append(1)
-                if len(calls) == 1:
+                if len(calls) <= 2:
                     world.deleted.append((resource, name))
                     return
             original_delete(resource, name, namespace)
@@ -554,9 +554,28 @@ class QaLiveTest(unittest.TestCase):
         deps.timeouts["recovery_hold"] = 2
         with self.assertRaisesRegex(qa_live.SuiteFailure, "database deletion timed out"):
             qa_live.strict_essentials(deps)
+        self.assertTrue(any("RECOVERY HOLD:" in line for line in deps.lines))
+        self.assertGreaterEqual(deps.now(), 1)
         self.assertTrue(any("recovery complete; original qualification remains FAILED" in line for line in deps.lines))
         self.assertIn((qa_live.ESS_SUBSCRIPTION, "xp-ci-123"), world.deleted)
         self.assertEqual(world.cloud_deletes, [])
+
+    def test_hold_deadline_caps_each_cleanup_poll(self):
+        world = World()
+        original_delete = world.delete
+        def stuck_db(resource, name, namespace=None):
+            if resource == qa_live.ESS_DATABASE:
+                world.deleted.append((resource, name))
+                return
+            original_delete(resource, name, namespace)
+        world.delete = stuck_db
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 5
+        deps.timeouts["recovery_hold"] = 2
+        with self.assertRaises(qa_live.SuiteFailure):
+            qa_live.strict_essentials(deps)
+        self.assertEqual(deps.now(), 7)
+        self.assertTrue(any("RECOVERY HOLD TIMED OUT" in line for line in deps.lines))
 
     def test_recovery_preserves_parent_if_other_children_remain(self):
         world = World()

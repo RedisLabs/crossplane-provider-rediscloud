@@ -874,6 +874,7 @@ def strict_essentials(deps) -> None:
     except Exception:
         deps.log("strict qualification FAILED; retaining controller and credentials for CR recovery")
         deadline = deps.now() + deps.timeouts["recovery_hold"]
+        deps.recovery_deadline = deadline
         while True:
             try:
                 complete = strict_recover(deps, state)
@@ -887,7 +888,8 @@ def strict_essentials(deps) -> None:
                 deps.log("RECOVERY HOLD TIMED OUT: residue is unverified; use this Actions run and its encrypted ownership artifact for follow-up")
                 break
             deps.log("RECOVERY HOLD: cleanup unresolved; retaining controller and credentials")
-            deps.sleep(deps.recovery_poll)
+            deps.sleep(min(deps.recovery_poll, max(0, deadline - deps.now())))
+        deps.recovery_deadline = None
         raise
     else:
         delete_lookups(deps)
@@ -898,21 +900,17 @@ def strict_recover(deps, state: State) -> bool:
     refresh_recovery_identity(deps, state)
     if state.essentials_database_name and not state.essentials_database_deleted:
         if not state.essentials_id or not state.essentials_database_id:
-            deps.log("recovery incomplete: database identity not established; CR and parent preserved")
+            deps.log("recovery incomplete: database identity not established; an asynchronous create may still finish, so CR and parent are preserved")
             return False
         deps.cluster.delete(ESS_DATABASE, state.run_name)
-        if state.essentials_id and state.essentials_database_id:
-            code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
-                state.essentials_id, state.essentials_database_id))
-            if code != 404:
-                deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
-                return False
-            if not wait_until(deps, "recovery database CR finalization", deps.timeouts["delete"],
-                              lambda: deps.cluster.get(ESS_DATABASE, state.run_name) is None):
-                deps.log("recovery incomplete: database CR remains; parent preserved")
-                return False
-        else:
-            deps.log("recovery incomplete: database identity not established; parent preserved")
+        code = wait_http_404(deps, "recovery database", lambda: deps.cloud.get_fixed_database(
+            state.essentials_id, state.essentials_database_id))
+        if code != 404:
+            deps.log("recovery incomplete: database remains or cannot be read; parent preserved")
+            return False
+        if not wait_until(deps, "recovery database CR finalization", deps.timeouts["delete"],
+                          lambda: deps.cluster.get(ESS_DATABASE, state.run_name) is None):
+            deps.log("recovery incomplete: database CR remains; parent preserved")
             return False
     if state.essentials_name and not state.essentials_deleted:
         if not state.essentials_id:
@@ -1103,6 +1101,8 @@ def cleanup(deps, state: State) -> None:
 
 def wait_until(deps, label: str, timeout: float, ready) -> bool:
     deadline = deps.now() + timeout
+    if deps.recovery_deadline is not None:
+        deadline = min(deadline, deps.recovery_deadline)
     while True:
         if ready():
             return True
@@ -1411,6 +1411,7 @@ class Deps:
         self.lines = []
         self.poll = 30.0
         self.recovery_poll = 60.0
+        self.recovery_deadline = None
         self.timeouts = {
             "lookup": 300.0,
             "acl": 300.0,
