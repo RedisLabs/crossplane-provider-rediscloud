@@ -335,6 +335,69 @@ def validated_account_rows(body, key: str) -> list:
     return rows
 
 
+
+def validated_database_page(body, parent, rows, seen, offset, limit, totals, metadata, label):
+    """Reject contradictory metadata and malformed or duplicated rows."""
+    page = parent["databases"]
+    if metadata.get("hasMore") is True and not page:
+        raise SuiteFailure(f"{label} preceding page reported more data")
+    if metadata.get("hasMore") is False and page:
+        raise SuiteFailure(f"{label} preceding page reported no more data")
+    flags = set()
+    if len(page) > limit:
+        raise SuiteFailure(f"{label} page exceeds limit")
+    for obj in (body, parent):
+        for key in ("total", "totalCount", "totalRecords", "numberOfDatabases"):
+            if key in obj:
+                count = obj[key]
+                if type(count) is not int or count < 0:
+                    raise SuiteFailure(f"{label} count malformed")
+                totals.add(count)
+        for key in ("next", "nextPage", "nextPageToken", "nextToken", "cursor"):
+            if obj.get(key):
+                raise SuiteFailure(f"{label} pagination metadata unsupported")
+        for key in ("truncated", "isTruncated"):
+            if key in obj and (type(obj[key]) is not bool or obj[key]):
+                raise SuiteFailure(f"{label} truncation unverified")
+        if "hasNext" in obj and (type(obj["hasNext"]) is not bool or obj["hasNext"]):
+            raise SuiteFailure(f"{label} pagination metadata unsupported")
+        if "hasMore" in obj:
+            if type(obj["hasMore"]) is not bool:
+                raise SuiteFailure(f"{label} hasMore malformed")
+            flags.add(obj["hasMore"])
+        if obj.get("hasMore") is True and not page:
+            raise SuiteFailure(f"{label} empty page reports more data")
+        for key in ("links", "_links", "pagination"):
+            if obj.get(key):
+                raise SuiteFailure(f"{label} pagination metadata unsupported")
+        for key, expected in (("offset", offset), ("limit", limit)):
+            if key in obj and (type(obj[key]) is not int or obj[key] != expected):
+                raise SuiteFailure(f"{label} pagination metadata differs")
+    if len(flags) > 1:
+        raise SuiteFailure(f"{label} pagination flags conflict")
+    metadata["hasMore"] = next(iter(flags)) if flags else None
+    if len(totals) > 1:
+        raise SuiteFailure(f"{label} counts conflict")
+    if page and len(page) < limit and not totals:
+        raise SuiteFailure(f"{label} short page without a verified total")
+    for row in page:
+        if not isinstance(row, dict):
+            raise SuiteFailure(f"{label} row malformed")
+        ident = row.get("databaseId")
+        if (isinstance(ident, bool) or not isinstance(ident, (int, str)) or
+                not re.fullmatch(r"[0-9]{1,20}", str(ident)) or int(ident) <= 0 or
+                not isinstance(row.get("name"), str) or not row["name"].strip()):
+            raise SuiteFailure(f"{label} identity malformed")
+        ident = str(int(ident))
+        if ident in seen:
+            raise SuiteFailure(f"{label} duplicate identity")
+        seen.add(ident)
+        rows.append(row)
+    if totals and (len(rows) > next(iter(totals)) or
+                   (not page and len(rows) != next(iter(totals)))):
+        raise SuiteFailure(f"{label} inventory count mismatch")
+    return bool(page)
+
 def database_rows(body) -> list:
     if not isinstance(body, dict):
         return []
@@ -1704,7 +1767,7 @@ class RedisCloud:
     def list_databases_complete(self, sub_id: str):
         # The official Go iterator uses limit/offset and checks the returned
         # subscription ID. A 404 or malformed page is never an empty inventory.
-        rows = []
+        rows, seen, totals, metadata = [], set(), set(), {}
         limit = 100
         for offset in range(0, 10000, limit):
             code, body = self.request("GET", f"/subscriptions/{sub_id}/databases?limit={limit}&offset={offset}")
@@ -1716,10 +1779,8 @@ class RedisCloud:
                     str(subscriptions[0].get("subscriptionId") or "") != str(sub_id) or
                     not isinstance(subscriptions[0].get("databases"), list)):
                 raise SuiteFailure("list databases page has unexpected shape or parent")
-            page = subscriptions[0]["databases"]
-            if not page:
+            if not validated_database_page(body, subscriptions[0], rows, seen, offset, limit, totals, metadata, "database"):
                 return 200, rows
-            rows.extend(page)
         raise SuiteFailure("list databases pagination did not terminate")
 
     def get_database(self, sub_id: str, db_id: str):
@@ -1779,7 +1840,7 @@ class RedisCloud:
     def list_fixed_databases_complete(self, sub_id: str):
         # rediscloud-go-api's fixed database iterator advances by limit/offset
         # until an authenticated page is empty. Never infer absence from 404.
-        rows = []
+        rows, seen, totals, metadata = [], set(), set(), {}
         limit = 100
         for offset in range(0, 10000, limit):
             code, body = self.request("GET", f"/fixed/subscriptions/{sub_id}/databases?limit={limit}&offset={offset}")
@@ -1789,10 +1850,8 @@ class RedisCloud:
                     str(body["subscription"].get("subscriptionId") or "") != str(sub_id) or
                     not isinstance(body["subscription"].get("databases"), list)):
                 raise SuiteFailure("list essentials databases page has unexpected shape")
-            page = body["subscription"]["databases"]
-            if not page:
+            if not validated_database_page(body, body["subscription"], rows, seen, offset, limit, totals, metadata, "essentials database"):
                 return 200, rows
-            rows.extend(page)
         raise SuiteFailure("list essentials databases pagination did not terminate")
 
     def get_fixed_database(self, sub_id: str, db_id: str):

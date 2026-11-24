@@ -872,18 +872,80 @@ class QaLiveTest(unittest.TestCase):
         calls = []
         def request(method, path):
             calls.append(path)
-            rows = [{"name": "first"}] if "offset=0" in path else []
-            return 200, {"subscription": {"subscriptionId": 7, "databases": rows}}
+            rows = [{"databaseId": 42, "name": "first"}] if "offset=0" in path else []
+            return 200, {"subscription": {"subscriptionId": 7, "databases": rows, "numberOfDatabases": 1}}
         cloud.request = request
         code, rows = cloud.list_fixed_databases_complete("7")
         self.assertEqual(code, 200)
-        self.assertEqual(rows, [{"name": "first"}])
+        self.assertEqual(rows, [{"databaseId": 42, "name": "first"}])
         self.assertEqual(len(calls), 2)
         for response in ((403, None), (200, {"subscription": {"subscriptionId": 8, "databases": []}}),
                          (200, {"subscription": {"subscriptionId": 7}})):
             cloud.request = lambda method, path, response=response: response
             with self.assertRaises(qa_live.SuiteFailure):
                 cloud.list_fixed_databases_complete("7")
+
+    def test_database_inventory_rejects_contradictory_empty_and_duplicate_pages(self):
+        cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
+        for fixed in (False, True):
+            method = cloud.list_fixed_databases_complete if fixed else cloud.list_databases_complete
+            def envelope(page, **metadata):
+                parent = {"subscriptionId": 7, "databases": page, **metadata}
+                return {"subscription": parent if fixed else [parent]}
+            bad_pages = [envelope([], numberOfDatabases=1), envelope([], totalCount=1),
+                         envelope([], hasMore=True), envelope([], offset=1),
+                         envelope([], nextPage="unknown"), envelope([], nextToken="unknown"),
+                         envelope([], truncated=True), envelope([], isTruncated=True),
+                         envelope([], hasNext=True), envelope([], links={"next": "x"}),
+                         envelope([{"databaseId": 42, "name": "first"}]),
+                         envelope([{"databaseId": 42}]), envelope([{"databaseId": 0, "name": "x"}]),
+                         envelope([{"databaseId": n + 1, "name": str(n)} for n in range(101)])]
+            for body in bad_pages:
+                with self.subTest(fixed=fixed, body=repr(body)[:100]):
+                    cloud.request = lambda method, path, body=body: (200, body)
+                    with self.assertRaises(qa_live.SuiteFailure):
+                        method("7")
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], total=2),
+                          envelope([{"databaseId": 42, "name": "first"}], total=2)])
+            cloud.request = lambda method, path: (200, next(calls))
+            with self.assertRaises(qa_live.SuiteFailure):
+                method("7")
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], hasMore=True, total=2),
+                          envelope([])])
+            cloud.request = lambda method, path: (200, next(calls))
+            with self.assertRaises(qa_live.SuiteFailure):
+                method("7")
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], hasMore=False, total=2),
+                          envelope([{"databaseId": 43, "name": "second"}])])
+            cloud.request = lambda method, path: (200, next(calls))
+            with self.assertRaises(qa_live.SuiteFailure):
+                method("7")
+            calls = iter([envelope([{"databaseId": 42, "name": "first"}], total=1),
+                          envelope([], total=2)])
+            cloud.request = lambda method, path: (200, next(calls))
+            with self.assertRaises(qa_live.SuiteFailure):
+                method("7")
+
+    def test_contradictory_empty_inventory_preserves_parent_cr(self):
+        for fixed in (False, True):
+            world, state = World(), qa_live.State("xp-ci-123")
+            resource = qa_live.ESS_SUBSCRIPTION if fixed else qa_live.SUBSCRIPTION
+            parent_id = "200" if fixed else "100"
+            setattr(state, "essentials_name" if fixed else "subscription_name", state.run_name)
+            setattr(state, "essentials_id" if fixed else "subscription_id", parent_id)
+            world.objects[(resource, state.run_name)] = ready(parent_id)
+            state.owned_uids[(resource, state.run_name, None)] = "test-uid"
+            cloud = qa_live.RedisCloud("https://qa.invalid/v1", "a", "b")
+            parent = {"subscriptionId": int(parent_id), "databases": [], "numberOfDatabases": 1}
+            cloud.request = lambda method, path: (200, {"subscription": parent if fixed else [parent]})
+            if fixed:
+                world.list_fixed_databases_complete = cloud.list_fixed_databases_complete
+            else:
+                world.list_databases_complete = cloud.list_databases_complete
+            with self.assertRaises(qa_live.SuiteFailure):
+                qa_live.cleanup(deps_for(world), state)
+            self.assertEqual(world.deleted, [])
+            self.assertEqual(world.cloud_deletes, [])
 
     def test_controller_deletion_event_must_match_original_uid(self):
         world = World()
@@ -1175,10 +1237,10 @@ class QaLiveTest(unittest.TestCase):
         calls = []
         def request(method, path):
             calls.append(path)
-            rows = [{"databaseId": 42}] if "offset=0" in path else []
-            return 200, {"subscription": [{"subscriptionId": 7, "databases": rows}]}
+            rows = [{"databaseId": 42, "name": "first"}] if "offset=0" in path else []
+            return 200, {"subscription": [{"subscriptionId": 7, "databases": rows, "numberOfDatabases": 1}]}
         cloud.request = request
-        self.assertEqual(cloud.list_databases_complete("7"), (200, [{"databaseId": 42}]))
+        self.assertEqual(cloud.list_databases_complete("7"), (200, [{"databaseId": 42, "name": "first"}]))
         self.assertEqual(len(calls), 2)
         for response in ((403, None), (200, {"subscription": [{"subscriptionId": 8, "databases": []}]}),
                          (200, {"subscription": [{"subscriptionId": 7}]})):
