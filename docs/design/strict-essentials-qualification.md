@@ -4,7 +4,7 @@
 
 **Date:** 2026-11-24. **Status:** Proposed. **Ticket:** RED-225344.
 
-**Dispatch prerequisite:** The coordinator must first finish Operator GCP qualification, verify its clean inventory, and ensure no Cloud writer in either repository is active. The read-only preflight may run independently. Qualification persists an encrypted ownership intent and task baseline before Cloud writes and verifies its artifact ID, run, attempt and commit using GitHub's API before installing the provider credentials.
+**Dispatch prerequisite:** The coordinator must first finish Operator GCP qualification, verify its clean inventory, and ensure no Cloud writer in either repository is active. The read-only preflight may run independently. Qualification uploads and retrieves its encrypted ownership intent and task baseline before Cloud writes, then authenticates the downloaded intent against the run, attempt, commit and account before installing the provider credentials.
 
 ## Problem and goals
 

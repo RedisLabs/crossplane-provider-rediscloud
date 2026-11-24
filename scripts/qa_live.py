@@ -14,7 +14,9 @@ the payment method id.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import hmac
 import http.client
 import json
 import os
@@ -23,10 +25,12 @@ import secrets
 import string
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PREFIX = "xp-ci-"
@@ -92,31 +96,37 @@ def matches_expected_qa_origin(url: str) -> bool:
     )
 
 
-def verify_checkpoint_artifact(run_id: str) -> None:
-    """Require the uploaded ownership artifact for this exact hosted run."""
+def verify_checkpoint_artifact(run_id: str, credentials: dict, expected_kind: str = "strict") -> None:
+    """Authenticate the artifact downloaded from this exact hosted run."""
     run = os.environ.get("GITHUB_RUN_ID", "")
     attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
     artifact_id = os.environ.get("QA_OWNERSHIP_ARTIFACT_ID", "")
+    artifact_path = os.environ.get("QA_OWNERSHIP_ARTIFACT_PATH", "")
     commit = os.environ.get("GITHUB_SHA", "")
     if (os.environ.get("GITHUB_ACTIONS") != "true" or
             os.environ.get("GITHUB_REPOSITORY") != "RedisLabs/crossplane-provider-rediscloud" or
             not re.fullmatch(r"[1-9][0-9]*", run) or not re.fullmatch(r"[1-9][0-9]*", attempt) or
-            not re.fullmatch(r"[1-9][0-9]*", artifact_id) or not re.fullmatch(r"[a-f0-9]{40}", commit) or
+            not re.fullmatch(r"[1-9][0-9]*", artifact_id) or not artifact_path or not re.fullmatch(r"[a-f0-9]{40}", commit) or
             run_id != f"{run}-{attempt}"):
         raise SuiteFailure("strict qualification requires this run's persisted ownership artifact")
     try:
-        response = subprocess.run(["gh", "api", f"repos/RedisLabs/crossplane-provider-rediscloud/actions/artifacts/{artifact_id}"],
-                                  check=True, capture_output=True, text=True)
-        artifact = json.loads(response.stdout)
-    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError):
-        raise SuiteFailure("ownership artifact could not be verified") from None
-    if not isinstance(artifact, dict) or not isinstance(artifact.get("workflow_run"), dict):
-        raise SuiteFailure("ownership artifact response has unexpected shape")
-    source = artifact["workflow_run"]
-    if (str(artifact.get("id") or "") != artifact_id or artifact.get("expired") is not False or
-            artifact.get("name") != f"ownership-{run}-{attempt}" or str(source.get("id") or "") != run or
-            source.get("head_sha") != commit):
-        raise SuiteFailure("ownership artifact does not match this run and commit")
+        with tempfile.TemporaryDirectory(prefix="qa-ownership-") as tmp:
+            encrypted = Path(tmp) / "ownership.enc"
+            encrypted.write_bytes(Path(artifact_path).read_bytes())
+            script = Path(__file__).with_name("qa_checkpoint.mjs")
+            subprocess.run(["node", str(script), "resolve", str(encrypted), run, attempt],
+                           check=True, capture_output=True, text=True)
+            intent = json.loads(Path(str(encrypted) + ".resolved").read_text())
+        key = base64.b64decode(os.environ.get("QA_CHECKPOINT_KEY", ""), validate=True)
+        parts = urllib.parse.urlsplit(credentials.get("url") or "")
+        origin_hash = hashlib.sha256(f"{parts.scheme}://{parts.netloc}".encode()).hexdigest()
+        binding = hmac.new(key, credentials["api_key"].encode(), hashlib.sha256).hexdigest()
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError):
+        raise SuiteFailure("ownership artifact could not be authenticated") from None
+    if (len(key) != 32 or intent.get("kind") != expected_kind or intent.get("commit") != commit or
+            intent.get("originHash") != origin_hash or
+            not hmac.compare_digest(binding, str(intent.get("credentialBinding") or ""))):
+        raise SuiteFailure("ownership artifact does not match this run, commit and account")
 
 
 def preflight(credentials: dict) -> None:
@@ -168,6 +178,49 @@ def preflight(credentials: dict) -> None:
         print("authenticated database pagination reached an empty page", flush=True)
     else:
         print("database pagination not exercised: account has no Essentials subscription", flush=True)
+
+
+def task_diagnostic(credentials: dict, clock=None, output=print) -> None:
+    """Read recent fixed-database delete task states without printing IDs."""
+    if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
+        raise SuiteFailure("task diagnostic requires a verified QA endpoint")
+    import qa_capture_task_baseline
+    cloud = RedisCloud(credentials["url"], credentials["api_key"], credentials["secret_key"])
+    rows = qa_capture_task_baseline.task_rows(cloud)
+    now = clock or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=2)
+    valid_status = {"initialized", "received", "processing-in-progress", "processing-completed", "processing-error"}
+    found = []
+    invalid_timestamps = 0
+    for row in rows.values():
+        if row.get("commandType") != "fixedDatabaseDeleteRequest":
+            continue
+        try:
+            timestamp = datetime.fromisoformat(str(row.get("timestamp") or "").replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                raise ValueError("timezone required")
+            timestamp = timestamp.astimezone(timezone.utc)
+        except ValueError:
+            invalid_timestamps += 1
+            continue
+        if cutoff <= timestamp <= now:
+            status = row.get("status") if row.get("status") in valid_status else "other"
+            found.append((timestamp, status))
+    output(f"recent fixedDatabaseDeleteRequest task count={len(found)}; invalid timestamps={invalid_timestamps}")
+    for timestamp, status in sorted(found, reverse=True)[:50]:
+        output(f"fixedDatabaseDeleteRequest status={status} timestamp={timestamp.isoformat().replace('+00:00', 'Z')}")
+    if len(found) > 50:
+        output("additional matching tasks omitted from display")
+    encoded_key = os.environ.get("QA_ACCOUNT_FINGERPRINT_KEY", "")
+    try:
+        key = base64.b64decode(encoded_key, validate=True)
+    except ValueError:
+        key = b""
+    if len(key) == 32:
+        fingerprint = hmac.new(key, credentials["api_key"].encode(), hashlib.sha256).hexdigest()
+        output(f"opaque account comparison HMAC={fingerprint}")
+    else:
+        output("account comparison unavailable: shared fingerprint key missing or invalid")
 
 
 def redact(text: str, secrets: list[str]) -> str:
@@ -1622,6 +1675,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--cleanup-only", action="store_true")
     parser.add_argument("--strict-essentials", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--task-diagnostic", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -1630,6 +1684,11 @@ def main(argv: list[str] | None = None) -> int:
     deps = None
     try:
         credentials = load_credentials(args.credentials_file, os.environ.get("UPTEST_CLOUD_CREDENTIALS"))
+        if args.task_diagnostic:
+            if args.cleanup_only or args.strict_essentials or args.preflight_only:
+                raise SuiteFailure("task diagnostic cannot be combined with other modes")
+            task_diagnostic(credentials)
+            return 0
         if args.preflight_only:
             if args.cleanup_only or args.strict_essentials:
                 raise SuiteFailure("preflight cannot be combined with mutating modes")
@@ -1640,7 +1699,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SuiteFailure("strict qualification cannot use shared-prefix cleanup")
             if not credentials.get("url") or not matches_expected_qa_origin(credentials["url"]):
                 raise SuiteFailure("strict qualification requires the explicit approved QA endpoint")
-            verify_checkpoint_artifact(args.run_id)
+            verify_checkpoint_artifact(args.run_id, credentials)
         deps = build_deps(args, credentials)
         if args.cleanup_only:
             cleanup_only(deps)

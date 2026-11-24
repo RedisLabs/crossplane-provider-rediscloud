@@ -4,15 +4,20 @@
 from __future__ import annotations
 
 import unittest
+import base64
 import hashlib
+import hmac
 import json
+import tempfile
 import threading
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
 import qa_live
+import qa_capture_task_baseline
 
 REPO = Path(__file__).resolve().parents[1]
 PAYMENT_ID = "should-not-print"
@@ -400,6 +405,26 @@ class QaLiveTest(unittest.TestCase):
             self.assertEqual(qa_live.main(["--preflight-only"]), 0)
             build.assert_not_called()
 
+    def test_task_diagnostic_outputs_only_safe_status_and_time(self):
+        rows = {
+            "sensitive-task-id": {"commandType": "fixedDatabaseDeleteRequest", "status": "processing-in-progress", "timestamp": "2026-11-23T22:30:00Z", "description": "sensitive-description"},
+            "old-id": {"commandType": "fixedDatabaseDeleteRequest", "status": "processing-error", "timestamp": "2026-11-22T22:00:00Z"},
+            "bad-id": {"commandType": "fixedDatabaseDeleteRequest", "status": "injected-private-value", "timestamp": "invalid"},
+        }
+        lines = []
+        credentials = {"api_key": "private-account-key", "secret_key": "private-secret", "url": "https://qa.example.invalid/v1"}
+        encoded = base64.b64encode(b"k" * 32).decode()
+        with patch.dict("os.environ", {"QA_ACCOUNT_FINGERPRINT_KEY": encoded}), \
+             patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
+             patch.object(qa_capture_task_baseline, "task_rows", return_value=rows):
+            qa_live.task_diagnostic(credentials, datetime(2026, 11, 23, 23, 0, tzinfo=timezone.utc), lines.append)
+        text = "\n".join(lines)
+        self.assertIn("task count=1; invalid timestamps=1", text)
+        self.assertIn("status=processing-in-progress", text)
+        self.assertIn(hmac.new(b"k" * 32, b"private-account-key", hashlib.sha256).hexdigest(), text)
+        for secret in ("sensitive-task-id", "sensitive-description", "private-account-key", "private-secret", "injected-private-value"):
+            self.assertNotIn(secret, text)
+
     def test_strict_mode_requires_verified_origin_before_invocation(self):
         with patch.object(qa_live, "load_credentials", return_value={
             "api_key": "a", "secret_key": "b", "url": "https://qa.example.invalid/v1"
@@ -412,30 +437,44 @@ class QaLiveTest(unittest.TestCase):
             strict.assert_called_once_with(build.return_value)
 
     def test_strict_requires_persisted_artifact_for_exact_run_and_commit(self):
+        key = b"x" * 32
+        creds = {"api_key": "account", "url": "https://qa.example.invalid/v1"}
         env = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "RedisLabs/crossplane-provider-rediscloud",
                "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2", "GITHUB_SHA": "a" * 40,
-               "QA_OWNERSHIP_ARTIFACT_ID": "456"}
-        artifact = {"id": 456, "name": "ownership-123-2", "expired": False,
-                    "workflow_run": {"id": 123, "head_sha": "a" * 40}}
-        with patch.dict("os.environ", env), patch.object(qa_live.subprocess, "run") as run:
-            run.return_value.stdout = json.dumps(artifact)
-            qa_live.verify_checkpoint_artifact("123-2")
-            with self.assertRaises(qa_live.SuiteFailure):
-                qa_live.verify_checkpoint_artifact("123-1")
-            run.return_value.stdout = json.dumps(dict(artifact, expired=True))
-            with self.assertRaises(qa_live.SuiteFailure):
-                qa_live.verify_checkpoint_artifact("123-2")
-            run.return_value.stdout = json.dumps(dict(artifact, workflow_run={"id": 123, "head_sha": "b" * 40}))
-            with self.assertRaises(qa_live.SuiteFailure):
-                qa_live.verify_checkpoint_artifact("123-2")
-            run.return_value.stdout = "[]"
-            with self.assertRaises(qa_live.SuiteFailure):
-                qa_live.verify_checkpoint_artifact("123-2")
-        with patch.dict("os.environ", dict(env, QA_OWNERSHIP_ARTIFACT_ID="")), \
-             patch.object(qa_live.subprocess, "run") as run:
-            with self.assertRaises(qa_live.SuiteFailure):
-                qa_live.verify_checkpoint_artifact("123-2")
-            run.assert_not_called()
+               "QA_OWNERSHIP_ARTIFACT_ID": "456", "QA_CHECKPOINT_KEY": base64.b64encode(key).decode()}
+        intent = {"kind": "strict", "commit": "a" * 40,
+                  "originHash": hashlib.sha256(b"https://qa.example.invalid").hexdigest(),
+                  "credentialBinding": hmac.new(key, b"account", hashlib.sha256).hexdigest()}
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "ownership.enc"
+            source.write_text("ciphertext")
+            env["QA_OWNERSHIP_ARTIFACT_PATH"] = str(source)
+            def decrypt(command, **kwargs):
+                Path(command[3] + ".resolved").write_text(json.dumps(intent))
+            with patch.dict("os.environ", env), patch.object(qa_live.subprocess, "run", side_effect=decrypt) as run:
+                qa_live.verify_checkpoint_artifact("123-2", creds)
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-1", creds)
+                intent["kind"] = "rehearsal"
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                intent["kind"] = "strict"
+                intent["commit"] = "b" * 40
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                intent["commit"] = "a" * 40
+                intent["originHash"] = "0" * 64
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                intent["originHash"] = hashlib.sha256(b"https://qa.example.invalid").hexdigest()
+                intent["credentialBinding"] = "0" * 64
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+            with patch.dict("os.environ", dict(env, QA_OWNERSHIP_ARTIFACT_ID="")), \
+                 patch.object(qa_live.subprocess, "run") as run:
+                with self.assertRaises(qa_live.SuiteFailure):
+                    qa_live.verify_checkpoint_artifact("123-2", creds)
+                run.assert_not_called()
 
     def test_strict_recovers_only_its_exact_resources_and_still_fails(self):
         world = World()
