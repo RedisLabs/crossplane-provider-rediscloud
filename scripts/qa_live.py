@@ -837,6 +837,8 @@ def strict_essentials(deps) -> None:
             raise SuiteFailure("database baseline is not HTTP 200")
         deps.cluster.record_controller_evidence(state.run_name)
 
+        qualify_essentials_eviction_update(deps, state, db_manifest, db)
+
         deps.cluster.delete(ESS_DATABASE, state.run_name)
         def database_gone():
             parent_code, _ = deps.cloud.get_fixed_subscription(state.essentials_id)
@@ -893,6 +895,42 @@ def strict_essentials(deps) -> None:
         raise
     else:
         delete_lookups(deps)
+
+
+def qualify_essentials_eviction_update(deps, state: State, manifest: dict, baseline: dict) -> None:
+    """Change one field without changing the exact names used by recovery."""
+    code, body = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
+    if (code != 200 or not isinstance(body, dict) or
+            str(body.get("databaseId") or "") != state.essentials_database_id or
+            body.get("name") != f"{state.run_name}-db"):
+        raise SuiteFailure("eviction update baseline identity is unverified")
+    before = body.get("dataEvictionPolicy")
+    if before not in ("noeviction", "allkeys-lru", "allkeys-lfu", "allkeys-random",
+                      "volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl"):
+        raise SuiteFailure("eviction update baseline policy is unexpected")
+    target = "noeviction" if before == "allkeys-lru" else "allkeys-lru"
+    manifest["spec"]["forProvider"]["dataEviction"] = target
+    deps.cluster.apply(manifest)
+    baseline_uid = baseline["metadata"]["uid"]
+    def converged():
+        cr = deps.cluster.get(ESS_DATABASE, state.run_name)
+        if not cr or (cr.get("metadata") or {}).get("uid") != baseline_uid:
+            raise SuiteFailure("eviction update changed database CR identity")
+        observed = ((cr.get("status") or {}).get("atProvider") or {})
+        if str(observed.get("id") or "") != f"{state.essentials_id}/{state.essentials_database_id}":
+            raise SuiteFailure("eviction update changed database Cloud identity")
+        code, current = deps.cloud.get_fixed_database(state.essentials_id, state.essentials_database_id)
+        if code != 200 or not isinstance(current, dict):
+            raise SuiteFailure("eviction update Cloud read failed")
+        if (str(current.get("databaseId") or "") != state.essentials_database_id or
+                current.get("name") != f"{state.run_name}-db"):
+            raise SuiteFailure("eviction update Cloud identity changed")
+        return (strict_ready(cr) and observed.get("dataEviction") == target and
+                current.get("dataEvictionPolicy") == target and current.get("status") == "active")
+    if not wait_until(deps, "essentials eviction update", deps.timeouts["database"], converged):
+        raise SuiteFailure("eviction update did not converge")
+    deps.log(f"essentials eviction update verified {before} -> {target}; CR and Cloud IDs unchanged")
+    deps.log("unchanged reconcile and no-extra-write evidence not established")
 
 
 def strict_recover(deps, state: State) -> bool:
