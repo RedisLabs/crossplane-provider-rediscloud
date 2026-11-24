@@ -839,6 +839,28 @@ class QaLiveTest(unittest.TestCase):
         self.assertEqual(world.deleted, [])
         self.assertEqual(world.cloud_deletes, [])
 
+    def test_acl_recovery_accepts_delayed_absence_after_proven_delete_request(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.acl_name = state.run_name
+        world.rules = [{"id": "1", "name": state.run_name}]
+        world.objects[(qa_live.ACL, state.run_name)] = ready("1")
+        world.delete = lambda resource, name, namespace=None: None
+        deps = deps_for(world)
+        deps.timeouts["delete"] = 0
+        self.assertFalse(qa_live.cleanup(deps, state))
+        world.rules = []
+        world.objects.pop((qa_live.ACL, state.run_name))
+        self.assertTrue(qa_live.cleanup(deps, state))
+        self.assertIsNone(state.acl_name)
+
+    def test_acl_absence_without_proven_delete_remains_uncertain(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        state.acl_name = state.run_name
+        self.assertFalse(qa_live.cleanup(deps_for(world), state))
+        self.assertEqual(world.deleted, [])
+
     def test_success_check_requires_active_keys_and_404(self):
         ok = qa_live.success_problems("active", "active", ["public_endpoint", "private_endpoint"], 404, 404)
         self.assertEqual(ok, [])

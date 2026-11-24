@@ -439,6 +439,7 @@ class State:
         self.essentials_deleted = False
         self.essentials_database_deleted = False
         self.lookups_applied = False
+        self.named_deletion_requested = set()
 
 
 def run(deps) -> None:
@@ -1097,10 +1098,13 @@ def cleanup(deps, state: State) -> bool:
             return True
         cr = deps.cluster.get(resource, name)
         row = find_named(list_rows(), name)
+        if cr is None and row is None and (resource, name) in state.named_deletion_requested:
+            return True
         cr_id = str((((cr or {}).get("status") or {}).get("atProvider") or {}).get("id") or "")
         if not cr or not row or not cr_id or str(row.get("id") or "") != cr_id:
             deps.log("recovery named-resource identity unknown; preserving credentials")
             return False
+        state.named_deletion_requested.add((resource, name))
         deps.cluster.delete(resource, name)
         return wait_until(deps, "recovery named resource", deps.timeouts["delete"],
                           lambda: deps.cluster.get(resource, name) is None and
