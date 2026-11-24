@@ -533,7 +533,8 @@ class QaLiveTest(unittest.TestCase):
     def test_strict_mode_requires_verified_origin_before_invocation(self):
         with patch.object(qa_live, "load_credentials", return_value={
             "api_key": "a", "secret_key": "b", "url": "https://qa.example.invalid/v1"
-        }), patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
+        }), patch.object(qa_live, "require_shared_writer_lock"), \
+             patch.object(qa_live, "matches_expected_qa_origin", return_value=True), \
              patch.object(qa_live, "verify_checkpoint_artifact") as checkpoint, \
              patch.object(qa_live, "build_deps") as build, \
              patch.object(qa_live, "strict_essentials") as strict:
@@ -985,13 +986,72 @@ class QaLiveTest(unittest.TestCase):
                 self.assertEqual(world.cloud_deletes, [])
                 self.assertEqual(names(getattr(world, field)), ["xp-ci-other"])
 
-    def test_schedule_defers_before_setup_and_skips_inventory_step(self):
+    def test_live_writer_entry_points_defer_before_credentials_or_setup(self):
+        for argv in ([], ["--strict-essentials"]):
+            with self.subTest(argv=argv), patch.object(qa_live, "load_credentials") as credentials, \
+                 patch.object(qa_live, "build_deps") as build, patch.object(qa_live, "run") as run, \
+                 patch.object(qa_live, "strict_essentials") as strict:
+                self.assertEqual(qa_live.main(argv), 1)
+                credentials.assert_not_called()
+                build.assert_not_called()
+                run.assert_not_called()
+                strict.assert_not_called()
+
+    def test_live_gate_has_no_environment_override(self):
+        with patch.dict("os.environ", {"QA_FORCE_LIVE": "true", "QA_ACCOUNT_LOCK": "true"}), \
+             patch.object(qa_live, "load_credentials") as credentials:
+            self.assertEqual(qa_live.main(["--strict-essentials"]), 1)
+            credentials.assert_not_called()
+
+    def test_existing_in_process_recovery_bypasses_new_run_gate(self):
+        world = World()
+        state = qa_live.State("xp-ci-123")
+        with patch.object(qa_live, "require_shared_writer_lock", side_effect=AssertionError("must not gate cleanup")) as gate:
+            self.assertTrue(qa_live.strict_recover(deps_for(world), state))
+            gate.assert_not_called()
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_read_only_diagnostic_remains_available(self):
+        with patch.object(qa_live, "load_credentials", return_value={}), \
+             patch.object(qa_live, "task_diagnostic") as diagnostic:
+            self.assertEqual(qa_live.main(["--task-diagnostic"]), 0)
+            diagnostic.assert_called_once()
+
+    def test_read_only_cleanup_remains_available(self):
+        world = World()
+        deps = deps_for(world)
+        with patch.object(qa_live, "load_credentials", return_value={}), \
+             patch.object(qa_live, "build_deps", return_value=deps):
+            self.assertEqual(qa_live.main(["--cleanup-only"]), 0)
+        self.assertEqual(world.applied, [])
+        self.assertEqual(world.deleted, [])
+        self.assertEqual(world.cloud_deletes, [])
+
+    def test_all_live_workflow_modes_defer_before_setup(self):
         workflow = (REPO / ".github/workflows/qa-live.yaml").read_text()
-        gate = workflow.index("Defer standard writes until shared-account serialization exists")
+        prepare = workflow.index("Defer strict live writes until shared-account serialization exists")
+        self.assertLess(prepare, workflow.index("Create encrypted ownership intent", prepare))
+        self.assertIn("inputs.suite == 'strict-essentials'", workflow[prepare:prepare + 250])
+        self.assertIn("exit 1", workflow[prepare:prepare + 350])
+        gate = workflow.index("Defer live writes until shared-account serialization exists")
         self.assertLess(gate, workflow.index("Cleanup Disk", gate))
-        self.assertIn("github.event_name == 'schedule' || inputs.suite == 'standard' || inputs.suite == ''", workflow[gate:gate + 250])
-        self.assertIn("exit 1", workflow[gate:gate + 350])
+        condition = workflow[gate:gate + 300]
+        for expected in ("github.event_name == 'schedule'", "inputs.suite == 'standard'", "inputs.suite == ''", "inputs.suite == 'strict-essentials'"):
+            self.assertIn(expected, condition)
+        self.assertIn("exit 1", workflow[gate:gate + 450])
         self.assertNotIn("--cleanup-only", workflow)
+        self.assertIn("if: inputs.suite == 'preflight'", workflow)
+        self.assertIn("if: inputs.suite == 'checkpoint-writer-rehearsal'", workflow)
+
+    def test_uptest_defers_before_pending_status_and_setup(self):
+        workflow = (REPO / ".github/workflows/uptest-trigger.yaml").read_text()
+        gate = workflow.index("Defer shared-account Uptest until serialization exists")
+        self.assertLess(gate, workflow.index("Create Pending Status Check", gate))
+        self.assertIn("exit 1", workflow[gate:gate + 250])
+        defense = workflow.index("Defer shared-account Uptest before setup")
+        self.assertLess(defense, workflow.index("Cleanup Disk", defense))
+        self.assertLess(defense, workflow.index("Run Uptest", defense))
+        self.assertIn("exit 1", workflow[defense:defense + 250])
 
     def test_uncertain_database_create_preserves_parent_and_credentials(self):
         world = World()

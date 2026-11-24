@@ -2086,10 +2086,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def require_shared_writer_lock() -> None:
+    # Do not add an env-var override: the two repositories have no verified
+    # common persistent lock. Existing in-process cleanup is unaffected.
+    raise SuiteFailure("DEFER: shared QA account has no cross-repository writer lock; no live test was run")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     deps = None
     try:
+        if not (args.task_diagnostic or args.preflight_only or args.cleanup_only):
+            require_shared_writer_lock()
         credentials = load_credentials(args.credentials_file, os.environ.get("UPTEST_CLOUD_CREDENTIALS"))
         if args.task_diagnostic:
             if args.cleanup_only or args.strict_essentials or args.preflight_only:
