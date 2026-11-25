@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = e4beca26f674a99f90e3b7cd3130cb5b3ae75359; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 8d9ec76ca0571f6a1aa6a865add64015814d3ea3; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
@@ -159,7 +159,61 @@ jobs:
             docker exec "$node" mkdir -p /etc/containerd/certs.d/registry.localhost:5000
             printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/registry.localhost:5000/hosts.toml >/dev/null
           done
-          printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always"}}\n' "$digest" | "$kubectl" apply -f -
+          cat <<'YAML' | "$kubectl" apply -f -
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: provider-startup-gate
+            namespace: upbound-system
+          data:
+            state: closed
+          ---
+          apiVersion: pkg.crossplane.io/v1beta1
+          kind: DeploymentRuntimeConfig
+          metadata:
+            name: provider-startup-gate
+          spec:
+            deploymentTemplate:
+              spec:
+                selector: {}
+                template:
+                  spec:
+                    containers:
+                    - name: package-runtime
+                    initContainers:
+                    - name: startup-gate
+                      image: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+                      command: ["/bin/sh", "-c", "while [ \"$(cat /gate/state)\" != open ]; do sleep 1; done"]
+                      volumeMounts:
+                      - name: startup-gate
+                        mountPath: /gate
+                        readOnly: true
+                    volumes:
+                    - name: startup-gate
+                      configMap:
+                        name: provider-startup-gate
+          YAML
+          printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always","runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-startup-gate"}}}\n' "$digest" | "$kubectl" apply -f -
+          for attempt in $(seq 1 180); do
+            "$kubectl" -n upbound-system get pods -o json > "$RUNNER_TEMP/startup-pods.json"
+            if python3 - "$RUNNER_TEMP/startup-pods.json" "$RUNNER_TEMP/startup-pod" <<'PY'
+          import json, pathlib, sys
+          pods = json.loads(pathlib.Path(sys.argv[1]).read_text())['items']
+          matches = [p for p in pods if p['metadata']['name'].startswith('provider-rediscloud-') and not p['metadata'].get('deletionTimestamp') and any(c['name'] == 'startup-gate' and c.get('state', {}).get('running') for c in p.get('status', {}).get('initContainerStatuses', [])) and not any(c['name'] == 'package-runtime' and (c.get('started') or c.get('restartCount', 0) or c.get('state', {}).get('running') or c.get('state', {}).get('terminated') or c.get('lastState', {}).get('terminated')) for c in p.get('status', {}).get('containerStatuses', []))]
+          if len(matches) != 1:
+              raise SystemExit(1)
+          pathlib.Path(sys.argv[2]).write_text(matches[0]['metadata']['name'] + '\n' + matches[0]['metadata']['uid'])
+          PY
+            then break; fi
+            sleep 2
+          done
+          test -s "$RUNNER_TEMP/startup-pod"
+          startup_pod=$(head -n1 "$RUNNER_TEMP/startup-pod")
+          startup_uid=$(tail -n1 "$RUNNER_TEMP/startup-pod")
+          existing_secret=$("$kubectl" -n upbound-system get secret boundary-fixture --ignore-not-found -o name)
+          test -z "$existing_secret"
+          echo 'Original provider runtime remained stopped while the fake startup gate was closed.'
+          "$kubectl" -n upbound-system patch configmap provider-startup-gate --type=merge -p '{"data":{"state":"open"}}' >/dev/null
           if ! "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=8m; then
             "$kubectl" describe provider.pkg.crossplane.io/provider-rediscloud || true
             "$kubectl" get providerrevisions.pkg.crossplane.io -o wide || true
@@ -187,6 +241,9 @@ jobs:
           print("Provider runtime image ID matches installed OCI digest:", matches[0][1]["imageID"])
           '
           runtime_pod=$(cat "$RUNNER_TEMP/provider-pod.txt")
+          test "$runtime_pod" = "$startup_pod"
+          test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$startup_uid"
+          "$kubectl" -n upbound-system get pod "$runtime_pod" -o json | python3 -c 'import json,sys; p=json.load(sys.stdin); matches=[x for x in p.get("status",{}).get("initContainerStatuses",[]) if x["name"]=="startup-gate" and x.get("state",{}).get("terminated",{}).get("exitCode")==0]; assert len(matches)==1'
           "$kubectl" -n upbound-system cp -c package-runtime "$runtime_pod:/usr/local/bin/provider" "$RUNNER_TEMP/running-provider"
           cmp _output/bin/linux_amd64/provider "$RUNNER_TEMP/running-provider"
           echo "Provider binary in running pod matches the binary built from the pinned source."
