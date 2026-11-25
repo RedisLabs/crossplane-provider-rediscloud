@@ -272,6 +272,14 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1" {
 		t.Fatal("fake parent ID missing")
 	}
+	beforeObserve := fakeCallCount(&mu, &calls)
+	observedParent := &pro.Subscription{ObjectMeta: metav1.ObjectMeta{Name: "observe-pro-parent", UID: types.UID("observe-pro-parent-uid")}, Spec: item.Spec}
+	verifyProObserveRetain(t, observedParent, scheme, "rediscloud_subscription", "1", server.URL, fixtureProParentPath, "id", 1)
+	assertFakeGETOnly(t, &mu, &calls, beforeObserve)
+	verifyProUnchanged(t, rec, store, callback, name, &mu, &calls)
+	if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, item); err != nil {
+		t.Fatal(err)
+	}
 	for path, status := range map[string]int{fixtureBootstrapPath: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
 		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
 		if err != nil {
@@ -288,7 +296,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			t.Fatalf("fake bootstrap read %s: %d", path, res.StatusCode)
 		}
 	}
-	runCombinedProChild(t, server.URL, dir, &mu, &child, &unexpected, &childEviction)
+	runCombinedProChild(t, server.URL, dir, &mu, &calls, &child, &unexpected, &childEviction)
 	if err := kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +354,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	}
 }
 
-func runCombinedProChild(t *testing.T, url, dir string, mu *sync.Mutex, child, unexpected *bool, eviction *string) { //nolint:gocyclo // Exercises ordered managed child lifecycle.
+func runCombinedProChild(t *testing.T, url, dir string, mu *sync.Mutex, calls *[]string, child, unexpected *bool, eviction *string) { //nolint:gocyclo // Exercises ordered managed child lifecycle.
 	t.Helper()
 	scheme := runtime.NewScheme()
 	if err := dbapi.AddToScheme(scheme); err != nil {
@@ -476,6 +484,14 @@ func runCombinedProChild(t *testing.T, url, dir string, mu *sync.Mutex, child, u
 	}
 	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database ID changed")
+	}
+	beforeObserve := fakeCallCount(mu, calls)
+	observedChild := &dbapi.Database{ObjectMeta: metav1.ObjectMeta{Name: "observe-pro-child", UID: types.UID("observe-pro-child-uid")}, Spec: current.Spec}
+	verifyProObserveRetain(t, observedChild, scheme, "rediscloud_subscription_database", fixtureProDBID, url, fixtureProDatabasePath, fixtureDatabaseIDKey, 42)
+	assertFakeGETOnly(t, mu, calls, beforeObserve)
+	verifyProUnchanged(t, rec, store, callback, name, mu, calls)
+	if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
+		t.Fatal(err)
 	}
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
