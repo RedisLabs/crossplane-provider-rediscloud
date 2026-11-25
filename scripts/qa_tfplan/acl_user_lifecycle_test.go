@@ -43,6 +43,7 @@ func TestACLUserManagedLifecycleLoopback(t *testing.T) {
 	t.Run("create_rejected", func(t *testing.T) { runACLUserFixture(t, "rejected") })
 	t.Run("accepted_then_503", func(t *testing.T) { runACLUserFixture(t, fixtureUncertainMode) })
 	t.Run("lifecycle", func(t *testing.T) { runACLUserFixture(t, "success") })
+	t.Run("gated_lifecycle", func(t *testing.T) { runACLUserFixture(t, fixtureGateMode) })
 }
 
 func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
@@ -54,10 +55,10 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	var mu sync.Mutex
 	reads, writes := 0, 0
 	exists, unexpected := false, false
-	rejectCreate, rejectUpdate, rejectDelete := mode != "success", true, true
+	rejectCreate, rejectUpdate, rejectDelete := mode != "success" && mode != fixtureGateMode, true, mode != fixtureGateMode
 	createRequests, deleteRequests := 0, 0
 	rule := "fixture-rule-a"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		if r.Method == http.MethodGet {
@@ -139,7 +140,14 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 			return
 		}
 		_ = json.NewEncoder(w).Encode(response)
-	}))
+	})
+	gate := &fixtureMutationGate{rejectBefore: map[string]bool{fixtureACLUserPath: true}}
+	var server *httptest.Server
+	if mode == fixtureGateMode {
+		server = httptest.NewServer(gate.wrap(handler))
+	} else {
+		server = httptest.NewServer(handler)
+	}
 	defer server.Close()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
@@ -216,7 +224,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		}
 		t.Fatal("callback missing")
 	}
-	if mode != "success" {
+	if mode != "success" && mode != fixtureGateMode {
 		await("terraform apply ", true)
 		verifyNoACLCreateReplay(t, rec, store, callback, name)
 		mu.Lock()
@@ -302,6 +310,17 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		t.Fatal(err)
 	}
 	await("terraform destroy ", true)
+	if mode == fixtureGateMode {
+		gate.mu.Lock()
+		rejected, reserved := gate.preRejected, gate.deleted[fixtureACLUserPath]
+		gate.mu.Unlock()
+		mu.Lock()
+		dispatched := deleteRequests
+		mu.Unlock()
+		if rejected != 1 || reserved || dispatched != 0 {
+			t.Fatalf("fake pre-dispatch rejection mismatch: rejected=%d reserved=%v dispatched=%d", rejected, reserved, dispatched)
+		}
+	}
 	mu.Lock()
 	if !exists || unexpected {
 		mu.Unlock()
@@ -325,6 +344,15 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 			t.Fatalf("ACL CR remains: status=%#v finalizers=%v annotations=%v commands=%v", item.Status, item.Finalizers, item.Annotations, spy.snapshot())
 		}
 		time.Sleep(time.Second)
+	}
+	if mode == fixtureGateMode {
+		gate.assertRejected(t, server.URL, fixtureACLUserPath, dummyCredential, http.StatusConflict)
+		mu.Lock()
+		dispatched := deleteRequests
+		mu.Unlock()
+		if dispatched != 1 {
+			t.Fatalf("fake gate dispatched %d deletes, expected one", dispatched)
+		}
 	}
 	mu.Lock()
 	if exists || unexpected {
