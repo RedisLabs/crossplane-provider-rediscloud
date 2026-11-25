@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 class Scenario:
     id: str
     steps: tuple[str, ...]
+    access: str = "write"
 
 
 @dataclass(frozen=True)
@@ -56,24 +57,31 @@ class Adapter(Protocol):
 
 def load_scenarios(path: Path) -> dict[str, Scenario]:
     data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or set(data) != {"version", "scenarios"} or type(data["version"]) is not int or data["version"] != 1:
+    if not isinstance(data, dict) or set(data) != {"version", "scenarios"} or type(data["version"]) is not int or data["version"] not in (1, 2):
         raise ValueError("unsupported scenario document")
     if not isinstance(data["scenarios"], list) or not data["scenarios"]:
         raise ValueError("scenario list is empty or malformed")
     result = {}
     for entry in data["scenarios"]:
-        if not isinstance(entry, dict) or set(entry) != {"id", "steps"}:
+        keys = {"id", "steps"} if data["version"] == 1 else {"id", "steps", "access"}
+        if not isinstance(entry, dict) or set(entry) != keys:
             raise ValueError("malformed scenario")
         name, steps = entry["id"], entry["steps"]
+        access = entry.get("access", "write")
+        if access not in ("write", "read_only"):
+            raise ValueError("invalid scenario access")
         if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9-]+", name):
             raise ValueError("invalid scenario id")
         if name in result or not isinstance(steps, list) or not steps:
             raise ValueError("duplicate scenario or malformed steps")
         if any(not isinstance(s, str) or not re.fullmatch(r"[a-z0-9_]+", s) for s in steps) or len(set(steps)) != len(steps):
             raise ValueError("invalid or duplicate step")
-        if steps[0] != "admission_and_clean_baseline" or steps[-1] != "complete_clean_inventory":
-            raise ValueError("scenario lacks safety boundaries")
-        result[name] = Scenario(name, tuple(steps))
+        if access == "write":
+            if steps[0] != "admission_and_clean_baseline" or steps[-1] != "complete_clean_inventory":
+                raise ValueError("scenario lacks safety boundaries")
+        elif steps != ["read_only_preflight", "lookup_by_identity", "verify_expected_response", "verify_no_cloud_mutations"]:
+            raise ValueError("read-only scenario has invalid steps")
+        result[name] = Scenario(name, tuple(steps), access)
     return result
 
 
@@ -91,7 +99,12 @@ def classify_claim(scenario: Scenario, evidence: Evidence) -> str:
         return "invalid"
     if evidence.outcome != "pass":
         return evidence.outcome
-    if evidence.direct_cloud_recovery or evidence.cleanup != "clean":
+    if scenario.access not in {"write", "read_only"}:
+        return "invalid"
+    if scenario.access == "read_only" and scenario.steps != ("read_only_preflight", "lookup_by_identity", "verify_expected_response", "verify_no_cloud_mutations"):
+        return "invalid"
+    required_cleanup = "not_started" if scenario.access == "read_only" else "clean"
+    if evidence.direct_cloud_recovery or evidence.cleanup != required_cleanup:
         return "invalid"
     if not isinstance(evidence.steps, tuple) or len(evidence.steps) != len(scenario.steps):
         return "invalid"
