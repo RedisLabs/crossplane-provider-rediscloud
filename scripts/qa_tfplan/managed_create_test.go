@@ -32,26 +32,28 @@ import (
 )
 
 const (
-	fixtureAPIKey          = "api_key"
-	fixtureSecretKey       = "secret_key"
-	fixtureURLKey          = "url"
-	fixtureProviderSource  = "RedisLabs/rediscloud"
-	fixtureProviderVersion = "2.20.0"
-	fixtureTaskKey         = "taskId"
-	fixtureTaskComplete    = "processing-completed"
-	fixtureParentPath      = "/v1/fixed/subscriptions/1"
-	fixtureProviderKey     = "provider"
-	fixtureProviderName    = "rediscloud"
-	fixtureExternalID      = "1/2"
-	fixtureNameKey         = "name"
-	fixtureStatusKey       = "status"
-	fixtureDatabasePath    = "/v1/fixed/subscriptions/1/databases/2"
-	fixtureActive          = "active"
-	fixtureVolatileLRU     = "volatile-lru"
-	fixtureDatabaseIDKey   = "databaseId"
-	fixtureTagsKey         = "tags"
-	fixtureReplicationKey  = "replication"
-	fixtureNoPersistence   = "none"
+	fixtureAPIKey           = "api_key"
+	fixtureSecretKey        = "secret_key"
+	fixtureURLKey           = "url"
+	fixtureProviderSource   = "RedisLabs/rediscloud"
+	fixtureProviderVersion  = "2.20.0"
+	fixtureTaskKey          = "taskId"
+	fixtureTaskComplete     = "processing-completed"
+	fixtureParentPath       = "/v1/fixed/subscriptions/1"
+	fixtureProviderKey      = "provider"
+	fixtureProviderName     = "rediscloud"
+	fixtureExternalID       = "1/2"
+	fixtureNameKey          = "name"
+	fixtureStatusKey        = "status"
+	fixtureDatabasePath     = "/v1/fixed/subscriptions/1/databases/2"
+	fixtureActive           = "active"
+	fixtureVolatileLRU      = "volatile-lru"
+	fixtureDatabaseIDKey    = "databaseId"
+	fixtureTagsKey          = "tags"
+	fixtureTerraformVersion = "1.5.7"
+	fixtureProParentPath    = "/v1/subscriptions/1"
+	fixtureReplicationKey   = "replication"
+	fixtureNoPersistence    = "none"
 )
 
 // The parent is pre-existing in this incremental fake: only managed DB create
@@ -188,7 +190,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_database"], ujcontroller.WithCallbackProvider(callback))
@@ -436,7 +438,7 @@ func createManagedParent(t *testing.T, url string, scheme *runtime.Scheme) *mana
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))

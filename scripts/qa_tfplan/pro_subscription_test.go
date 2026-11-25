@@ -33,6 +33,8 @@ import (
 
 // This fixture uses no Cloud account: it models a newly created Pro parent and
 // one bootstrap database on loopback, and checks that both are removed.
+const fixtureProParentName = "fixture-pro-parent"
+
 func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
@@ -55,7 +57,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/subscriptions" && !parent:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["name"] != "fixture-pro-parent" {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureProParentName {
 				unexpected = true
 				http.Error(w, "bad parent create", http.StatusBadRequest)
 				return
@@ -64,16 +66,26 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			response = map[string]any{fixtureTaskKey: "parent-create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-create":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 1}}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1" && parent:
-			response = map[string]any{"id": 1, "name": "fixture-pro-parent", fixtureStatusKey: fixtureActive, "paymentMethodType": "credit-card", "paymentMethodId": 3, "memoryStorage": "ram", "publicEndpointAccess": true, "cloudDetails": []any{map[string]any{"provider": "GCP", "cloudAccountId": 1, "regions": []any{map[string]any{"region": "us-central1", "multipleAvailabilityZones": false, "networking": []any{map[string]any{"deploymentCIDR": "10.0.0.0/24"}}}}}}}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath && parent:
+			response = map[string]any{"id": 1, fixtureNameKey: fixtureProParentName, fixtureStatusKey: fixtureActive, "paymentMethodType": "credit-card", "paymentMethodId": 3, "memoryStorage": "ram", "publicEndpointAccess": true, "cloudDetails": []any{map[string]any{"provider": "GCP", "cloudAccountId": 1, "regions": []any{map[string]any{"region": "us-central1", "multipleAvailabilityZones": false, "networking": []any{map[string]any{"deploymentCIDR": "10.0.0.0/24"}}}}}}}
+		case r.Method == http.MethodPut && r.URL.Path == fixtureProParentPath && parent:
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) != nil || (body[fixtureNameKey] != nil && body[fixtureNameKey] != fixtureProParentName) {
+				unexpected = true
+				http.Error(w, "bad parent update", http.StatusBadRequest)
+				return
+			}
+			response = map[string]any{fixtureTaskKey: "parent-update"}
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-update":
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases":
 			dbs := []any{}
 			if bootstrap {
-				dbs = append(dbs, map[string]any{"databaseId": 2, "name": "fixture-bootstrap", fixtureStatusKey: fixtureActive})
+				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive})
 			}
 			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, "databases": dbs}}}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/2" && bootstrap:
-			response = map[string]any{"databaseId": 2, "name": "fixture-bootstrap", fixtureStatusKey: fixtureActive}
+			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodDelete && r.URL.Path == "/v1/subscriptions/1/databases/2" && bootstrap:
 			bootstrap = false
 			bootstrapRemoved = true
@@ -84,12 +96,12 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			response = map[string]any{"mode": "automatic", "windows": []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/pricing":
 			response = map[string]any{"pricing": []any{}}
-		case r.Method == http.MethodDelete && r.URL.Path == "/v1/subscriptions/1" && parent && !bootstrap:
+		case r.Method == http.MethodDelete && r.URL.Path == fixtureProParentPath && parent && !bootstrap:
 			parent = false
 			response = map[string]any{fixtureTaskKey: "parent-delete"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-delete":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1" && !parent:
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath && !parent:
 			http.NotFound(w, r)
 			return
 		default:
@@ -123,7 +135,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	if err := pro.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	name, parentName, region, cidr, provider, payment, paymentID, storage, by := fixtureName, "fixture-pro-parent", "us-central1", "10.0.0.0/24", "GCP", "credit-card", "3", "ram", "operations-per-second"
+	name, parentName, region, cidr, provider, payment, paymentID, storage, by := fixtureName, fixtureProParentName, "us-central1", "10.0.0.0/24", "GCP", "credit-card", "3", "ram", "operations-per-second"
 	count, memory, throughput := float64(1), float64(1), float64(1000)
 	replication := false
 	item := &pro.Subscription{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-pro-parent-uid")}}
@@ -139,7 +151,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	store := newTrackingNativeStore()
 	spy := &spyExecutor{Interface: kexec.New(), tracked: store}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription"], ujcontroller.WithCallbackProvider(callback))
