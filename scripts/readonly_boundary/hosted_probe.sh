@@ -95,6 +95,11 @@ for family in 4 6; do
   docker exec "$node" "$tool" -N CODEX-EGRESS
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -d "$node_ip" -p tcp --dport 5556 -j ACCEPT
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -d "$node_ip" -p tcp --dport 6443 -j ACCEPT
+  if [ "$family" = 6 ]; then
+    # Nonterminating accounting only: do not relax IPv6 Neighbor Discovery.
+    docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -p ipv6-icmp --icmpv6-type 135 -m comment --comment codex-icmpv6-ns
+    docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -p ipv6-icmp --icmpv6-type 136 -m comment --comment codex-icmpv6-na
+  fi
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
   docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
   docker exec "$node" "$tool" -I INPUT 1 -j CODEX-EGRESS
@@ -136,6 +141,10 @@ PYTHON
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS || true
       docker logs "boundary-proxy$family" 2>&1 || true
       "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ip -"$family" route || true
+      if [ "$family" = 6 ]; then
+        docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' 'http://[::1]:5556/regions' || echo 'IPv6 proxy loopback control failed' >&2
+        docker exec "$node" ip -6 neigh show | awk '{print $NF}' | sort | uniq -c || true
+      fi
       exit 1
     fi
     echo "$phase IPv$family forbidden POST"
