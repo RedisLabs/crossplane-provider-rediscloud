@@ -91,21 +91,41 @@ jobs:
             printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/registry.localhost:5000/hosts.toml >/dev/null
           done
           printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always"}}\n' "$digest" | "$kubectl" apply -f -
-          "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=8m
+          if ! "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=8m; then
+            "$kubectl" describe provider.pkg.crossplane.io/provider-rediscloud || true
+            "$kubectl" get providerrevisions.pkg.crossplane.io -o wide || true
+            "$kubectl" -n upbound-system get pods -o wide || true
+            exit 1
+          fi
           "$kubectl" -n upbound-system wait deployments --all --for=condition=Available --timeout=8m
           for crd in providerconfigs.rediscloud.redis.io subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io; do
             "$kubectl" wait "crd/$crd" --for=condition=Established --timeout=2m
           done
+          export REGISTRY_DIGEST="$digest"
           "$kubectl" -n upbound-system get pods -o json | python3 -c '
           import json, os, pathlib, re, sys
           pods = json.load(sys.stdin)["items"]
           matches = [(p, c) for p in pods if p["metadata"]["name"].startswith("provider-rediscloud-") for c in p.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime"]
           if len(matches) != 1 or not matches[0][1].get("ready") or not re.search(r"@sha256:[0-9a-f]{64}$", matches[0][1].get("imageID", "")):
               raise SystemExit("expected one ready provider runtime with immutable image ID")
+          def digest_matches(image_id, digest):
+              return image_id.rsplit("@", 1)[-1] == digest
+          if digest_matches("registry.localhost:5000/example@sha256:" + "0"*64, "sha256:" + "1"*64):
+              raise SystemExit("wrong runtime digest unexpectedly accepted")
+          if not digest_matches(matches[0][1]["imageID"], os.environ["REGISTRY_DIGEST"]):
+              raise SystemExit("running image ID does not match installed package digest")
           pathlib.Path(os.environ["RUNNER_TEMP"], "provider-pod.txt").write_text(matches[0][0]["metadata"]["name"])
-          print("Observed provider runtime image ID:", matches[0][1]["imageID"])
+          print("Provider runtime image ID matches installed OCI digest:", matches[0][1]["imageID"])
           '
           runtime_pod=$(cat "$RUNNER_TEMP/provider-pod.txt")
           "$kubectl" -n upbound-system cp -c package-runtime "$runtime_pod:/usr/local/bin/provider" "$RUNNER_TEMP/running-provider"
           cmp _output/bin/linux_amd64/provider "$RUNNER_TEMP/running-provider"
           echo "Provider binary in running pod matches the binary built from the pinned source."
+      - name: Preserve package and OCI manifest
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: alpha-oci-evidence-f2e4bbc
+          path: |
+            _output/xpkg/linux_amd64/*.xpkg
+            ${{ runner.temp }}/oci-manifest.json
+          if-no-files-found: error
