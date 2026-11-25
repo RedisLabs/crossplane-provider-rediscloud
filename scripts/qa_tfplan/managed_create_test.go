@@ -32,6 +32,7 @@ import (
 )
 
 const (
+	fixtureNextRole         = "fixture-rule-b"
 	fixtureSourceIPsKey     = "sourceIps"
 	fixtureProtocolKey      = "protocol"
 	fixtureProtocolValue    = "redis"
