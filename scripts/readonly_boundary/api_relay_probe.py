@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 if os.environ.get("GITHUB_ACTIONS") != "true":
     raise SystemExit("hosted Actions required")
@@ -41,6 +42,12 @@ if len(providers) != 1 or providers[0]["spec"].get("hostNetwork"):
 provider = providers[0]
 account = provider["spec"]["serviceAccountName"]
 identity = f"system:serviceaccount:upbound-system:{account}"
+impersonation = [
+    f"--as={identity}",
+    "--as-group=system:serviceaccounts",
+    "--as-group=system:serviceaccounts:upbound-system",
+    "--as-group=system:authenticated",
+]
 namespace_items = read_json(["get", "namespaces", "-o", "json"])["items"]
 namespaces = sorted(item["metadata"]["name"] for item in namespace_items)
 if not namespaces or len(namespaces) != len(set(namespaces)):
@@ -56,7 +63,7 @@ def allowed(verb, group, resource, subresource="", namespace="", name=""):
     if name:
         attributes["name"] = name
     request = {"apiVersion": "authorization.k8s.io/v1", "kind": "SelfSubjectAccessReview", "spec": {"resourceAttributes": attributes}}
-    result = run([f"--as={identity}", "create", "-f", "-", "-o", "json"], request)
+    result = run([*impersonation, "create", "-f", "-", "-o", "json"], request)
     if result.returncode != 0:
         raise SystemExit("authorization review request failed")
     status = json.loads(result.stdout).get("status", {})
@@ -67,6 +74,48 @@ def allowed(verb, group, resource, subresource="", namespace="", name=""):
 
 if not allowed("get", "lookup.redis.io", "regions", name="boundary-gcp"):
     raise SystemExit("positive controller authorization control failed")
+
+# Confirm that the impersonated identity actually receives group-bound access.
+# Generated names avoid collisions; the fake API group has no real resource.
+if allowed("get", "boundary.invalid", "groupcontrols", namespace="upbound-system"):
+    raise SystemExit("group-control precondition was already authorized")
+role_name = None
+binding_name = None
+try:
+    role = {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "Role", "metadata": {"generateName": "boundary-group-control-", "namespace": "upbound-system"}, "rules": [{"apiGroups": ["boundary.invalid"], "resources": ["groupcontrols"], "verbs": ["get"]}]}
+    result = run(["create", "-f", "-", "-o", "json"], role)
+    if result.returncode != 0:
+        raise SystemExit("could not create group-control role")
+    role_name = json.loads(result.stdout)["metadata"]["name"]
+    binding = {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding", "metadata": {"generateName": "boundary-group-control-", "namespace": "upbound-system"}, "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": role_name}, "subjects": [{"kind": "Group", "apiGroup": "rbac.authorization.k8s.io", "name": "system:serviceaccounts:upbound-system"}]}
+    result = run(["create", "-f", "-", "-o", "json"], binding)
+    if result.returncode != 0:
+        raise SystemExit("could not create group-control binding")
+    binding_name = json.loads(result.stdout)["metadata"]["name"]
+    for _ in range(20):
+        if allowed("get", "boundary.invalid", "groupcontrols", namespace="upbound-system"):
+            break
+        time.sleep(0.5)
+    else:
+        raise SystemExit("group-bound authorization positive control failed")
+finally:
+    cleanup_failed = False
+    for resource, resource_name in (("rolebinding", binding_name), ("role", role_name)):
+        if resource_name:
+            try:
+                result = run(["-n", "upbound-system", "delete", resource, resource_name, "--ignore-not-found", "--wait=true"])
+                if result.returncode != 0:
+                    cleanup_failed = True
+            except (OSError, subprocess.TimeoutExpired):
+                cleanup_failed = True
+    if cleanup_failed:
+        raise SystemExit("group-control cleanup failed")
+for _ in range(20):
+    if not allowed("get", "boundary.invalid", "groupcontrols", namespace="upbound-system"):
+        break
+    time.sleep(0.5)
+else:
+    raise SystemExit("group-control authorization persisted after cleanup")
 
 # Test all currently present namespaces; this is a finite set of relay and
 # security-policy controls, not a proof that every API operation is harmless.
@@ -113,12 +162,12 @@ paths = [
     "/api/v1/namespaces/upbound-system/services/boundary-fixture/proxy/",
 ]
 for path in paths:
-    result = run([f"--as={identity}", "get", "--raw", path])
+    result = run([*impersonation, "get", "--raw", path])
     if result.returncode == 0 or "forbidden" not in result.stderr.lower():
         raise SystemExit("direct proxy denial could not be verified")
 
 pod = {"apiVersion": "v1", "kind": "Pod", "metadata": {"name": "forbidden-fixture", "namespace": "upbound-system"}, "spec": {"containers": [{"name": "fixture", "image": "registry.invalid/fixture"}]}}
-result = run([f"--as={identity}", "create", "--dry-run=server", "-f", "-"], pod)
+result = run([*impersonation, "create", "--dry-run=server", "-f", "-"], pod)
 if result.returncode == 0 or "forbidden" not in result.stderr.lower():
     raise SystemExit("direct dry-run pod creation denial could not be verified")
 
