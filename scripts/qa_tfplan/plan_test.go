@@ -65,7 +65,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 				_ = json.NewEncoder(w).Encode(map[string]any{fixtureTaskKey: "fixture-task"})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{fixtureTagsKey: []any{}})
 			return
 		}
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
@@ -85,10 +85,10 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		case fixtureParentPath:
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive})
 		case fixtureDatabasePath + "/tags":
-			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{fixtureTagsKey: []any{}})
 		case fixtureDatabasePath:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
 			})
 		default:
 			http.NotFound(w, r)

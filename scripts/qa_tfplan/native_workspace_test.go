@@ -54,7 +54,7 @@ func TestNativeWorkspaceStoreRegenerates(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkNativeEviction(t, filepath.Join(root, string(item.UID), "main.tf.json"), desiredEviction)
-	changed := "volatile-lru"
+	changed := fixtureVolatileLRU
 	item.Spec.ForProvider.DataEviction = &changed
 	if _, err := store.Workspace(context.Background(), nil, item, setup, cfg); err != nil {
 		t.Fatal(err)

@@ -40,7 +40,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	rule := "allkeys-lru"
+	rule := desiredEviction
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -62,38 +62,45 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				return
 			}
 			exists = true
-			response = map[string]any{"taskId": "create"}
+			response = map[string]any{fixtureTaskKey: "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
-			response = map[string]any{"tags": []any{}}
+			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
-			response = map[string]any{"tags": []any{}}
+			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 42}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 42}}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42" && exists:
-			response = map[string]any{"databaseId": 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", "replication": false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", "replication": false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42" && exists:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["dataEvictionPolicy"] != "volatile-lru" {
+			if json.NewDecoder(r.Body).Decode(&body) != nil {
 				unexpected = true
-				http.Error(w, "bad update", http.StatusBadRequest)
+				http.Error(w, "malformed update", http.StatusBadRequest)
 				return
 			}
-			rule = "volatile-lru"
-			response = map[string]any{"taskId": "update"}
+			if policy, present := body["dataEvictionPolicy"]; present {
+				if policy != desiredEviction && policy != fixtureVolatileLRU {
+					unexpected = true
+					http.Error(w, "bad eviction policy", http.StatusBadRequest)
+					return
+				}
+				rule = policy.(string)
+			}
+			response = map[string]any{fixtureTaskKey: "update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == "/v1/subscriptions/1/databases/42" && exists:
 			exists = false
-			response = map[string]any{"taskId": "delete"}
+			response = map[string]any{fixtureTaskKey: "delete"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42" && !exists:
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases":
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{"databaseId": 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", "replication": false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}})
+				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", "replication": false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}})
 			}
 			response = map[string]any{"databases": rows}
 		default:
@@ -197,7 +204,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1/42" {
 		t.Fatal("Pro database identity missing")
 	}
-	updated := "volatile-lru"
+	updated := fixtureVolatileLRU
 	item.Spec.ForProvider.DataEviction = &updated
 	if err := kube.Update(context.Background(), item); err != nil {
 		t.Fatal(err)
@@ -220,14 +227,14 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		t.Fatal(err)
 	}
 	await("terraform destroy ")
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 30; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 			t.Fatal(err)
 		}
 		if apierrors.IsNotFound(kube.Get(context.Background(), types.NamespacedName{Name: name}, &pro.Database{})) {
 			break
 		}
-		if i == 4 {
+		if i == 29 {
 			item := &pro.Database{}
 			_ = kube.Get(context.Background(), types.NamespacedName{Name: name}, item)
 			mu.Lock()
@@ -235,11 +242,29 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			mu.Unlock()
 			t.Fatalf("Pro database CR remains: status=%#v finalizers=%v annotations=%v commands=%v", item.Status, item.Finalizers, item.Annotations, spy.snapshot())
 		}
+		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	defer mu.Unlock()
 	if exists || unexpected {
+		mu.Unlock()
 		t.Fatal("fake Pro database residue or unexpected request")
+	}
+	mu.Unlock()
+	for path, status := range map[string]int{"/v1/subscriptions/1/databases/42": http.StatusNotFound, "/v1/subscriptions/1": http.StatusOK} {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Api-Key", dummyCredential)
+		req.Header.Set("X-Api-Secret-Key", dummyCredential)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != status {
+			t.Fatalf("fake read %s: %d", path, res.StatusCode)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "fixture-pro-db-uid")); !os.IsNotExist(err) {
 		t.Fatal("workspace remains")
