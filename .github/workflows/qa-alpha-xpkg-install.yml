@@ -35,11 +35,11 @@ jobs:
           mapfile -t packages < <(find _output/xpkg/linux_amd64 -maxdepth 1 -type f -name '*.xpkg' -print)
           test "${#packages[@]}" -eq 1
           sha256sum "${packages[0]}"
-          kubectl=.cache/tools/linux_amd64/kubectl-v1.33.5
+          kubectl=.cache/tools/linux_x86_64/kubectl-v1.33.5
           "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=5m
           "$kubectl" -n upbound-system wait deployments --all --for=condition=Available --timeout=5m
           "$kubectl" -n upbound-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.containerStatuses[*]}{.imageID}{" "}{end}{"\n"}{end}'
-          for crd in subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io; do
+          for crd in providerconfigs.rediscloud.redis.io subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io; do
             "$kubectl" wait "crd/$crd" --for=condition=Established --timeout=2m
           done
           echo "Credential-free Kind package smoke completed; development cache installation, no registry pull."
