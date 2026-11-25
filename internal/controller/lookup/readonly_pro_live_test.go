@@ -75,6 +75,8 @@ func rejectDuplicateKeys(raw []byte) error { //nolint:gocyclo // Walk objects an
 	return nil
 }
 
+const readonlyProCollectionPath = "/v1/subscriptions"
+
 type proInventoryRow struct {
 	ID             int    `json:"id"`
 	Name           string `json:"name"`
@@ -164,7 +166,7 @@ func TestReadonlyProDiagnosticCategories(t *testing.T) {
 // TestLiveReadonlyProDiagnostic never uses a selected ID, even when present.
 func TestLiveReadonlyProDiagnostic(t *testing.T) { //nolint:gocyclo // Fail closed at each credential, transport and response boundary.
 	creds, u, _ := readonlyQACredentials(t)
-	guard := &regionReadGuard{origin: u.Host, path: "/v1/subscriptions", next: http.DefaultTransport}
+	guard := &regionReadGuard{origin: u.Host, path: readonlyProCollectionPath, next: http.DefaultTransport}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(creds[readonlyURLField], "/")+"/subscriptions", nil)
@@ -210,11 +212,11 @@ func TestReadonlyProDiscoveryRejectsAmbiguity(t *testing.T) {
 
 func TestReadonlyProTransportRejectsUnsafeRequests(t *testing.T) {
 	var forwarded atomic.Int32
-	guard := &regionReadGuard{origin: readonlyFixtureHost, path: "/v1/subscriptions", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	guard := &regionReadGuard{origin: readonlyFixtureHost, path: readonlyProCollectionPath, next: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		forwarded.Add(1)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
-	for _, item := range []struct{ method, path string }{{http.MethodPost, "/v1/subscriptions"}, {http.MethodDelete, "/v1/subscriptions"}, {http.MethodGet, "/v1/subscriptions/3"}, {http.MethodGet, "/v1/acl/users"}} {
+	for _, item := range []struct{ method, path string }{{http.MethodPost, readonlyProCollectionPath}, {http.MethodDelete, readonlyProCollectionPath}, {http.MethodGet, "/v1/subscriptions/3"}, {http.MethodGet, "/v1/acl/users"}} {
 		req, _ := http.NewRequest(item.method, "https://"+readonlyFixtureHost+item.path, nil)
 		if _, err := guard.RoundTrip(req); err == nil {
 			t.Fatal("unexpected request accepted")
@@ -240,7 +242,7 @@ func TestLiveReadonlyProSubscription(t *testing.T) { //nolint:gocyclo // Fail cl
 	const objectName = "qa-pro-lookup"
 	creds, u, encoded := readonlyQACredentials(t)
 	old := http.DefaultTransport
-	guard := &regionReadGuard{origin: u.Host, path: "/v1/subscriptions", next: old}
+	guard := &regionReadGuard{origin: u.Host, path: readonlyProCollectionPath, next: old}
 	http.DefaultTransport = guard
 	defer func() { http.DefaultTransport = old }()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
