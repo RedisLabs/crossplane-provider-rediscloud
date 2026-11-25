@@ -38,7 +38,7 @@ def validate_events(output: str, package: str, names: tuple[str, ...]) -> None:
         raise ValueError("selected test did not explicitly run and pass")
 
 
-def run_selected(package: str, names: tuple[str, ...], *, require_fixture: bool = False, timeout: int = 1200) -> None:
+def run_selected(package: str, names: tuple[str, ...], *, require_fixture: bool = False, offline: bool = False, timeout: int = 1200) -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("integration fixture execution requires GitHub Actions")
     if require_fixture and not all(os.environ.get(key) for key in ("QA_TEST_TERRAFORM", "QA_TEST_PROVIDER_DIR")):
@@ -47,7 +47,8 @@ def run_selected(package: str, names: tuple[str, ...], *, require_fixture: bool 
     if not names or any(not re.fullmatch(r"Test[A-Za-z0-9_]+", name) for name in names):
         raise ValueError("invalid selected test names")
     env = os.environ.copy()
-    env.update({"GOPROXY": "off", "GOSUMDB": "off"})
+    if offline:
+        env.update({"GOPROXY": "off", "GOSUMDB": "off"})
     run = subprocess.run(
         ["go", "test", "-json", package, "-run", pattern, "-count=1", "-timeout=15m"],
         cwd=ROOT, env=env, text=True, capture_output=True, timeout=timeout, check=False,

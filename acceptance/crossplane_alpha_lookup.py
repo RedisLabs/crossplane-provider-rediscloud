@@ -25,7 +25,7 @@ def execute(source_revision: str) -> Evidence:
     scenario = load_scenarios(ROOT / "acceptance" / "alpha-scenarios.json")[CASE]
     if scenario.access != "read_only" or scenario.steps != EXPECTED:
         raise ValueError("unexpected lookup contract")
-    run_selected("./internal/controller/lookup", ("TestPaymentMethodReconcileWritesID",), timeout=180)
+    run_selected("./internal/controller/lookup", ("TestPaymentMethodReconcileWritesID",), offline=True, timeout=180)
     receipts = tuple(StepReceipt(step, "passed", "https://fixture.invalid/lookup-log") for step in scenario.steps)
     evidence = Evidence("crossplane", CASE, "simulated", source_revision, "", "https://fixture.invalid/lookup-run", "https://fixture.invalid/lookup-log", receipts, "pass", "not_started", False)
     if classify_claim(scenario, evidence) != "simulated_claim_requires_verification":
