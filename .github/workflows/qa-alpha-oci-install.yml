@@ -243,18 +243,19 @@ jobs:
           PYTHON
           source "$RUNNER_TEMP/node-identity.env"
           image='registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373'
-          docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e 'REGISTRY_HTTP_ADDR=[::]:5555' "$image" >/dev/null
           cleanup() {
             docker exec "$NODE" iptables -D INPUT -s "$POD_IP/32" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe -j REJECT 2>/dev/null || true
             docker exec "$NODE" ip6tables -D INPUT -s "$POD_IP6/128" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe-v6 -j REJECT 2>/dev/null || true
-            docker stop node-relay-fixture >/dev/null 2>&1 || true
+            docker stop node-relay-fixture node-relay-fixture-v6 >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+          docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e REGISTRY_HTTP_ADDR=0.0.0.0:5555 "$image" >/dev/null
+          docker run -d --rm --name node-relay-fixture-v6 --network "container:$NODE" -e 'REGISTRY_HTTP_ADDR=[::]:5555' "$image" >/dev/null
           for attempt in $(seq 1 60); do
             if docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/; then break; fi
             sleep 1
           done
-          docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
+          if ! docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/; then docker logs node-relay-fixture; exit 1; fi
           "$kubectl" -n upbound-system debug "pod/$runtime_pod" --container=node-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
           for attempt in $(seq 1 60); do
             if "$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="node-probe")].state.running.startedAt}' | grep -q .; then break; fi
@@ -272,6 +273,11 @@ jobs:
           docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
           test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
           echo "One IPv4 node-listener port was blocked; this is not a full egress boundary."
+          for attempt in $(seq 1 60); do
+            if docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null 'http://[::1]:5555/v2/'; then break; fi
+            sleep 1
+          done
+          if ! docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null 'http://[::1]:5555/v2/'; then docker logs node-relay-fixture-v6; exit 1; fi
           "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- wget -q -T 3 -O /dev/null "http://[$node_ip6]:5555/v2/"
           docker exec "$NODE" ip6tables -I INPUT 1 -s "$POD_IP6/128" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe-v6 -j REJECT
           mapfile -t before6 < <(docker exec "$NODE" ip6tables -nvx -L INPUT | awk '/codex-provider-node-probe-v6/ {print $1}')
