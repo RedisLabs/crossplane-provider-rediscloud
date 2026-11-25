@@ -56,7 +56,7 @@ func (g *fixtureMutationGate) assertRejected(t *testing.T, endpoint, path, key s
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	g.mu.Lock()
 	after := g.forwarded
 	g.mu.Unlock()
