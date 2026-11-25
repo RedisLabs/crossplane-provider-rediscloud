@@ -232,11 +232,23 @@ jobs:
           cat > "$RUNNER_TEMP/ungated-provider-pod.json" <<'JSON'
           {"apiVersion":"v1","kind":"Pod","metadata":{"name":"provider-rediscloud-admission-negative","namespace":"upbound-system"},"spec":{"containers":[{"name":"package-runtime","image":"invalid.example/fixture"}]}}
           JSON
-          if "$kubectl" create --dry-run=server -f "$RUNNER_TEMP/ungated-provider-pod.json" >"$RUNNER_TEMP/admission-negative.log" 2>&1; then
-            echo 'Ungated matching pod unexpectedly admitted' >&2
+          enforced=false
+          for attempt in $(seq 1 60); do
+            if "$kubectl" create --dry-run=server -f "$RUNNER_TEMP/ungated-provider-pod.json" >"$RUNNER_TEMP/admission-negative.log" 2>&1; then
+              sleep 1
+            elif grep -q 'fixture-provider-gate-required' "$RUNNER_TEMP/admission-negative.log"; then
+              enforced=true
+              break
+            else
+              cat "$RUNNER_TEMP/admission-negative.log" >&2
+              exit 1
+            fi
+          done
+          if [ "$enforced" != true ]; then
+            echo 'Policy did not deny ungated matching pod within the bounded wait' >&2
+            "$kubectl" get validatingadmissionpolicy fixture-provider-gate -o yaml >&2
             exit 1
           fi
-          grep -q 'fixture-provider-gate-required' "$RUNNER_TEMP/admission-negative.log"
           python3 - "$RUNNER_TEMP/ungated-provider-pod.json" "$RUNNER_TEMP/sidecar-provider-pod.json" <<'PY'
           import json, sys
           p = json.load(open(sys.argv[1]))
