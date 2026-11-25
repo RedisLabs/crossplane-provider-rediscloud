@@ -29,4 +29,4 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestPSCManagedServiceFailureLoopback TestPSCManagedServiceLifecycleLoopback TestPSCManagedEndpointFailureLoopback TestPSCManagedEndpointLifecycleLoopback
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestPSCManagedServiceFailureLoopback TestPSCManagedServiceLifecycleLoopback TestPSCManagedEndpointFailureLoopback TestPSCManagedEndpointLifecycleLoopback TestPSCManagedServiceAcceptedThen503Loopback TestPSCManagedEndpointAcceptedThen503Loopback

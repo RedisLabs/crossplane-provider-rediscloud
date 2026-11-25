@@ -32,14 +32,18 @@ import (
 // This fixture starts with an existing fake Pro parent. All writes target the
 // local fake PSC endpoint; no AWS, Cloud account or live lock is exercised.
 func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) {
-	runPSCManagedEndpoint(t, false)
+	runPSCManagedEndpoint(t, false, false)
 }
 
 func TestPSCManagedEndpointFailureLoopback(t *testing.T) {
-	runPSCManagedEndpoint(t, true)
+	runPSCManagedEndpoint(t, true, false)
 }
 
-func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
+func TestPSCManagedEndpointAcceptedThen503Loopback(t *testing.T) {
+	runPSCManagedEndpoint(t, false, true)
+}
+
+func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" && plugins == "" {
@@ -52,9 +56,16 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo 
 	const path = parentPath + "/7"
 	var mu sync.Mutex
 	exists, created, deleted, unexpected, failCreate := false, false, false, false, injectFailure
+	createRequests, deleteRequests := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
+		if r.Method == http.MethodPost && r.URL.Path == path {
+			createRequests++
+		}
+		if r.Method == http.MethodDelete {
+			deleteRequests++
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
 			unexpected = true
@@ -94,6 +105,10 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo 
 				return
 			}
 			exists, created = true, true
+			if acceptedUnknown {
+				http.Error(w, "accepted fixture response lost", http.StatusServiceUnavailable)
+				return
+			}
 			response = map[string]any{fixtureTaskKey: "create-endpoint"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-endpoint" && created:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{"resourceId": 8}}
@@ -179,6 +194,17 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo 
 			}
 		}
 		t.Fatalf("%s callback not observed", label)
+	}
+	if acceptedUnknown {
+		await("accepted create with unknown response", true)
+		// Reuse the managed-operation observer to drain any scheduled replay.
+		verifyNoACLCreateReplay(t, rec, store, callback, item.Name)
+		mu.Lock()
+		defer mu.Unlock()
+		if !exists || !created || deleted || unexpected || createRequests != 1 || deleteRequests != 0 {
+			t.Fatalf("accepted unknown create: exists=%v created=%v deleted=%v unexpected=%v creates=%d deletes=%d", exists, created, deleted, unexpected, createRequests, deleteRequests)
+		}
+		return
 	}
 	if injectFailure {
 		await("injected endpoint failure", true)
