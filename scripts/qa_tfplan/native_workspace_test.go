@@ -29,7 +29,7 @@ func TestNativeWorkspaceStoreRegenerates(t *testing.T) {
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TF_CLI_ARGS", "")
 	t.Setenv("TF_CLI_ARGS_init", "")
-	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(key, "http://127.0.0.1:1")
 	}
 	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -48,7 +48,7 @@ func TestNativeWorkspaceStoreRegenerates(t *testing.T) {
 	item.Spec.ForProvider.Replication = &replication
 	item.Spec.ForProvider.SubscriptionID = &sub
 	store := terraform.NewWorkspaceStore(logging.NewNopLogger())
-	setup := terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: "http://127.0.0.1:1/v1"}}
+	setup := terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: "http://127.0.0.1:1/v1"}}
 	cfg := providerconfig.GetProvider().Resources["rediscloud_essentials_database"]
 	if _, err := store.Workspace(context.Background(), nil, item, setup, cfg); err != nil {
 		t.Fatal(err)

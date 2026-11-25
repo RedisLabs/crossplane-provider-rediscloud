@@ -45,3 +45,6 @@ Separately, `TestNativeWorkspaceStoreRegenerates` exercises the production Upjet
 
 
 A work-in-progress ACL rule lifecycle fixture exercises actual Crossplane managed reconciliation and the Terraform provider with loopback fake Cloud. This fixture must pass hosted CI before it can be reported as simulated coverage. It is not live qualification and supplies no real account admission.
+
+
+ACL role and user test prototypes use real managed reconcilers and the pinned Terraform provider with loopback fake Cloud. They inject pre-mutation 403 responses for create, update and delete, check owned state after each rejection, and retain unrelated fake inventory. These explicit rejections do not model accepted-then-lost responses, prove safe automatic recovery, or establish live Cloud behavior. Hosted CI is the only integration execution.
