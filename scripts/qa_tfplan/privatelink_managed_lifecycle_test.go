@@ -55,7 +55,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		var response any
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1":
-			response = map[string]any{"id": 1, "name": "fixture-parent", "status": "active"}
+			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: "active"}
 		case r.Method == http.MethodGet && r.URL.Path == path && !exists:
 			http.NotFound(w, r)
 			return
@@ -73,7 +73,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 			exists, created = true, true
 			response = map[string]any{"taskId": "create-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-link" && created:
-			response = map[string]any{"status": "processing-completed"}
+			response = map[string]any{"status": "processing-completed", "response": map[string]any{"resourceId": 1}}
 		case r.Method == http.MethodDelete && r.URL.Path == path && exists && !deleted:
 			exists, deleted = false, true
 			response = map[string]any{"taskId": "delete-link"}
@@ -208,7 +208,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		}
 		err := kube.Get(context.Background(), req.NamespacedName, &api.Link{})
 		if apierrors.IsNotFound(err) {
-			if _, err := os.Stat(filepath.Join(dir, "fixture-link-uid")); !os.IsNotExist(err) {
+			if _, statErr := os.Stat(filepath.Join(dir, "fixture-link-uid")); !os.IsNotExist(statErr) {
 				t.Fatal("fake workspace remains or cannot be checked")
 			}
 			t.Log("SIMULATED: fake PrivateLink absent with fake parent still present")
