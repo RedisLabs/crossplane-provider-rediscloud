@@ -230,12 +230,18 @@ jobs:
           PYTHON
           source "$RUNNER_TEMP/provider-identity.env"
           test "$NODE" = local-dev-control-plane
-          node_ip=$("$kubectl" get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-          python3 - "$node_ip" <<'PYTHON'
-          import ipaddress, sys
-          ipaddress.IPv4Address(sys.argv[1])
+          "$kubectl" get node "$NODE" -o json > "$RUNNER_TEMP/node-identity.json"
+          python3 - "$RUNNER_TEMP/node-identity.json" "$RUNNER_TEMP/node-identity.env" <<'PYTHON'
+          import ipaddress, json, pathlib, sys
+          node = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          addresses = [ipaddress.ip_address(item["address"]) for item in node["status"]["addresses"] if item["type"] == "InternalIP"]
+          v4 = [str(address) for address in addresses if address.version == 4]
+          v6 = [str(address) for address in addresses if address.version == 6]
+          if len(v4) != 1 or len(v6) != 1:
+              raise SystemExit("expected one node internal address in each family")
+          pathlib.Path(sys.argv[2]).write_text(f"node_ip={v4[0]}\nnode_ip6={v6[0]}\n")
           PYTHON
-          node_ip6=$(docker exec "$NODE" ip -j -6 address show dev eth0 | python3 -c 'import ipaddress,json,sys; addresses=[a["local"] for interface in json.load(sys.stdin) for a in interface.get("addr_info", []) if a.get("scope") == "global" and ipaddress.ip_address(a["local"]).version == 6]; assert len(addresses)==1; print(addresses[0])')
+          source "$RUNNER_TEMP/node-identity.env"
           image='registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373'
           docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e 'REGISTRY_HTTP_ADDR=[::]:5555' "$image" >/dev/null
           cleanup() {
