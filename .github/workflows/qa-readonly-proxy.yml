@@ -1,0 +1,13 @@
+name: Credential-free read-only route guard
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fake-proxy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Verify fake-only exact routes and redirect refusal
+        run: python3 -m unittest discover -s scripts/readonly_proxy -p 'test_*.py' -v

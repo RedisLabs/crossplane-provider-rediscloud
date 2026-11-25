@@ -221,6 +221,9 @@ jobs:
       - name: Validate shared acceptance scenario contract
         run: python3 -m unittest discover -s acceptance -p 'test_*.py'
 
+      - name: Verify fake-only read-only proxy guard
+        run: python3 -m unittest discover -s scripts/readonly_proxy -p 'test_*.py' -v
+
       - name: Exercise simulated read-only Crossplane lookup
         run: python3 acceptance/crossplane_alpha_lookup.py
 
