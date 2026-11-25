@@ -18,6 +18,7 @@ func TestSetupsRegistersEveryLookup(t *testing.T) {
 		"DataPersistence",
 		"DatabaseModules",
 		"EssentialsSubscription",
+		"ProSubscription",
 		"PrivateLink",
 		"ActiveActivePrivateLink",
 		"PrivateLinkEndpointScript",

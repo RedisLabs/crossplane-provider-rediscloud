@@ -29,6 +29,8 @@ import (
 )
 
 const exampleProviderConfig = "default"
+const exampleAPIKey = "key"
+const exampleAPISecret = "secret"
 
 func TestPaymentMethodReconcileWritesID(t *testing.T) { //nolint:gocyclo // Keep the request and reconciler assertions together.
 	var calls atomic.Int32
@@ -42,7 +44,7 @@ func TestPaymentMethodReconcileWritesID(t *testing.T) { //nolint:gocyclo // Keep
 		if r.URL.Path != "/payment-methods" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		if r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+		if r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
 			t.Error("credentials were not sent")
 		}
 		w.Header().Set("Content-Type", "application/json")
