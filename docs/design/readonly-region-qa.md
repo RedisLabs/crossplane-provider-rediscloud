@@ -1,4 +1,4 @@
-# Crossplane read-only QA region lookup
+# Crossplane read-only QA lookups
 
 **Date:** 2026-11-25  
 **Status:** Candidate, requires hosted guard verification before live dispatch  
@@ -6,9 +6,10 @@
 
 ## TL;DR
 
-Exercise the real Regions reconciler against the existing QA account with an
-in-memory Kubernetes client. A fail-closed HTTP transport permits only GET
-`/v1/regions` at an independently allowlisted HTTPS origin and rejects redirects.
+Exercise the real Regions and PaymentMethod reconcilers against the existing QA
+account with an in-memory Kubernetes client. Per-case fail-closed HTTP transports
+permit only the exact GET route at an independently allowlisted HTTPS origin and
+reject redirects.
 No Cloud resources are created or modified. This does not provide writer
 serialization or qualify live lifecycle behavior.
 
@@ -18,12 +19,16 @@ An opt-in GitHub Actions dispatch to the dedicated candidate branch builds a
 test binary without Cloud credentials, runs a negative transport-guard test,
 and records its SHA-256. The live job downloads that exact artifact, checks its
 digest, then supplies the existing protected QA credentials only to that binary.
-It runs two reconciliations against a fake in-memory Kubernetes API, filtering
-AWS and GCP, and checks Ready, nonempty filtered results and exactly two HTTP
-200 responses. Only counts, request method/path and status are logged; account
-identifiers, returned IDs and credentials are not logged.
+It runs AWS and GCP region reconciliations against a fake in-memory Kubernetes
+API and checks Ready, nonempty filtered results and exactly two HTTP 200s. The
+payment lookup reads the catalog to select an unexpired unique method in memory,
+reconciles that exact filter, then checks that a nonmatching filter clears stale
+status. Three independently guarded GETs are allowed for this test. If no unique
+unexpired method exists, this case is blocked; no resource is created to supply
+one. No payment IDs, card details, account IDs or credentials are logged.
 
-The guard rejects other methods, hosts, paths, queries, request bodies, plaintext
+Each test creates its own guard for exactly one allowed path: `/v1/regions` or
+`/v1/payment-methods`. The guard rejects other methods, hosts, paths, queries, request bodies, plaintext
 and any redirect before following it. The QA URL must match the independently
 configured origin hashes used by the existing QA harness; the binary additionally
 requires an opt-in GitHub Actions run in this repository. The guard is an
@@ -40,6 +45,9 @@ or traffic assertion fails, report failure and stop; do not attempt cleanup or
 convert it into lifecycle success. Existing Cloud resources are neither named
 nor changed. Rollback is to remove this candidate branch/job; preserve running
 jobs and do not alter the disabled Pulumi workflow.
+
+The repo has no Pro subscription lookup kind/reconciler, so that requested
+data-source case remains unsupported and is not simulated by another resource.
 
 ADR: no new decision for a bounded test harness; the shared-account admission
 architecture remains proposed separately. BDR: none. Live provider deployment,

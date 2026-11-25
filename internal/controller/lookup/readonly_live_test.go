@@ -34,12 +34,13 @@ import (
 // and plaintext before the request reaches the real network transport.
 type regionReadGuard struct {
 	origin              string
+	path                string
 	next                http.RoundTripper
 	allowed, denied, ok atomic.Int32
 }
 
 func (g *regionReadGuard) RoundTrip(r *http.Request) (*http.Response, error) { //nolint:gocyclo // Each condition is a distinct fail-closed request boundary.
-	if r.Method != http.MethodGet || r.URL.Scheme != "https" || r.URL.Host != g.origin || r.URL.Path != "/v1/regions" || r.URL.RawQuery != "" || r.URL.User != nil || r.Body != nil {
+	if r.Method != http.MethodGet || r.URL.Scheme != "https" || r.URL.Host != g.origin || r.URL.Path != g.path || r.URL.RawQuery != "" || r.URL.User != nil || r.Body != nil {
 		g.denied.Add(1)
 		return nil, errors.New("request denied by read-only region guard")
 	}
@@ -63,7 +64,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:gocyclo // Exercise every rejected request and redirect in one isolated guard test.
 	const fixtureURL = "https://qa.example.test/v1/regions"
 	var forwarded atomic.Int32
-	guard := &regionReadGuard{origin: "qa.example.test", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	guard := &regionReadGuard{origin: "qa.example.test", path: "/v1/regions", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		forwarded.Add(1)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
@@ -72,6 +73,7 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:g
 		{"PUT", fixtureURL}, {"PATCH", fixtureURL},
 		{"GET", "https://elsewhere.example.test/v1/regions"}, {"GET", "http://qa.example.test/v1/regions"},
 		{"GET", "https://qa.example.test/v1/subscriptions"}, {"GET", "https://qa.example.test/v1/regions?x=1"},
+		{"GET", "https://qa.example.test/v1/payment-methods"},
 	} {
 		req, err := http.NewRequest(item.method, item.raw, nil)
 		if err != nil {
@@ -81,7 +83,7 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:g
 			t.Fatal("unsafe fixture request was accepted")
 		}
 	}
-	if forwarded.Load() != 0 || guard.denied.Load() != 8 {
+	if forwarded.Load() != 0 || guard.denied.Load() != 9 {
 		t.Fatal("unsafe fixture request reached transport")
 	}
 	withBody, _ := http.NewRequest("GET", fixtureURL, strings.NewReader("data"))
@@ -102,10 +104,8 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:g
 	}
 }
 
-// TestLiveReadonlyRegions is invoked only by the explicitly dispatched hosted
-// workflow. It makes only guarded Cloud reads and uses a fake Kubernetes client.
-func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at every credential, endpoint, request and result boundary.
-	const secretDataKey = "qa-key"
+func readonlyQACredentials(t *testing.T) (map[string]string, *url.URL, []byte) { //nolint:gocyclo // Reject each invalid hosted credential and origin boundary.
+	t.Helper()
 	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("GITHUB_REPOSITORY") != "RedisLabs/crossplane-provider-rediscloud" || os.Getenv("QA_READONLY_REGIONS") != "1" {
 		t.Skip("hosted opt-in required")
 	}
@@ -136,9 +136,17 @@ func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at 
 	if err != nil {
 		t.Fatal("QA credentials could not be normalized")
 	}
+	return creds, u, encoded
+}
+
+// TestLiveReadonlyRegions is invoked only by the explicitly dispatched hosted
+// workflow. It makes only guarded Cloud reads and uses a fake Kubernetes client.
+func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at every request and result boundary.
+	const secretDataKey = "qa-key"
+	_, u, encoded := readonlyQACredentials(t)
 
 	old := http.DefaultTransport
-	guard := &regionReadGuard{origin: u.Host, next: old}
+	guard := &regionReadGuard{origin: u.Host, path: "/v1/regions", next: old}
 	http.DefaultTransport = guard
 	defer func() { http.DefaultTransport = old }()
 	scheme := runtime.NewScheme()
