@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) {
+func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) { //nolint:gocyclo // Exercise the same controller over success and invalid responses.
 	for _, tt := range []struct {
 		name, id, body string
 		code           int
@@ -25,6 +25,9 @@ func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) {
 	}{
 		{"pro", "123", `{"id":123,"name":"fixture","status":"active","deploymentType":"single-region"}`, 200, true, 1},
 		{"forbidden", "123", `{}`, 403, false, 1},
+		{"not-found", "123", `{}`, 404, false, 1},
+		{"server-error", "123", `{}`, 500, false, 1},
+		{"empty-response", "123", `{}`, 200, false, 1},
 		{"wrong-id", "123", `{"id":124,"deploymentType":"single-region"}`, 200, false, 1},
 		{"active-active", "123", `{"id":123,"deploymentType":"active-active"}`, 200, false, 1},
 		{"unknown-type", "123", `{"id":123}`, 200, false, 1},
@@ -36,7 +39,7 @@ func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) {
 				calls++
 				if r.Method != http.MethodGet || r.URL.Path != "/subscriptions/123" || r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
 					t.Errorf("unexpected or unauthenticated request %s %s", r.Method, r.URL.Path)
-					http.Error(w, "denied", 403)
+					http.Error(w, "denied", http.StatusForbidden)
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")

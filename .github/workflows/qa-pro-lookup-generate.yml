@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'apis/lookup/**'
+      - 'internal/controller/lookup/prosubscription*'
       - '.github/workflows/qa-pro-lookup-generate.yml'
   workflow_dispatch:
 permissions:
@@ -25,3 +26,7 @@ jobs:
             apis/lookup/v1alpha1/zz_generated.deepcopy.go
             package/crds/lookup.redis.io_prosubscriptions.yaml
           if-no-files-found: error
+      - name: Verify generated artifacts are current
+        run: git diff --exit-code -- apis/lookup/v1alpha1/zz_generated.deepcopy.go package/crds/lookup.redis.io_prosubscriptions.yaml
+      - name: Verify the lookup against a fake API
+        run: go test ./internal/controller/lookup -run '^TestProSubscription' -count=1 -v
