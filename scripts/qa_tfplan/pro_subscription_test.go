@@ -40,6 +40,7 @@ const (
 )
 
 func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
+	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")

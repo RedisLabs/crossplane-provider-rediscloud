@@ -92,6 +92,13 @@ const (
 	fixtureNoPersistence    = "none"
 )
 
+func requireHostedFixture(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		t.Skip("provider fixture requires GitHub Actions")
+	}
+}
+
 // The parent is pre-existing in this incremental fake: only managed DB create
 // is exercised. No Cloud account, account admission, or full teardown is proven.
 func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The integration case keeps its local server and lifecycle together.

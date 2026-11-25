@@ -36,6 +36,7 @@ import (
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")

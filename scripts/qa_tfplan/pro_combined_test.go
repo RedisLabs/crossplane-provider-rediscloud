@@ -35,6 +35,7 @@ import (
 // This fixture uses no Cloud account: it models a newly created Pro parent and
 // one bootstrap database on loopback, and checks that both are removed.
 func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
+	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")
