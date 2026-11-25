@@ -50,6 +50,8 @@ class Broker:
         self.uncertain = set()
         self.baseline = {'standing'}
         self.intended = set()
+        self.delete_reserved = set()
+        self.busy_resources = set()
 
     def acquire(self, run):
         with self.lock:
@@ -58,6 +60,7 @@ class Broker:
             self.generation += 1
             self.owner = (run, self.generation, uuid4().hex)
             self.intended = set()
+            self.delete_reserved = set()
             return self.owner
 
     def _check(self, owner):
@@ -72,12 +75,19 @@ class Broker:
             # Fixed fixture identity only; this is not proof of Cloud ownership.
             if resource != 'run-db' or (kind == 'delete' and resource not in self.intended):
                 raise Denied()
+            if resource in self.busy_resources:
+                raise Denied()
+            if kind == 'delete':
+                if resource in self.delete_reserved or self.uncertain:
+                    raise Denied()
+                self.delete_reserved.add(resource)
             if kind == 'create':
                 if resource in self.intended:
                     raise Denied()
                 self.intended.add(resource)
             self.seen.add(request_id)
             self.inflight.add(request_id)
+            self.busy_resources.add(resource)
         if ready is not None:
             ready.set()
             proceed.wait(10)
@@ -97,6 +107,7 @@ class Broker:
         finally:
             with self.lock:
                 self.inflight.remove(request_id)
+                self.busy_resources.remove(resource)
 
     def release(self, owner):
         with self.lock:
@@ -173,6 +184,8 @@ class AccountFenceRehearsal(unittest.TestCase):
         with self.assertRaises(Denied):
             self.broker.release(old)
         self.broker.mutate(old, 'delete', 'delete', 'run-db')
+        with self.assertRaises(Denied):
+            self.broker.mutate(old, 'delete-again', 'delete', 'run-db')
         self.broker.release(old)
         new = self.broker.acquire('next-attempt')
         self.assertGreater(new[1], old[1])
@@ -193,6 +206,8 @@ class AccountFenceRehearsal(unittest.TestCase):
             self.broker.release(owner)
         with self.assertRaises(Denied):
             self.broker.acquire('operator')
+        with self.assertRaises(Denied):
+            self.broker.mutate(owner, 'racing-delete', 'delete', 'run-db')
         proceed.set()
         worker.join(10)
         self.assertFalse(worker.is_alive())
@@ -215,12 +230,24 @@ class AccountFenceRehearsal(unittest.TestCase):
             self.broker.mutate(owner, 'unknown', 'create', 'run-db', lose_reply=True)
         with self.assertRaises(Denied):
             self.broker.mutate(owner, 'unknown', 'create', 'run-db')
-        self.broker.mutate(owner, 'cleanup', 'delete', 'run-db')
+        with self.assertRaises(Denied):
+            self.broker.mutate(owner, 'cleanup', 'delete', 'run-db')
         with self.assertRaises(Denied):
             self.broker.release(owner)
         with self.assertRaises(Denied):
             self.broker.acquire('other')
-        self.assertEqual(self.cloud.calls, ['unknown', 'cleanup'])
+        self.assertEqual(self.cloud.calls, ['unknown'])
+
+    def test_lost_delete_response_cannot_be_replayed_under_new_request_id(self):
+        owner = self.broker.acquire('run')
+        self.broker.mutate(owner, 'create', 'create', 'run-db')
+        with self.assertRaises(OSError):
+            self.broker.mutate(owner, 'delete-1', 'delete', 'run-db', lose_reply=True)
+        with self.assertRaises(Denied):
+            self.broker.mutate(owner, 'delete-2', 'delete', 'run-db')
+        with self.assertRaises(Denied):
+            self.broker.release(owner)
+        self.assertEqual(self.cloud.calls, ['create', 'delete-1'])
 
     def test_pending_task_and_foreign_resource_refuse_release(self):
         owner = self.broker.acquire('run')
