@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           make vendor vendor.check
           make build
-          make .cache/tools/linux_x86_64/kind-v0.33.0
+          make "$GITHUB_WORKSPACE/.cache/tools/linux_x86_64/kind-v0.33.0"
           printf 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnetworking:\n  ipFamily: dual\n' > "$RUNNER_TEMP/dual-kind.yaml"
           .cache/tools/linux_x86_64/kind-v0.33.0 create cluster --name local-dev --config "$RUNNER_TEMP/dual-kind.yaml"
           make controlplane.up
