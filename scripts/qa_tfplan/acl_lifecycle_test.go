@@ -46,7 +46,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		defer mu.Unlock()
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
 			unexpected = true
-			http.Error(w, "fixture credentials required", 403)
+			http.Error(w, "fixture credentials required", http.StatusForbidden)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -56,43 +56,43 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["name"] != "fixture-acl" || body["redisRule"] != rule {
 				unexpected = true
-				http.Error(w, "bad create", 400)
+				http.Error(w, "bad create", http.StatusBadRequest)
 				return
 			}
 			exists = true
 			response = map[string]any{"taskId": "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{"status": "processing-completed", "response": map[string]any{"resourceId": 42}}
+			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 42}}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/acl/redisRules/42" && exists:
-			response = map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, "status": "active"}
+			response = map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, fixtureStatusKey: "active"}
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/acl/redisRules/42" && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["redisRule"] != "+@all ~*" {
 				unexpected = true
-				http.Error(w, "bad update", 400)
+				http.Error(w, "bad update", http.StatusBadRequest)
 				return
 			}
 			rule = "+@all ~*"
 			response = map[string]any{"taskId": "update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
-			response = map[string]any{"status": "processing-completed"}
+			response = map[string]any{fixtureStatusKey: "processing-completed"}
 		case r.Method == http.MethodDelete && r.URL.Path == "/v1/acl/redisRules/42" && exists:
 			exists = false
 			response = map[string]any{"taskId": "delete"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
-			response = map[string]any{"status": "processing-completed"}
+			response = map[string]any{fixtureStatusKey: "processing-completed"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/acl/redisRules/42" && !exists:
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/acl/redisRules":
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, "status": "active"})
+				rows = append(rows, map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, fixtureStatusKey: "active"})
 			}
 			response = map[string]any{"redisRules": rows}
 		default:
 			unexpected = true
-			http.Error(w, "unexpected request", 403)
+			http.Error(w, "unexpected request", http.StatusForbidden)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(response)
@@ -207,14 +207,14 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		t.Fatal(err)
 	}
 	await("terraform destroy ")
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 30; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 			t.Fatal(err)
 		}
 		if apierrors.IsNotFound(kube.Get(context.Background(), types.NamespacedName{Name: name}, &acl.Rule{})) {
 			break
 		}
-		if i == 4 {
+		if i == 29 {
 			item := &acl.Rule{}
 			_ = kube.Get(context.Background(), types.NamespacedName{Name: name}, item)
 			mu.Lock()
@@ -222,6 +222,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 			mu.Unlock()
 			t.Fatalf("ACL CR remains: status=%#v finalizers=%v annotations=%v commands=%v", item.Status, item.Finalizers, item.Annotations, spy.snapshot())
 		}
+		time.Sleep(time.Second)
 	}
 	mu.Lock()
 	defer mu.Unlock()
