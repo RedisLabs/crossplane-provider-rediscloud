@@ -85,7 +85,73 @@ jobs:
             exit 1
           fi
           echo "Ephemeral registry OCI package digest: $digest"
-          echo "Manifest hash verified; package content to xpkg file mapping is not independently checked."
+          python3 - "$RUNNER_TEMP/oci-manifest.json" "${packages[0]}" <<'PY'
+          import hashlib, io, json, re, sys, tarfile
+
+          def verify(manifest, archive):
+              descriptors = [manifest["config"], *manifest["layers"]]
+              expected = {}
+              for index, descriptor in enumerate(descriptors):
+                  digest = descriptor["digest"]
+                  size = descriptor["size"]
+                  if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest) or type(size) is not int or size < 0:
+                      raise ValueError("invalid manifest descriptor")
+                  name = digest if index == 0 else digest[7:] + ".tar.gz"
+                  if name in expected:
+                      raise ValueError("duplicate manifest descriptor")
+                  expected[name] = (digest[7:], size)
+              seen = set()
+              with tarfile.open(fileobj=archive, mode="r:*") as tar:
+                  for member in tar:
+                      if member.name == "manifest.json" and member.isfile():
+                          continue
+                      if not member.isfile() or member.name not in expected or member.name in seen:
+                          raise ValueError("unexpected or duplicate xpkg blob")
+                      expected_hash, expected_size = expected[member.name]
+                      if member.size != expected_size:
+                          raise ValueError("xpkg blob size differs from manifest")
+                      content = tar.extractfile(member)
+                      if content is None:
+                          raise ValueError("xpkg blob unreadable")
+                      digest = hashlib.sha256()
+                      for chunk in iter(lambda: content.read(1024 * 1024), b""):
+                          digest.update(chunk)
+                      if digest.hexdigest() != expected_hash:
+                          raise ValueError("xpkg blob hash differs from manifest")
+                      seen.add(member.name)
+              if seen != set(expected):
+                  raise ValueError("xpkg is missing a manifest blob")
+
+          # Synthetic corruption and missing-layer cases must both fail closed.
+          config, layer = b"config", b"layer"
+          config_hash = hashlib.sha256(config).hexdigest()
+          layer_hash = hashlib.sha256(layer).hexdigest()
+          sample = {"config": {"digest": "sha256:" + config_hash, "size": len(config)}, "layers": [{"digest": "sha256:" + layer_hash, "size": len(layer)}]}
+          def fixture(layer_bytes):
+              buf = io.BytesIO()
+              with tarfile.open(fileobj=buf, mode="w") as tar:
+                  for name, data in [("sha256:" + config_hash, config), (layer_hash + ".tar.gz", layer_bytes)]:
+                      if data is None:
+                          continue
+                      info = tarfile.TarInfo(name)
+                      info.size = len(data)
+                      tar.addfile(info, io.BytesIO(data))
+              buf.seek(0)
+              return buf
+          verify(sample, fixture(layer))
+          for corrupt in (fixture(b"wrong"), fixture(None)):
+              try:
+                  verify(sample, corrupt)
+              except ValueError:
+                  pass
+              else:
+                  raise SystemExit("corrupt or missing blob unexpectedly accepted")
+          with open(sys.argv[1], encoding="utf-8") as f:
+              manifest = json.load(f)
+          with open(sys.argv[2], "rb") as f:
+              verify(manifest, f)
+          print("Every OCI config and layer digest and size matches the locally built xpkg.")
+          PY
           for node in $("$kind" get nodes --name local-dev); do
             docker exec "$node" mkdir -p /etc/containerd/certs.d/registry.localhost:5000
             printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/registry.localhost:5000/hosts.toml >/dev/null
