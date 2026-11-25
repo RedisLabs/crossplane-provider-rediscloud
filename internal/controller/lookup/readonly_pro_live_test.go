@@ -101,8 +101,11 @@ func uniqueProSelector(raw []byte) (int, error) { //nolint:gocyclo // Validate e
 		return 0, errors.New("inventory malformed or too large")
 	}
 	var total int
+	if _, exists := body["total"]; !exists {
+		return 0, errors.New("inventory completeness metadata missing")
+	}
 	if json.Unmarshal(body["total"], &total) != nil || total != len(rows) {
-		return 0, errors.New("inventory completeness unverified")
+		return 0, errors.New("inventory total invalid")
 	}
 	seen := map[int]bool{}
 	names := map[string]bool{}
@@ -118,10 +121,71 @@ func uniqueProSelector(raw []byte) (int, error) { //nolint:gocyclo // Validate e
 			selected, count = row.ID, count+1
 		}
 	}
+	if count == 0 {
+		return 0, errors.New("zero candidates")
+	}
 	if count != 1 {
-		return 0, errors.New("no unique active Pro subscription")
+		return 0, errors.New("multiple candidates")
 	}
 	return selected, nil
+}
+
+func proDiagnosticCategory(raw []byte) string {
+	_, err := uniqueProSelector(raw)
+	if err == nil {
+		return "malformed/other"
+	}
+	switch err.Error() {
+	case "inventory completeness metadata missing", "inventory paging not established":
+		return "missing completeness metadata"
+	case "zero candidates":
+		return "zero candidates"
+	case "multiple candidates":
+		return "multiple candidates"
+	default:
+		return "malformed/other"
+	}
+}
+
+func TestReadonlyProDiagnosticCategories(t *testing.T) {
+	for _, tc := range []struct{ body, expected string }{
+		{`{"accountId":1,"subscriptions":[]}`, "missing completeness metadata"},
+		{`{"accountId":1,"total":0,"subscriptions":[]}`, "zero candidates"},
+		{`{"accountId":1,"total":2,"subscriptions":[{"id":3,"name":"a","status":"active","deploymentType":"single-region"},{"id":4,"name":"b","status":"active","deploymentType":"single-region"}]}`, "multiple candidates"},
+		{`{"accountId":1,"total":2,"subscriptions":[]}`, "malformed/other"},
+		{`{"accountId":1,"total":1,"subscriptions":[{"id":3,"name":"fixture","status":"active","deploymentType":"single-region"}]}`, "malformed/other"},
+	} {
+		if proDiagnosticCategory([]byte(tc.body)) != tc.expected {
+			t.Fatal("diagnostic category mismatch")
+		}
+	}
+}
+
+// TestLiveReadonlyProDiagnostic never uses a selected ID, even when present.
+func TestLiveReadonlyProDiagnostic(t *testing.T) { //nolint:gocyclo // Fail closed at each credential, transport and response boundary.
+	creds, u, _ := readonlyQACredentials(t)
+	guard := &regionReadGuard{origin: u.Host, path: "/v1/subscriptions", next: http.DefaultTransport}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(creds[readonlyURLField], "/")+"/subscriptions", nil)
+	if err != nil {
+		t.Fatal("diagnostic request invalid")
+	}
+	req.Header.Set("X-Api-Key", creds[readonlyAPIKeyField])
+	req.Header.Set("X-Api-Secret-Key", creds[readonlySecretKeyField])
+	response, err := (&http.Client{Transport: guard}).Do(req)
+	if err != nil {
+		t.Fatal("diagnostic read failed")
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(response.Body, 10*1024*1024+1))
+	_ = response.Body.Close()
+	if readErr != nil || response.StatusCode != http.StatusOK || len(raw) > 10*1024*1024 || response.Header.Get("Link") != "" || response.Header.Get("X-Next-Page") != "" {
+		t.Fatal("diagnostic response unavailable or incomplete")
+	}
+	if guard.allowed.Load() != 1 || guard.ok.Load() != 1 || guard.denied.Load() != 0 {
+		t.Fatal("diagnostic request trace invalid")
+	}
+	t.Log("Pro inventory diagnostic category: " + proDiagnosticCategory(raw))
 }
 
 func TestReadonlyProDiscoveryRejectsAmbiguity(t *testing.T) {

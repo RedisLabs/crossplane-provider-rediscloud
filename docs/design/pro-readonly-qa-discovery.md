@@ -4,13 +4,18 @@
 **Date:** 2026-11-25  
 **Tracking:** RED-225344
 
+The current manual workflow is restricted to one category-only diagnostic
+GET. It does not run the exact-ID lookup, even if the inventory contains a
+unique candidate. Its output is one of: missing completeness metadata, zero
+candidates, multiple candidates, or malformed/other; the last includes a
+valid unique candidate, which this diagnostic does not disclose.
+
 ## TL;DR
 
-Discover an existing active single-region Pro subscription from an authenticated
-QA inventory, then exercise the proposed ProSubscription reconciler by exact ID.
-Both requests are GET-only and scoped by an in-process transport guard. If the
-account, inventory completeness or unique selector cannot be proven, stop before
-the lookup; do not create resources or guess an ID.
+The current authorized diagnostic reads only the authenticated QA inventory and
+emits a broad category. A future separately authorized qualification may exercise
+the proposed ProSubscription reconciler by exact ID after verifying completeness
+and a unique selector. Do not create resources or guess an ID.
 
 ## Behavior and boundaries
 
@@ -20,14 +25,14 @@ records its digest. The live job verifies that exact artifact, supplies the QA
 credentials only to the binary, and verifies the configured HTTPS QA origin
 against the existing independent origin allowlist.
 
-The first allowed route is GET `/v1/subscriptions`. The response must contain a
+The diagnostic allows only GET `/v1/subscriptions`. The response must contain a
 positive account ID, a `subscriptions` list and explicit `total` equal to the
 number of rows; duplicate JSON keys, pagination indicators, malformed identities,
 duplicate IDs or names, missing deployment types and ambiguous candidates are
 not evidence of a safe selector. Exactly one active single-region Pro candidate
 must be present. Missing total or unsupported pagination blocks; this conservative
-contract may block even when a usable subscription exists. The guard then permits
-only the exact selected ID's GET endpoint. The actual ProSubscription reconciler
+contract may block even when a usable subscription exists. In a future authorized
+qualification the guard would then permit only the exact selected ID's GET endpoint. The actual ProSubscription reconciler
 uses an in-memory Kubernetes client and must report the same ID, active status
 and single-region type. Names, IDs, credentials and inventory bodies are never
 logged. No Cloud resources are created, changed or deleted.
