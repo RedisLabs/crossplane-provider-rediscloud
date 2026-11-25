@@ -31,7 +31,7 @@ import (
 func TestReadonlyACLTransportRejectsUnsafeRequests(t *testing.T) { //nolint:gocyclo // Check each disallowed route and mutation method before forwarding.
 	const aclURL = "https://qa.example.test/v1/acl/redisRules"
 	var forwarded atomic.Int32
-	guard := &regionReadGuard{origin: "qa.example.test", path: "/v1/acl/redisRules", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	guard := &regionReadGuard{origin: readonlyFixtureHost, path: "/v1/acl/redisRules", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		forwarded.Add(1)
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}

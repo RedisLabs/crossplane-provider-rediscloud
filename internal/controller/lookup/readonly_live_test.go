@@ -40,6 +40,7 @@ type regionReadGuard struct {
 }
 
 const (
+	readonlyFixtureHost    = "qa.example.test"
 	readonlyAPIKeyField    = "api_key"
 	readonlySecretKeyField = "secret_key"
 	readonlyURLField       = "url"
@@ -70,7 +71,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:gocyclo // Exercise every rejected request and redirect in one isolated guard test.
 	const fixtureURL = "https://qa.example.test/v1/regions"
 	var forwarded atomic.Int32
-	guard := &regionReadGuard{origin: "qa.example.test", path: "/v1/regions", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	guard := &regionReadGuard{origin: readonlyFixtureHost, path: "/v1/regions", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		forwarded.Add(1)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
