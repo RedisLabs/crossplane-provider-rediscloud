@@ -32,6 +32,11 @@ import (
 )
 
 const (
+	fixtureTaskKey       = "taskId"
+	fixtureTaskComplete  = "processing-completed"
+	fixtureParentPath    = "/v1/fixed/subscriptions/1"
+	fixtureProviderKey   = "provider"
+	fixtureProviderName  = "rediscloud"
 	fixtureExternalID    = "1/2"
 	fixtureNameKey       = "name"
 	fixtureStatusKey     = "status"
@@ -48,7 +53,8 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
-	created, deleted, unexpected := false, false, false
+	created, deleted, parentCreated, parentDeleted, unexpected := false, false, false, false, false
+	fixtureEviction := desiredEviction
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -60,9 +66,34 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 		w.Header().Set("Content-Type", "application/json")
 		var response any
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/fixed/subscriptions/1":
-			response = map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive}
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/fixed/subscriptions/1/databases" && !created:
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/fixed/subscriptions":
+			rows := []any{}
+			if parentCreated {
+				rows = append(rows, map[string]any{"id": 1, fixtureNameKey: fixtureName})
+			}
+			response = map[string]any{"subscriptions": rows}
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/fixed/subscriptions" && !parentCreated:
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["planId"] != float64(1) {
+				unexpected = true
+				http.Error(w, "wrong parent fixture body", http.StatusBadRequest)
+				return
+			}
+			parentCreated = true
+			response = map[string]any{fixtureTaskKey: "parent-create"}
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-create":
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 1}}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureParentPath && parentCreated:
+			response = map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive, "planId": 1, "paymentMethodType": "credit-card", "creationDate": "2025-01-01T00:00:00Z"}
+		case r.Method == http.MethodDelete && r.URL.Path == fixtureParentPath && parentCreated && !created:
+			parentCreated, parentDeleted = false, true
+			response = map[string]any{fixtureTaskKey: "parent-delete"}
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-delete" && parentDeleted:
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureParentPath && parentDeleted:
+			http.NotFound(w, r)
+			return
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/fixed/subscriptions/1/databases" && parentCreated && !created:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["dataEvictionPolicy"] != desiredEviction || body["dataPersistence"] != fixtureNoPersistence || body["replication"] != false {
 				unexpected = true
@@ -70,29 +101,30 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 				return
 			}
 			created = true
-			response = map[string]any{"taskId": "create"}
+			response = map[string]any{fixtureTaskKey: "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 2}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 2}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["dataEvictionPolicy"] != desiredEviction {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || (body["dataEvictionPolicy"] != desiredEviction && body["dataEvictionPolicy"] != "volatile-lru") {
 				unexpected = true
 				http.Error(w, "wrong fixture update", http.StatusBadRequest)
 				return
 			}
-			response = map[string]any{"taskId": "update"}
+			fixtureEviction = body["dataEvictionPolicy"].(string)
+			response = map[string]any{fixtureTaskKey: "update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureDatabasePath && created:
 			created, deleted = false, true
-			response = map[string]any{"taskId": "delete"}
+			response = map[string]any{fixtureTaskKey: "delete"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete" && deleted:
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && deleted:
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && created:
-			response = map[string]any{"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", "provider": "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": desiredEviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath+"/tags" && created:
 			response = map[string]any{"tags": []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && created:
@@ -123,7 +155,11 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	if err := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
+	assertEmptyFakeInventory(t, server.URL)
+	t.Log("SIMULATED: authenticated fake baseline inventory empty")
+	parent := createManagedParent(t, tf, plugins, server.URL, schemeForParent(t))
+	t.Log("SIMULATED: managed fake parent created and observed")
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
 	b, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +245,37 @@ createLoop:
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != fixtureExternalID || len(item.Finalizers) == 0 {
 		t.Fatal("managed database identity/finalizer not observed")
 	}
+	updated := "volatile-lru"
+	item.Spec.ForProvider.DataEviction = &updated
+	if err = kube.Update(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+	databaseConfig := config["resource"].(map[string]any)["rediscloud_essentials_database"].(map[string]any)["test"].(map[string]any)
+	databaseConfig["data_eviction"] = updated
+	b, err = json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	verifyManagedDrift(t, rec, spy, callback, false)
+	mu.Lock()
+	if fixtureEviction != updated || !created || !parentCreated {
+		mu.Unlock()
+		t.Fatal("fake update or identities differ")
+	}
+	mu.Unlock()
+	assertManagedFakeUpdate(t, server.URL, updated)
+	t.Log("SIMULATED: managed fake database update read back with stable ID")
+	current := &api.Database{}
+	if err = kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current); err != nil {
+		t.Fatal(err)
+	}
+	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != fixtureExternalID {
+		t.Fatal("managed database identity changed during fake update")
+	}
+	item = current
 	if err = kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
@@ -223,6 +290,7 @@ createLoop:
 			}
 			assertManagedFakeDelete(t, server.URL, &mu, &deleted, &unexpected)
 			assertManagedObjectGone(t, rec, kube)
+			parent.destroy(t)
 			return
 		case <-time.After(2 * time.Second):
 		}
@@ -235,6 +303,7 @@ createLoop:
 					}
 					assertManagedFakeDelete(t, server.URL, &mu, &deleted, &unexpected)
 					assertManagedObjectGone(t, rec, kube)
+					parent.destroy(t)
 					return
 				case <-time.After(90 * time.Second):
 					t.Fatal("managed delete callback timed out")
@@ -251,8 +320,8 @@ func assertManagedFakeCreate(t *testing.T, base string, mu *sync.Mutex, created,
 		key string
 		id  float64
 	}{
-		"/v1/fixed/subscriptions/1": {"id", 1},
-		fixtureDatabasePath:         {"databaseId", 2},
+		fixtureParentPath:   {"id", 1},
+		fixtureDatabasePath: {"databaseId", 2},
 	} {
 		req, err := http.NewRequest(http.MethodGet, base+path, nil)
 		if err != nil {
@@ -276,11 +345,32 @@ func assertManagedFakeCreate(t *testing.T, base string, mu *sync.Mutex, created,
 	if !*created || *unexpected {
 		t.Fatalf("create=%v unexpected=%v", *created, *unexpected)
 	}
+	t.Log("SIMULATED: managed fake child and parent both read active")
+}
+
+func assertManagedFakeUpdate(t *testing.T, base, eviction string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, base+fixtureDatabasePath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Api-Key", dummyCredential)
+	req.Header.Set("X-Api-Secret-Key", dummyCredential)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	err = json.NewDecoder(res.Body).Decode(&body)
+	_ = res.Body.Close()
+	if err != nil || res.StatusCode != http.StatusOK || body["databaseId"] != float64(2) || body["dataEvictionPolicy"] != eviction {
+		t.Fatal("fake update readback or identity mismatch")
+	}
 }
 
 func assertManagedFakeDelete(t *testing.T, base string, mu *sync.Mutex, deleted, unexpected *bool) {
 	t.Helper()
-	for path, wanted := range map[string]int{fixtureDatabasePath: http.StatusNotFound, "/v1/fixed/subscriptions/1": http.StatusOK} {
+	for path, wanted := range map[string]int{fixtureDatabasePath: http.StatusNotFound, fixtureParentPath: http.StatusOK} {
 		req, err := http.NewRequest(http.MethodGet, base+path, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -301,6 +391,7 @@ func assertManagedFakeDelete(t *testing.T, base string, mu *sync.Mutex, deleted,
 	if !*deleted || *unexpected {
 		t.Fatalf("delete=%v unexpected=%v", *deleted, *unexpected)
 	}
+	t.Log("SIMULATED: managed fake child 404 while fake parent 200")
 }
 
 func assertManagedObjectGone(t *testing.T, rec *managed.Reconciler, kube client.Client) {
@@ -320,4 +411,164 @@ func assertManagedObjectGone(t *testing.T, rec *managed.Reconciler, kube client.
 		}
 	}
 	t.Fatal("managed resource still exists after delete")
+}
+
+type managedParentFixture struct {
+	rec      *managed.Reconciler
+	kube     client.Client
+	callback *fakeCallback
+	spy      *spyExecutor
+	url      string
+}
+
+func schemeForParent(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := api.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	return scheme
+}
+
+func createManagedParent(t *testing.T, tf, plugins, url string, scheme *runtime.Scheme) *managedParentFixture {
+	t.Helper()
+	dir := t.TempDir()
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": url + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_subscription": map[string]any{"test": map[string]any{fixtureNameKey: fixtureName, "plan_id": 1}}}}
+	b, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	init := exec.Command(tf, "init", "-no-color", "-input=false", "-plugin-dir="+plugins)
+	init.Dir = dir
+	if out, initErr := init.CombinedOutput(); initErr != nil {
+		t.Fatalf("parent init: %v\n%s", initErr, out)
+	}
+	spy := &spyExecutor{Interface: kexec.New()}
+	ws := terraform.NewWorkspace(dir, terraform.WithExecutor(spy), terraform.WithFilterFn(func(s string) string { return s }))
+	item := &api.Subscription{ObjectMeta: metav1.ObjectMeta{Name: fixtureName, UID: types.UID("fixture-parent-uid")}}
+	name, plan := fixtureName, float64(1)
+	item.Spec.ForProvider.Name, item.Spec.ForProvider.PlanID = &name, &plan
+	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
+	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
+	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
+		return terraform.Setup{}, nil
+	}
+	callback := &fakeCallback{done: make(chan error, 1)}
+	connector := ujcontroller.NewConnector(kube, fixtureStore{ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))
+	parent := &managedParentFixture{managed.NewReconciler(mgr, xpresource.ManagedKind(api.Subscription_GroupVersionKind), managed.WithExternalConnector(connector)), kube, callback, spy, url}
+	parent.await(t, "terraform apply ")
+	for i := 0; i < 5; i++ {
+		if _, err = parent.rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
+			t.Fatal(err)
+		}
+		current := &api.Subscription{}
+		if err = kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current); err != nil {
+			t.Fatal(err)
+		}
+		if current.Status.AtProvider.ID != nil && *current.Status.AtProvider.ID == "1" && len(current.Finalizers) > 0 {
+			return parent
+		}
+	}
+	t.Fatal("managed parent identity/finalizer missing")
+	return nil
+}
+
+func (p *managedParentFixture) await(t *testing.T, command string) { //nolint:gocyclo // Exercise bounded asynchronous reconcile transitions.
+	t.Helper()
+	for i := 0; i < 8; i++ {
+		if _, err := p.rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-p.callback.done:
+			if err != nil {
+				t.Fatalf("parent callback: %v", err)
+			}
+			return
+		case <-time.After(2 * time.Second):
+		}
+		for _, actual := range p.spy.snapshot() {
+			if strings.Contains(actual, command) && !strings.Contains(actual, "-refresh-only") {
+				select {
+				case err := <-p.callback.done:
+					if err != nil {
+						t.Fatalf("parent callback: %v", err)
+					}
+					return
+				case <-time.After(90 * time.Second):
+					t.Fatal("parent callback timed out")
+				}
+			}
+		}
+	}
+	t.Fatal("parent callback missing")
+}
+
+func (p *managedParentFixture) destroy(t *testing.T) { //nolint:gocyclo // Check each deletion and inventory boundary.
+	t.Helper()
+	current := &api.Subscription{}
+	if err := p.kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.kube.Delete(context.Background(), current); err != nil {
+		t.Fatal(err)
+	}
+	p.await(t, "terraform destroy ")
+	for i := 0; i < 5; i++ {
+		if _, err := p.rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
+			t.Fatal(err)
+		}
+		err := p.kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, &api.Subscription{})
+		if apierrors.IsNotFound(err) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 4 {
+			t.Fatal("managed parent still exists")
+		}
+	}
+	req, err := http.NewRequest(http.MethodGet, p.url+fixtureParentPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Api-Key", dummyCredential)
+	req.Header.Set("X-Api-Secret-Key", dummyCredential)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("parent read after delete = %d", resp.StatusCode)
+	}
+	assertEmptyFakeInventory(t, p.url)
+	t.Log("SIMULATED: managed fake parent 404 and fake inventory empty")
+}
+
+func assertEmptyFakeInventory(t *testing.T, url string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url+"/v1/fixed/subscriptions", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Api-Key", dummyCredential)
+	req.Header.Set("X-Api-Secret-Key", dummyCredential)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Subscriptions []any `json:"subscriptions"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&body)
+	_ = resp.Body.Close()
+	if err != nil || resp.StatusCode != http.StatusOK || body.Subscriptions == nil || len(body.Subscriptions) != 0 {
+		t.Fatal("fake subscription inventory is not empty or malformed")
+	}
 }

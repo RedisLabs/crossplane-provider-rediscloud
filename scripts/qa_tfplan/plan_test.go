@@ -62,7 +62,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			w.Header().Set("Content-Type", "application/json")
 			if databaseUpdate {
 				eviction = desiredEviction
-				_ = json.NewEncoder(w).Encode(map[string]any{"taskId": "fixture-task"})
+				_ = json.NewEncoder(w).Encode(map[string]any{fixtureTaskKey: "fixture-task"})
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
@@ -81,14 +81,14 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/tasks/fixture-task":
-			_ = json.NewEncoder(w).Encode(map[string]any{fixtureStatusKey: "processing-completed"})
-		case "/v1/fixed/subscriptions/1":
+			_ = json.NewEncoder(w).Encode(map[string]any{fixtureStatusKey: fixtureTaskComplete})
+		case fixtureParentPath:
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive})
 		case fixtureDatabasePath + "/tags":
 			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
 		case fixtureDatabasePath:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", "provider": "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
 			})
 		default:
 			http.NotFound(w, r)
@@ -109,7 +109,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	if writeErr := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0o600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
 	b, marshalErr := json.Marshal(config)
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
