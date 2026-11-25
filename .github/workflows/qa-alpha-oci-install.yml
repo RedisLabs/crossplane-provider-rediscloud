@@ -216,7 +216,7 @@ jobs:
           image='registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373'
           docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e REGISTRY_HTTP_ADDR=0.0.0.0:5555 "$image" >/dev/null
           cleanup() {
-            docker exec "$NODE" iptables -D INPUT -s "$POD_IP/32" -p tcp --dport 5555 -j REJECT 2>/dev/null || true
+            docker exec "$NODE" iptables -D INPUT -s "$POD_IP/32" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe -j REJECT 2>/dev/null || true
             docker stop node-relay-fixture >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
@@ -233,10 +233,12 @@ jobs:
           test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
           "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- wget -q -T 3 -O /dev/null "http://$node_ip:5555/v2/"
           echo "Provider pod network can reach the independently verified node listener before firewalling."
-          docker exec "$NODE" iptables -I INPUT 1 -s "$POD_IP/32" -p tcp --dport 5555 -j REJECT
-          if "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- wget -q -T 3 -O /dev/null "http://$node_ip:5555/v2/"; then
-            echo "Node firewall did not block the provider pod" >&2; exit 1
-          fi
+          docker exec "$NODE" iptables -I INPUT 1 -s "$POD_IP/32" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe -j REJECT
+          mapfile -t before < <(docker exec "$NODE" iptables -nvx -L INPUT | awk '/codex-provider-node-probe/ {print $1}')
+          test "${#before[@]}" -eq 1 && [[ "${before[0]}" =~ ^[0-9]+$ ]]
+          "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5555/v2/"; then exit 42; else exit 0; fi' -- "$node_ip"
+          mapfile -t after < <(docker exec "$NODE" iptables -nvx -L INPUT | awk '/codex-provider-node-probe/ {print $1}')
+          test "${#after[@]}" -eq 1 && [[ "${after[0]}" =~ ^[0-9]+$ ]] && (( after[0] > before[0] ))
           docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
           test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
           echo "One IPv4 node-listener port was blocked; this is not a full egress boundary."
