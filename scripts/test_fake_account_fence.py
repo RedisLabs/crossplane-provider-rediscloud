@@ -49,6 +49,7 @@ class Broker:
         self.seen = set()
         self.uncertain = set()
         self.baseline = {'standing'}
+        self.intended = set()
 
     def acquire(self, run):
         with self.lock:
@@ -56,6 +57,7 @@ class Broker:
                 raise Denied()
             self.generation += 1
             self.owner = (run, self.generation, uuid4().hex)
+            self.intended = set()
             return self.owner
 
     def _check(self, owner):
@@ -67,6 +69,13 @@ class Broker:
             self._check(owner)
             if request_id in self.seen:
                 raise Denied()
+            # Fixed fixture identity only; this is not proof of Cloud ownership.
+            if resource != 'run-db' or (kind == 'delete' and resource not in self.intended):
+                raise Denied()
+            if kind == 'create':
+                if resource in self.intended:
+                    raise Denied()
+                self.intended.add(resource)
             self.seen.add(request_id)
             self.inflight.add(request_id)
         if ready is not None:
@@ -224,6 +233,23 @@ class AccountFenceRehearsal(unittest.TestCase):
             self.broker.release(owner)
         self.cloud.resources.remove('foreign')
         self.broker.release(owner)
+
+    def test_owner_cannot_delete_standing_or_unintended_resource(self):
+        owner = self.broker.acquire('run')
+        for resource in ('standing', 'foreign', 'run-db'):
+            with self.assertRaises(Denied):
+                self.broker.mutate(owner, 'delete-' + resource, 'delete', resource)
+        self.assertEqual(self.cloud.calls, [])
+        self.assertEqual(self.cloud.snapshot()['resources'], ['standing'])
+
+    def test_direct_fake_cloud_bypasses_model_broker(self):
+        self.broker.acquire('run')
+        payload = json.dumps({'id': 'direct', 'kind': 'create', 'resource': 'foreign'}).encode()
+        request = urllib.request.Request(self.broker.endpoint + '/mutate', data=payload,
+                                         headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+        self.assertIn('foreign', self.cloud.snapshot()['resources'])
 
 
 if __name__ == '__main__':
