@@ -95,7 +95,7 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRolePath && exists:
-			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl-role", "redisRules": []any{map[string]any{"ruleName": rule, fixtureDatabasesKey: []any{map[string]any{"subscriptionId": 1, fixtureDatabaseIDKey: 2, "regions": []any{}}}}}, fixtureStatusKey: fixtureActive}
+			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl-role", "redisRules": []any{map[string]any{"ruleName": rule, fixtureDatabasesKey: []any{map[string]any{fixtureSubscriptionIDKey: 1, fixtureDatabaseIDKey: 2, "regions": []any{}}}}}, fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureACLRolePath && exists:
 			if rejectUpdate {
 				rejectUpdate = false
@@ -129,7 +129,7 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRolesPath:
 			rows := []any{map[string]any{"id": 99, fixtureNameKey: "foreign-role", fixtureStatusKey: fixtureActive}}
 			if exists {
-				rows = append(rows, map[string]any{"id": 42, fixtureNameKey: "fixture-acl-role", "redisRules": []any{map[string]any{"ruleName": rule, "databases": []any{map[string]any{"subscriptionId": 1, fixtureDatabaseIDKey: 2, "regions": []any{}}}}}, fixtureStatusKey: fixtureActive})
+				rows = append(rows, map[string]any{"id": 42, fixtureNameKey: "fixture-acl-role", "redisRules": []any{map[string]any{"ruleName": rule, "databases": []any{map[string]any{fixtureSubscriptionIDKey: 1, fixtureDatabaseIDKey: 2, "regions": []any{}}}}}, fixtureStatusKey: fixtureActive})
 			}
 			response = map[string]any{"roles": rows}
 		default:
@@ -144,7 +144,7 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, key := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, key := range []string{fixtureTFCLIArgs, fixtureTFCLIArgsInit, fixtureTFCLIArgsApply, fixtureTFCLIArgsPlan, fixtureTFCLIArgsDestroy} {
 		t.Setenv(key, "")
 	}
 	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
@@ -376,7 +376,7 @@ func validFakeRoleAssociation(body map[string]any, expected string) bool {
 		return false
 	}
 	database, ok := databases[0].(map[string]any)
-	return ok && database["subscriptionId"] == float64(1) && database[fixtureDatabaseIDKey] == float64(2)
+	return ok && database[fixtureSubscriptionIDKey] == float64(1) && database[fixtureDatabaseIDKey] == float64(2)
 }
 
 func verifyForeignACLInventory(t *testing.T, url, key, foreignName, ownedName string, expectOwned bool) { //nolint:gocyclo // Reject incomplete or changed fake inventory.

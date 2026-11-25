@@ -65,12 +65,12 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo 
 		}
 		var response any
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1":
-			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: "active"}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
+			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == parentPath:
 			response = map[string]any{fixtureTaskKey: "get-service"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-service":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: "active"}}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: fixtureActive}}}
 		case r.Method == http.MethodGet && r.URL.Path == path:
 			response = map[string]any{fixtureTaskKey: "get-endpoints"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-endpoints":
@@ -231,7 +231,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo 
 	mu.Unlock()
 	// Endpoint reads are list-based: assert the modeled list is empty while
 	// the service and subscription remain readable; do not claim child 404.
-	for _, target := range []string{path, parentPath, "/v1/subscriptions/1"} {
+	for _, target := range []string{path, parentPath, fixtureProParentPath} {
 		request, err := http.NewRequest(http.MethodGet, server.URL+target, nil)
 		if err != nil {
 			t.Fatal(err)

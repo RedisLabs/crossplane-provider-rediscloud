@@ -30,9 +30,7 @@ import (
 )
 
 const (
-	fixtureResponseKey      = "response"
-	fixtureResourceKey      = "resource"
-	fixtureTerraformVersion = "1.5.7"
+	fixtureResourceKey = "resource"
 )
 
 // This fixture starts with an existing fake Pro parent. All writes target the
@@ -70,15 +68,15 @@ func runPSCManagedService(t *testing.T, injectFailure bool) { //nolint:gocyclo /
 		}
 		var response any
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1":
-			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: "active"}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
+			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == path && !exists:
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == path && exists:
 			response = map[string]any{fixtureTaskKey: "get-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-link" && exists:
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: "active"}}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: fixtureActive}}}
 		case r.Method == http.MethodPost && r.URL.Path == path && !exists && !created:
 			if failCreate {
 				failCreate = false
@@ -220,7 +218,7 @@ func runPSCManagedService(t *testing.T, injectFailure bool) { //nolint:gocyclo /
 		t.Fatal("unexpected fake delete")
 	}
 	mu.Unlock()
-	for target, expected := range map[string]int{path: http.StatusNotFound, "/v1/subscriptions/1": http.StatusOK} {
+	for target, expected := range map[string]int{path: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
 		request, err := http.NewRequest(http.MethodGet, server.URL+target, nil)
 		if err != nil {
 			t.Fatal(err)

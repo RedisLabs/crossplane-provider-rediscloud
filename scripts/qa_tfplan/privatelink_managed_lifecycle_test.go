@@ -57,18 +57,18 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		}
 		var response any
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1":
-			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: "active"}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
+			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == path && !exists:
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == path && exists:
 			response = map[string]any{"taskId": "get-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-link" && exists:
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{fixtureStatusKey: "active", "subscriptionId": 1, "shareName": "fixture-share", "resourceConfigurationId": "fixture-config", "principals": []any{map[string]any{"principal": principal, "type": "aws_account", "alias": "fixture", fixtureStatusKey: "associated"}}, "connections": []any{}, "databases": []any{}}}}
+			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{fixtureStatusKey: fixtureActive, fixtureSubscriptionIDKey: 1, "shareName": "fixture-share", "resourceConfigurationId": "fixture-config", "principals": []any{map[string]any{"principal": principal, "type": "aws_account", "alias": fixtureName, fixtureStatusKey: "associated"}}, "connections": []any{}, "databases": []any{}}}}
 		case r.Method == http.MethodPost && r.URL.Path == path && !exists && !created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["shareName"] != "fixture-share" || body["principal"] != principal || body["type"] != "aws_account" || body["alias"] != "fixture" {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["shareName"] != "fixture-share" || body["principal"] != principal || body["type"] != "aws_account" || body["alias"] != fixtureName {
 				unexpected = true
 				http.Error(w, "invalid fixture create", http.StatusBadRequest)
 				return
@@ -115,7 +115,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		t.Fatal(err)
 	}
 	item := &api.Link{ObjectMeta: metav1.ObjectMeta{Name: "fixture-link", UID: types.UID("fixture-link-uid")}}
-	sub, share, ptype, alias, arn := "1", "fixture-share", "aws_account", "fixture", principal
+	sub, share, ptype, alias, arn := "1", "fixture-share", "aws_account", fixtureName, principal
 	item.Spec.ForProvider.SubscriptionID = &sub
 	item.Spec.ForProvider.ShareName = &share
 	item.Spec.ForProvider.Principal = []api.PrincipalParameters{{Principal: &arn, PrincipalType: &ptype, PrincipalAlias: &alias}}
@@ -189,7 +189,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		t.Fatal("unexpected fake delete")
 	}
 	mu.Unlock()
-	for target, expected := range map[string]int{path: http.StatusNotFound, "/v1/subscriptions/1": http.StatusOK} {
+	for target, expected := range map[string]int{path: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
 		request, err := http.NewRequest(http.MethodGet, server.URL+target, nil)
 		if err != nil {
 			t.Fatal(err)

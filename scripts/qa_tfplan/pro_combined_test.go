@@ -136,7 +136,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			if child {
 				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureStatusKey: fixtureActive})
 			}
-			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, fixtureDatabasesKey: dbs}}}
+			response = map[string]any{"subscription": []any{map[string]any{fixtureSubscriptionIDKey: 1, fixtureDatabasesKey: dbs}}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && bootstrap:
 			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && !bootstrap:
@@ -172,7 +172,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, k := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, k := range []string{fixtureTFCLIArgs, fixtureTFCLIArgsInit, fixtureTFCLIArgsApply, fixtureTFCLIArgsPlan, fixtureTFCLIArgsDestroy} {
 		t.Setenv(k, "")
 	}
 	for _, k := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
