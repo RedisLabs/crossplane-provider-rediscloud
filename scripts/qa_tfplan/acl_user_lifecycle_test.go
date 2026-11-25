@@ -49,6 +49,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
+	reads, writes := 0, 0
 	exists, unexpected := false, false
 	rejectCreate, rejectUpdate, rejectDelete := mode != "success", true, true
 	createRequests, deleteRequests := 0, 0
@@ -56,6 +57,11 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
+		if r.Method == http.MethodGet {
+			reads++
+		} else {
+			writes++
+		}
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
 			unexpected = true
 			http.Error(w, "fixture credentials required", http.StatusForbidden)
@@ -265,6 +271,33 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	}
 	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != "42" {
 		t.Fatal("ACL ID changed")
+	}
+	mu.Lock()
+	readsBefore, writesBefore := reads, writes
+	mu.Unlock()
+	observed := &acl.User{ObjectMeta: metav1.ObjectMeta{Name: "observe-user", UID: types.UID("observe-user-uid")}, Spec: current.Spec}
+	verifyACLObserveOnly(t, observed, scheme, "rediscloud_acl_user", server.URL, secret.DeepCopy())
+	mu.Lock()
+	if reads <= readsBefore || writes != writesBefore {
+		mu.Unlock()
+		t.Fatal("observe-only import was not GET-only")
+	}
+	readsBefore = reads
+	mu.Unlock()
+	for i := 0; i < 3; i++ {
+		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(time.Second)
+	mu.Lock()
+	if reads <= readsBefore || writes != writesBefore {
+		mu.Unlock()
+		t.Fatal("unchanged reconcile did not perform GET-only observation")
+	}
+	mu.Unlock()
+	if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
+		t.Fatal(err)
 	}
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
