@@ -114,6 +114,9 @@ second authenticated request. This applies to all lookup controllers, not the
 managed-resource clients. All lookup failures use a fixed condition message so
 API response bodies, transport errors and credential errors cannot leak into
 CR status. This trades detailed error messages for a safer status surface.
+The lookup client also suppresses SDK logging: its asynchronous task retry
+logger can otherwise print Cloud response bodies. Controller-level events and
+logs from managed-resource clients are outside this lookup-client boundary.
 
 Credential-free controller tests should verify the authenticated GET, rejected
 identities and types, API errors, stale status clearing, and no request on
