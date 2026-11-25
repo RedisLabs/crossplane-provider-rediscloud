@@ -73,7 +73,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulePath && exists:
-			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl", "redisRule": rule, fixtureStatusKey: fixtureActive}
+			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl", "acl": rule, fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureACLRulePath && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["redisRule"] != "+@all ~*" {
@@ -96,7 +96,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulesPath:
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{"id": 42, fixtureNameKey: "fixture-acl", "redisRule": rule, fixtureStatusKey: fixtureActive})
+				rows = append(rows, map[string]any{"id": 42, fixtureNameKey: "fixture-acl", "acl": rule, fixtureStatusKey: fixtureActive})
 			}
 			response = map[string]any{"redisRules": rows}
 		default:
