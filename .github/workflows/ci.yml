@@ -224,6 +224,9 @@ jobs:
       - name: Test one-shot recovery fences without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_delete_fence.py'
 
+      - name: Rehearse synthetic account fencing and fake Cloud
+        run: python3 -m unittest discover -s scripts -p 'test_fake_account_fence.py' -v
+
       - name: Rehearse UID delete preconditions against local HTTP with pinned kubectl
         run: |
           curl -fsSLo "$RUNNER_TEMP/kubectl" https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl
