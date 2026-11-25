@@ -40,26 +40,27 @@ func rejectDuplicateKeys(raw []byte) error { //nolint:gocyclo // Walk objects an
 		if !isDelim {
 			return nil
 		}
-		if delim == '{' {
+		switch delim {
+		case '{':
 			seen := map[string]bool{}
 			for decoder.More() {
-				key, err := decoder.Token()
+				key, keyErr := decoder.Token()
 				name, ok := key.(string)
-				if err != nil || !ok || seen[name] {
+				if keyErr != nil || !ok || seen[name] {
 					return errors.New("duplicate or malformed key")
 				}
 				seen[name] = true
-				if err := readValue(); err != nil {
-					return err
+				if childErr := readValue(); childErr != nil {
+					return childErr
 				}
 			}
-		} else if delim == '[' {
+		case '[':
 			for decoder.More() {
-				if err := readValue(); err != nil {
-					return err
+				if childErr := readValue(); childErr != nil {
+					return childErr
 				}
 			}
-		} else {
+		default:
 			return errors.New("unexpected delimiter")
 		}
 		_, err = decoder.Token()
@@ -86,7 +87,7 @@ func uniqueProSelector(raw []byte) (int, error) { //nolint:gocyclo // Validate e
 	if rejectDuplicateKeys(raw) != nil || json.Unmarshal(raw, &body) != nil || body == nil {
 		return 0, errors.New("inventory malformed")
 	}
-	for _, k := range []string{"next", "nextPage", "nextToken", "cursor", "offset", "limit", "page", "pageSize", "hasMore", "hasNext", "pagination", "links", "_links", "truncated"} {
+	for _, k := range []string{"next", "nextPage", "nextToken", "nextCursor", "continuationToken", "cursor", "offset", "limit", "page", "pageSize", "hasMore", "hasNext", "pagination", "links", "_links", "truncated", "isTruncated", "totalCount", "totalRecords", "numberOfSubscriptions", "count"} {
 		if _, exists := body[k]; exists {
 			return 0, errors.New("inventory paging not established")
 		}
@@ -107,7 +108,8 @@ func uniqueProSelector(raw []byte) (int, error) { //nolint:gocyclo // Validate e
 	names := map[string]bool{}
 	selected := 0
 	count := 0
-	for _, row := range rows {
+	for i := range rows {
+		row := &rows[i]
 		if row.ID <= 0 || strings.TrimSpace(row.Name) == "" || row.Status == "" || (row.DeploymentType != "single-region" && row.DeploymentType != "active-active") || seen[row.ID] || names[row.Name] {
 			return 0, errors.New("inventory identity ambiguous")
 		}
@@ -130,6 +132,7 @@ func TestReadonlyProDiscoveryRejectsAmbiguity(t *testing.T) {
 	for _, raw := range []string{
 		`{"accountId":1,"subscriptions":[{"id":3,"name":"fixture","status":"active","deploymentType":"single-region"}]}`,
 		`{"accountId":1,"total":1,"next":"more","subscriptions":[]}`,
+		`{"accountId":1,"total":1,"totalCount":2,"subscriptions":[{"id":3,"name":"fixture","status":"active","deploymentType":"single-region"}]}`,
 		`{"accountId":1,"total":0,"subscriptions":[]}`,
 		`{"accountId":1,"total":2,"subscriptions":[{"id":3,"name":"a","status":"active","deploymentType":"single-region"},{"id":4,"name":"b","status":"active","deploymentType":"single-region"}]}`,
 		`{"accountId":1,"total":2,"subscriptions":[{"id":3,"name":"a"},{"id":3,"name":"b"}]}`,
