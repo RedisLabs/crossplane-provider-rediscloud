@@ -17,9 +17,11 @@ import (
 	kexec "k8s.io/utils/exec"
 )
 
-const fixtureName = "fixture"
-const dummyCredential = "fake"
-const desiredEviction = "allkeys-lru"
+const (
+	fixtureName     = "fixture"
+	dummyCredential = "fake"
+	desiredEviction = "allkeys-lru"
+)
 
 // This uses the pinned provider and Upjet's real workspace, but no cluster or Cloud account.
 func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integration test keeps setup, failure injection and assertions together.
@@ -41,8 +43,8 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			var body map[string]any
 			validAuth := r.Header.Get("X-Api-Key") == dummyCredential && r.Header.Get("X-Api-Secret-Key") == dummyCredential
 			validBody := json.NewDecoder(r.Body).Decode(&body) == nil
-			databaseUpdate := r.Method == http.MethodPut && r.URL.Path == "/v1/fixed/subscriptions/1/databases/2" && validBody && body["dataEvictionPolicy"] == desiredEviction
-			tagUpdate := r.Method == http.MethodPut && r.URL.Path == "/v1/fixed/subscriptions/1/databases/2/tags" && validBody
+			databaseUpdate := r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && validBody && body["dataEvictionPolicy"] == desiredEviction
+			tagUpdate := r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && validBody
 			if !validAuth || (!databaseUpdate && (!acceptFixtureUpdate || !tagUpdate)) {
 				badWrites++
 				http.Error(w, "unexpected fixture write", http.StatusForbidden)
@@ -79,14 +81,14 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/tasks/fixture-task":
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "processing-completed"})
+			_ = json.NewEncoder(w).Encode(map[string]any{fixtureStatusKey: "processing-completed"})
 		case "/v1/fixed/subscriptions/1":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "name": fixtureName, "status": "active"})
-		case "/v1/fixed/subscriptions/1/databases/2/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive})
+		case fixtureDatabasePath + "/tags":
 			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
-		case "/v1/fixed/subscriptions/1/databases/2":
+		case fixtureDatabasePath:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"databaseId": 2, "name": fixtureName, "protocol": "redis", "provider": "GCP", "region": "us-central1", "status": "active", "dataPersistence": "none", "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", "provider": "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
 			})
 		default:
 			http.NotFound(w, r)
@@ -104,15 +106,15 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	t.Setenv("REDISCLOUD_URL", server.URL+"/v1")
 	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
 	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
-	if writeErr := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0600); writeErr != nil {
+	if writeErr := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0o600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, "name": fixtureName, "data_eviction": desiredEviction, "data_persistence": "none", "replication": false}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{"rediscloud": map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, "provider": map[string]any{"rediscloud": map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
 	b, marshalErr := json.Marshal(config)
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
 	}
-	if writeErr := os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0600); writeErr != nil {
+	if writeErr := os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0o600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
 	run := func(args ...string) {
@@ -125,7 +127,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 		}
 	}
 	run("init", "-no-color", "-input=false", "-plugin-dir="+plugins)
-	run("import", "-no-color", "rediscloud_essentials_database.test", "1/2")
+	run("import", "-no-color", "rediscloud_essentials_database.test", fixtureExternalID)
 	t.Setenv("PATH", fmt.Sprintf("%s%c%s", filepath.Dir(tf), os.PathListSeparator, os.Getenv("PATH")))
 	spy := &spyExecutor{Interface: kexec.New()}
 	ws := terraform.NewWorkspace(dir, terraform.WithExecutor(spy), terraform.WithFilterFn(func(s string) string { return s }))

@@ -41,8 +41,8 @@ func verifyManagedNoop(t *testing.T, ws *terraform.Workspace, spy *spyExecutor, 
 	if err := api.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	item := &api.Database{ObjectMeta: metav1.ObjectMeta{Name: fixtureName, UID: types.UID("fixture-uid"), Annotations: map[string]string{xpmeta.AnnotationKeyExternalName: "1/2"}}}
-	name, eviction, persistence, replication, sub := fixtureName, desiredEviction, "none", false, float64(1)
+	item := &api.Database{ObjectMeta: metav1.ObjectMeta{Name: fixtureName, UID: types.UID("fixture-uid"), Annotations: map[string]string{xpmeta.AnnotationKeyExternalName: fixtureExternalID}}}
+	name, eviction, persistence, replication, sub := fixtureName, desiredEviction, fixtureNoPersistence, false, float64(1)
 	item.Spec.ForProvider.Name = &name
 	item.Spec.ForProvider.DataEviction = &eviction
 	item.Spec.ForProvider.DataPersistence = &persistence
@@ -91,6 +91,7 @@ func (s *spyExecutor) CommandContext(ctx context.Context, command string, args .
 	s.mu.Unlock()
 	return s.Interface.CommandContext(ctx, command, args...)
 }
+
 func (s *spyExecutor) snapshot() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,6 +129,7 @@ func verifyManagedDrift(t *testing.T, rec *managed.Reconciler, spy *spyExecutor,
 	}
 	t.Fatalf("managed reconcile did not issue update: %v", spy.snapshot()[before:])
 }
+
 func checkUpdateCallback(t *testing.T, err error, wantFailure bool) {
 	t.Helper()
 	if (err != nil) != wantFailure {
@@ -140,8 +142,11 @@ type fakeCallback struct{ done chan error }
 func (f *fakeCallback) result() terraform.CallbackFn {
 	return func(err error, _ context.Context) error { f.done <- err; return nil }
 }
-func (f *fakeCallback) Create(types.NamespacedName, bool) terraform.CallbackFn  { return f.result() }
-func (f *fakeCallback) Update(types.NamespacedName, bool) terraform.CallbackFn  { return f.result() }
+
+func (f *fakeCallback) Create(types.NamespacedName, bool) terraform.CallbackFn { return f.result() }
+
+func (f *fakeCallback) Update(types.NamespacedName, bool) terraform.CallbackFn { return f.result() }
+
 func (f *fakeCallback) Destroy(types.NamespacedName, bool) terraform.CallbackFn { return f.result() }
 
 func verifyManagedSteady(t *testing.T, rec *managed.Reconciler, spy *spyExecutor) {
@@ -172,7 +177,7 @@ func verifyManagedIdentity(t *testing.T, kube client.Client) {
 	if err := kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, item); err != nil {
 		t.Fatal(err)
 	}
-	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1/2" || item.Annotations[xpmeta.AnnotationKeyExternalName] != "1/2" {
+	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != fixtureExternalID || item.Annotations[xpmeta.AnnotationKeyExternalName] != fixtureExternalID {
 		t.Fatalf("managed identity changed: status=%v external=%q", item.Status.AtProvider.ID, item.Annotations[xpmeta.AnnotationKeyExternalName])
 	}
 }
