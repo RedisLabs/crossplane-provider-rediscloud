@@ -57,7 +57,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		var response any
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fixtureSubscriptionsPath:
-			rows := []any{}
+			rows := []any{map[string]any{"id": 99, fixtureNameKey: "unrelated"}}
 			if parent {
 				rows = append(rows, map[string]any{"id": 1, fixtureNameKey: fixtureProParentName})
 			}
@@ -248,6 +248,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		}
 		t.Fatal("callback missing")
 	}
+	assertFakeUnrelatedInventory(t, server.URL)
 	await("terraform apply ")
 	for i := 0; i < 5; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
@@ -327,12 +328,15 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		}
 		if status == http.StatusOK {
 			var inventory struct {
-				Subscriptions []any `json:"subscriptions"`
+				Subscriptions []struct {
+					ID   int    `json:"id"`
+					Name string `json:"name"`
+				} `json:"subscriptions"`
 			}
 			err = json.NewDecoder(res.Body).Decode(&inventory)
-			if err != nil || inventory.Subscriptions == nil || len(inventory.Subscriptions) != 0 {
+			if err != nil || len(inventory.Subscriptions) != 1 || inventory.Subscriptions[0].ID != 99 || inventory.Subscriptions[0].Name != "unrelated" {
 				_ = res.Body.Close()
-				t.Fatal("fake parent inventory incomplete or nonempty")
+				t.Fatal("run-owned parent remains or unrelated fake parent was changed")
 			}
 		}
 		_ = res.Body.Close()
@@ -539,5 +543,30 @@ func runCombinedProChild(t *testing.T, url, dir string, mu *sync.Mutex, child, u
 	}
 	if _, err := os.Stat(filepath.Join(dir, "fixture-pro-db-uid")); !os.IsNotExist(err) {
 		t.Fatal("workspace remains")
+	}
+}
+
+func assertFakeUnrelatedInventory(t *testing.T, url string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url+fixtureSubscriptionsPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Api-Key", dummyCredential)
+	req.Header.Set("X-Api-Secret-Key", dummyCredential)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inventory struct {
+		Subscriptions []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"subscriptions"`
+	}
+	err = json.NewDecoder(res.Body).Decode(&inventory)
+	_ = res.Body.Close()
+	if err != nil || res.StatusCode != http.StatusOK || len(inventory.Subscriptions) != 1 || inventory.Subscriptions[0].ID != 99 || inventory.Subscriptions[0].Name != "unrelated" {
+		t.Fatal("fake baseline did not preserve unrelated parent")
 	}
 }
