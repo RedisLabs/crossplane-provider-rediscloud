@@ -34,6 +34,8 @@ import (
 // This fixture uses no Cloud account: it models a newly created Pro parent and
 // one bootstrap database on loopback, and checks that both are removed.
 const fixtureProParentName = "fixture-pro-parent"
+const fixtureBootstrapPath = "/v1/subscriptions/1/databases/2"
+const fixtureSubscriptionsPath = "/v1/subscriptions"
 
 func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
@@ -55,7 +57,13 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 		w.Header().Set("Content-Type", "application/json")
 		var response any
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/subscriptions" && !parent:
+		case r.Method == http.MethodGet && r.URL.Path == fixtureSubscriptionsPath:
+			rows := []any{}
+			if parent {
+				rows = append(rows, map[string]any{"id": 1, fixtureNameKey: fixtureProParentName})
+			}
+			response = map[string]any{"subscriptions": rows}
+		case r.Method == http.MethodPost && r.URL.Path == fixtureSubscriptionsPath && !parent:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureProParentName {
 				unexpected = true
@@ -84,9 +92,12 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive})
 			}
 			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, "databases": dbs}}}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/2" && bootstrap:
+		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && bootstrap:
 			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive}
-		case r.Method == http.MethodDelete && r.URL.Path == "/v1/subscriptions/1/databases/2" && bootstrap:
+		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && !bootstrap:
+			http.NotFound(w, r)
+			return
+		case r.Method == http.MethodDelete && r.URL.Path == fixtureBootstrapPath && bootstrap:
 			bootstrap = false
 			bootstrapRemoved = true
 			response = map[string]any{fixtureTaskKey: "bootstrap-delete"}
@@ -215,6 +226,22 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1" {
 		t.Fatal("fake parent ID missing")
 	}
+	for path, status := range map[string]int{fixtureBootstrapPath: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Api-Key", dummyCredential)
+		req.Header.Set("X-Api-Secret-Key", dummyCredential)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != status {
+			t.Fatalf("fake bootstrap read %s: %d", path, res.StatusCode)
+		}
+	}
 	if err := kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +264,33 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 		t.Fatal("fake residue")
 	}
 	mu.Unlock()
+	for path, status := range map[string]int{fixtureProParentPath: http.StatusNotFound, fixtureSubscriptionsPath: http.StatusOK} {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Api-Key", dummyCredential)
+		req.Header.Set("X-Api-Secret-Key", dummyCredential)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != status {
+			_ = res.Body.Close()
+			t.Fatalf("fake read %s: %d", path, res.StatusCode)
+		}
+		if status == http.StatusOK {
+			var inventory struct {
+				Subscriptions []any `json:"subscriptions"`
+			}
+			err = json.NewDecoder(res.Body).Decode(&inventory)
+			if err != nil || inventory.Subscriptions == nil || len(inventory.Subscriptions) != 0 {
+				_ = res.Body.Close()
+				t.Fatal("fake parent inventory incomplete or nonempty")
+			}
+		}
+		_ = res.Body.Close()
+	}
 	if _, err := os.Stat(filepath.Join(dir, "fixture-pro-parent-uid")); !os.IsNotExist(err) {
 		t.Fatal("fake workspace remains")
 	}
