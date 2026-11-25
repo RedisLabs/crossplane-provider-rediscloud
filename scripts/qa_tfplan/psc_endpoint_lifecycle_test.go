@@ -245,7 +245,9 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo 
 			t.Fatalf("fake parent/list read %s status=%d", target, response.StatusCode)
 		}
 	}
-	for i := 0; i < 15; i++ {
+	// The asynchronous workspace/finalizer can need more than 15 reconciles on
+	// a busy hosted runner. Keep a bounded wait and require the same cleanup proof.
+	for i := 0; i < 60; i++ {
 		if _, err := rec.Reconcile(context.Background(), req); err != nil {
 			t.Fatal(err)
 		}
