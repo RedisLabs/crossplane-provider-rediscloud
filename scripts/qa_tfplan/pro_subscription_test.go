@@ -94,7 +94,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			if bootstrap {
 				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive})
 			}
-			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, fixtureDatabasesKey: dbs}}}
+			response = map[string]any{"subscription": []any{map[string]any{fixtureSubscriptionIDKey: 1, fixtureDatabasesKey: dbs}}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && bootstrap:
 			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && !bootstrap:
