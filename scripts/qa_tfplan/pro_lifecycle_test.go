@@ -72,7 +72,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && exists:
-			response = map[string]any{fixtureDatabaseIDKey: 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}, "clustering": map[string]any{"regexRules": []any{}}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureProDatabasePath && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil {
@@ -102,7 +102,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases":
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}})
+				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, "name": "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}, "clustering": map[string]any{"regexRules": []any{}}})
 			}
 			response = map[string]any{"databases": rows}
 		default:
