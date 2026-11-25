@@ -32,17 +32,22 @@ import (
 )
 
 const (
-	fixtureTaskKey       = "taskId"
-	fixtureTaskComplete  = "processing-completed"
-	fixtureParentPath    = "/v1/fixed/subscriptions/1"
-	fixtureProviderKey   = "provider"
-	fixtureProviderName  = "rediscloud"
-	fixtureExternalID    = "1/2"
-	fixtureNameKey       = "name"
-	fixtureStatusKey     = "status"
-	fixtureDatabasePath  = "/v1/fixed/subscriptions/1/databases/2"
-	fixtureActive        = "active"
-	fixtureNoPersistence = "none"
+	fixtureAPIKey          = "api_key"
+	fixtureSecretKey       = "secret_key"
+	fixtureURLKey          = "url"
+	fixtureProviderSource  = "RedisLabs/rediscloud"
+	fixtureProviderVersion = "2.20.0"
+	fixtureTaskKey         = "taskId"
+	fixtureTaskComplete    = "processing-completed"
+	fixtureParentPath      = "/v1/fixed/subscriptions/1"
+	fixtureProviderKey     = "provider"
+	fixtureProviderName    = "rediscloud"
+	fixtureExternalID      = "1/2"
+	fixtureNameKey         = "name"
+	fixtureStatusKey       = "status"
+	fixtureDatabasePath    = "/v1/fixed/subscriptions/1/databases/2"
+	fixtureActive          = "active"
+	fixtureNoPersistence   = "none"
 )
 
 // The parent is pre-existing in this incremental fake: only managed DB create
@@ -159,7 +164,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	t.Log("SIMULATED: authenticated fake baseline inventory empty")
 	parent := createManagedParent(t, tf, plugins, server.URL, schemeForParent(t))
 	t.Log("SIMULATED: managed fake parent created and observed")
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": fixtureProviderSource, "version": fixtureProviderVersion}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
 	b, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
@@ -189,10 +194,10 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{}, nil
+		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, fixtureStore{ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_database"], ujcontroller.WithCallbackProvider(callback))
+	connector := ujcontroller.NewConnector(kube, regeneratingStore{dir, ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_database"], ujcontroller.WithCallbackProvider(callback))
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(api.Database_GroupVersionKind), managed.WithExternalConnector(connector))
 	createdDone := false
 createLoop:
@@ -248,15 +253,6 @@ createLoop:
 	updated := "volatile-lru"
 	item.Spec.ForProvider.DataEviction = &updated
 	if err = kube.Update(context.Background(), item); err != nil {
-		t.Fatal(err)
-	}
-	databaseConfig := config["resource"].(map[string]any)["rediscloud_essentials_database"].(map[string]any)["test"].(map[string]any)
-	databaseConfig["data_eviction"] = updated
-	b, err = json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	verifyManagedDrift(t, rec, spy, callback, false)
@@ -433,7 +429,7 @@ func schemeForParent(t *testing.T) *runtime.Scheme {
 func createManagedParent(t *testing.T, tf, plugins, url string, scheme *runtime.Scheme) *managedParentFixture {
 	t.Helper()
 	dir := t.TempDir()
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": "RedisLabs/rediscloud", "version": "2.20.0"}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{"api_key": dummyCredential, "secret_key": dummyCredential, "url": url + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_subscription": map[string]any{"test": map[string]any{fixtureNameKey: fixtureName, "plan_id": 1}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": fixtureProviderSource, "version": fixtureProviderVersion}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_subscription": map[string]any{"test": map[string]any{fixtureNameKey: fixtureName, "plan_id": 1}}}}
 	b, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
@@ -455,10 +451,10 @@ func createManagedParent(t *testing.T, tf, plugins, url string, scheme *runtime.
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{}, nil
+		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, fixtureStore{ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))
+	connector := ujcontroller.NewConnector(kube, regeneratingStore{dir, ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))
 	parent := &managedParentFixture{managed.NewReconciler(mgr, xpresource.ManagedKind(api.Subscription_GroupVersionKind), managed.WithExternalConnector(connector)), kube, callback, spy, url}
 	parent.await(t, "terraform apply ")
 	for i := 0; i < 5; i++ {
