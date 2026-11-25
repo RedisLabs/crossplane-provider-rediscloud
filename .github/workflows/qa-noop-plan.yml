@@ -53,7 +53,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -run '^TestProDatabaseManagedLifecycleLoopback$' -count=1 -v
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProDatabaseManagedLifecycleLoopback
   pro-subscription-lifecycle:
     runs-on: ubuntu-24.04
     steps:
@@ -76,7 +76,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -run '^TestProSubscriptionManagedLifecycleLoopback$' -count=1 -v
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProSubscriptionManagedLifecycleLoopback
   pro-combined-lifecycle:
     runs-on: ubuntu-24.04
     steps:
@@ -99,7 +99,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -run '^TestProCombinedManagedLifecycleLoopback$' -count=1 -v
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProCombinedManagedLifecycleLoopback
   acl-role-lifecycle:
     runs-on: ubuntu-24.04
     steps:
@@ -122,7 +122,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -run '^TestACLRoleManagedLifecycleLoopback$' -count=1 -timeout=15m -v
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestACLRoleManagedLifecycleLoopback
 
   acl-user-lifecycle:
     runs-on: ubuntu-24.04
@@ -146,7 +146,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -run '^TestACLUserManagedLifecycleLoopback$' -count=1 -timeout=15m -v
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestACLUserManagedLifecycleLoopback
 
   acl-rule-lifecycle:
     runs-on: ubuntu-24.04
@@ -170,4 +170,4 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -run '^TestACLRuleManagedLifecycleLoopback$' -count=1 -v
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestACLRuleManagedLifecycleLoopback

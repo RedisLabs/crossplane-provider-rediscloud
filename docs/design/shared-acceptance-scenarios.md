@@ -58,6 +58,8 @@ ACL role and user test prototypes use real managed reconcilers and the pinned Te
 
 ACL rule, role and user fixtures also create separate observe-only managed objects with the existing fake external ID and fresh native workspace. Upjet uses Terraform import for observe-only resources; the tests require the imported observation to retain the exact fake ID, count fake GETs, and reject any fake write both during import and repeated unchanged reconciliation of the original object. These are simulated observations and no-op checks, not live import qualification or proof of dropped-response recovery.
 
+Dedicated Pro and ACL hosted jobs require pinned fixture inputs and parse Go's JSON events, requiring each named test to run and pass and rejecting skipped subtests. A successful Go process with no matching test is not coverage. Provider lifecycle fixtures skip outside GitHub Actions; normal unit jobs without the optional pinned fixture dependencies still skip them rather than claiming coverage.
+
 ## Alpha extension: Pro and GET-only lookups
 
 [`acceptance/alpha-scenarios.json`](../../acceptance/alpha-scenarios.json) is a version 2 manifest, separate from the unchanged version 1 Essentials manifest. It adds Pro subscription/database lifecycle and eviction update using the same identity, teardown and admission boundaries. A Pro adapter must account for any subscription bootstrap database in its durable ownership journal and inventory; absent a safe exact cleanup path it reports blocked. ACL, PrivateLink, PSC and cloud-specific cases remain uncovered until their resource-specific assertions are defined and executed.

@@ -46,6 +46,7 @@ func TestACLUserManagedLifecycleLoopback(t *testing.T) {
 }
 
 func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")

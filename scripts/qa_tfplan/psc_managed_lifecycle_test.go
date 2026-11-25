@@ -44,9 +44,7 @@ func TestPSCManagedServiceFailureLoopback(t *testing.T) {
 }
 
 func runPSCManagedService(t *testing.T, injectFailure bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
-		t.Skip("provider acceptance fixture runs only in GitHub Actions")
-	}
+	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" && plugins == "" {
 		t.Skip("pinned Terraform fixture not configured")

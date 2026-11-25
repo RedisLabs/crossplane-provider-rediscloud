@@ -6,11 +6,11 @@ provide authenticated live Cloud evidence or authorize any live operation.
 """
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
 from contract import Evidence, StepReceipt, classify_claim, load_scenarios
+from go_test_receipts import run_selected
 
 ROOT = Path(__file__).resolve().parent.parent
 CASE = "read-only-payment-method-lookup"
@@ -25,9 +25,7 @@ def execute(source_revision: str) -> Evidence:
     scenario = load_scenarios(ROOT / "acceptance" / "alpha-scenarios.json")[CASE]
     if scenario.access != "read_only" or scenario.steps != EXPECTED:
         raise ValueError("unexpected lookup contract")
-    env = os.environ.copy()
-    env.update({"GOPROXY": "off", "GOSUMDB": "off"})
-    subprocess.run(["go", "test", "./internal/controller/lookup", "-run", "^TestPaymentMethodReconcileWritesID$", "-count=1"], cwd=ROOT, env=env, check=True, timeout=180)
+    run_selected("./internal/controller/lookup", ("TestPaymentMethodReconcileWritesID",), timeout=180)
     receipts = tuple(StepReceipt(step, "passed", "https://fixture.invalid/lookup-log") for step in scenario.steps)
     evidence = Evidence("crossplane", CASE, "simulated", source_revision, "", "https://fixture.invalid/lookup-run", "https://fixture.invalid/lookup-log", receipts, "pass", "not_started", False)
     if classify_claim(scenario, evidence) != "simulated_claim_requires_verification":
