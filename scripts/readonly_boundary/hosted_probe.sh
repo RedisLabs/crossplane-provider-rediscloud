@@ -125,12 +125,19 @@ PYTHON
     # Count this candidate's probe without deciding its fate; the CIDR-wide
     # rule below remains the only rejecting rule under test.
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5555 -m comment --comment "codex-account-$family-$expected_uid"
+    docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5556 -m comment --comment "codex-proxy-$family-$expected_uid"
     echo "$phase IPv$family allowed GET"
     for attempt in $(seq 1 10); do
       if "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
       sleep 2
     done
-    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"
+    if ! "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then
+      echo "$phase IPv$family allowed path remained unavailable; fake-only diagnostics follow" >&2
+      docker exec "$node" "$tool" -nvx -L CODEX-EGRESS || true
+      docker logs "boundary-proxy$family" 2>&1 || true
+      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ip -"$family" route || true
+      exit 1
+    fi
     echo "$phase IPv$family forbidden POST"
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"
     mapfile -t before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
