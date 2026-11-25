@@ -1,0 +1,93 @@
+name: Credential-free alpha package install proof
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package-install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact integrated source
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          ref: f2e4bbc86495d31eb2bed76ebe4124622150c80a
+          submodules: true
+          fetch-depth: 0
+      - name: Verify source identity
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
+          test -z "$(git status --porcelain)"
+          if [ -n "$PR_BASE_SHA" ]; then
+            test "$PR_BASE_SHA" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
+          else
+            echo "Dispatch tests the fixed source pin; no PR base was supplied."
+          fi
+          echo "Integrated source: $(git rev-parse HEAD)"
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.26.11'
+      - name: Validate dependencies
+        run: make vendor vendor.check
+      - name: Build package and install on isolated hosted Kind
+        run: make local-deploy
+      - name: Verify package, readiness, and alpha CRDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find _output/xpkg/linux_amd64 -maxdepth 1 -type f -name '*.xpkg' -print)
+          test "${#packages[@]}" -eq 1
+          sha256sum "${packages[0]}"
+          kubectl=.cache/tools/linux_x86_64/kubectl-v1.33.5
+          "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=5m
+          "$kubectl" -n upbound-system wait deployments --all --for=condition=Available --timeout=5m
+          "$kubectl" -n upbound-system get pods -o json | python3 -c '
+          import json, os, pathlib, re, sys
+          def select(pods):
+              matches = [(p, c) for p in pods if p["metadata"]["name"].startswith("provider-rediscloud-") for c in p.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime"]
+              if len(matches) != 1 or not matches[0][1].get("ready") or not re.search(r"@sha256:[0-9a-f]{64}$", matches[0][1].get("imageID", "")):
+                  raise ValueError("expected exactly one ready provider runtime with immutable image ID")
+              images = [c["image"] for c in matches[0][0]["spec"]["containers"] if c["name"] == "package-runtime"]
+              if len(images) != 1 or not re.fullmatch(r"build-[a-f0-9]{8}/provider-rediscloud-amd64", images[0]):
+                  raise ValueError("provider runtime does not reference the expected local build image")
+              return images[0], matches[0][1]["imageID"]
+          try:
+              select([])
+          except ValueError:
+              pass
+          else:
+              raise SystemExit("missing provider negative check failed")
+          image, observed = select(json.load(sys.stdin)["items"])
+          pathlib.Path(os.environ["RUNNER_TEMP"], "provider-image.txt").write_text(image)
+          print("Observed provider runtime image ID (not independently bound to build):", observed)
+          '
+          image=$(cat "$RUNNER_TEMP/provider-image.txt")
+          docker image inspect "$image" --format 'Local build image config ID: {{.Id}}'
+          mkdir -p "$RUNNER_TEMP/pinned-tools"
+          curl -fsSL https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip -o "$RUNNER_TEMP/pinned-tools/terraform.zip"
+          echo 'c0ed7bc32ee52ae255af9982c8c88a7a4c610485cf1d55feeb037eab75fa082c  '"$RUNNER_TEMP/pinned-tools/terraform.zip" | sha256sum -c -
+          curl -fsSL https://github.com/RedisLabs/terraform-provider-rediscloud/releases/download/v2.20.0/terraform-provider-rediscloud_2.20.0_linux_amd64.zip -o "$RUNNER_TEMP/pinned-tools/provider.zip"
+          echo 'a8642d27a521ebac0a08392bc2cce35b53d8e6a3a6e8b37a3895d83ad2e2c998  '"$RUNNER_TEMP/pinned-tools/provider.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/pinned-tools/terraform.zip" terraform -d "$RUNNER_TEMP/pinned-tools"
+          unzip -q "$RUNNER_TEMP/pinned-tools/provider.zip" terraform-provider-rediscloud_v2.20.0 -d "$RUNNER_TEMP/pinned-tools"
+          container=$(docker create "$image")
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/local/bin/terraform" "$RUNNER_TEMP/pinned-tools/image-terraform"
+          docker cp "$container:/terraform/provider-mirror/registry.terraform.io/RedisLabs/rediscloud/2.20.0/linux_amd64/terraform-provider-rediscloud_v2.20.0_x5" "$RUNNER_TEMP/pinned-tools/image-provider"
+          cmp "$RUNNER_TEMP/pinned-tools/terraform" "$RUNNER_TEMP/pinned-tools/image-terraform"
+          cmp "$RUNNER_TEMP/pinned-tools/terraform-provider-rediscloud_v2.20.0" "$RUNNER_TEMP/pinned-tools/image-provider"
+          echo "Local build image Terraform and provider bytes match independently SHA-pinned release archives."
+          for crd in providerconfigs.rediscloud.redis.io subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io; do
+            "$kubectl" wait "crd/$crd" --for=condition=Established --timeout=2m
+          done
+          echo "Credential-free Kind package smoke completed; development cache installation, no registry pull."
+      - name: Preserve exact local xpkg
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: alpha-local-xpkg-f2e4bbc
+          path: _output/xpkg/linux_amd64/*.xpkg
+          if-no-files-found: error
