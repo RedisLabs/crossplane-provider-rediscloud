@@ -32,6 +32,22 @@ ips = [ipaddress.ip_address(x['ip']) for x in p['status']['podIPs']]
 if {i.version for i in ips} != {4, 6} or any(not any(i in ipaddress.ip_network(c) for c in sys.argv[2:]) for i in ips):
     raise SystemExit('provider does not have guarded dual-stack pod addresses')
 PY
+# The existing debug container shares the installed provider's network. Pin
+# the one solicited-node multicast destination for its IPv6 gateway; never
+# turn this fixture-only exception into a general ICMPv6 allowance.
+"$kubectl" -n upbound-system exec "$pod" -c node-probe -- ip -6 route > "$RUNNER_TEMP/provider-ipv6-route"
+gateway_multicast=$(python3 - "$RUNNER_TEMP/provider-ipv6-route" "$cidr6" <<'PY'
+import ipaddress, pathlib, sys
+lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+gateways = [line.split()[2] for line in lines if line.startswith('default via ')]
+if len(gateways) != 1:
+    raise SystemExit('expected one IPv6 gateway')
+gateway = ipaddress.IPv6Address(gateways[0])
+if gateway not in ipaddress.IPv6Network(sys.argv[2]):
+    raise SystemExit('gateway is outside the guarded IPv6 pod CIDR')
+print(ipaddress.IPv6Address(int(ipaddress.IPv6Address('ff02::1:ff00:0')) | (int(gateway) & 0xffffff)))
+PY
+)
 cleanup() {
   for tool in iptables ip6tables; do
     for chain in INPUT FORWARD; do
@@ -89,6 +105,9 @@ for family in 4 6; do
   docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"
   docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null "http://$host:5555/v2/"
 done
+# Establish that this specific node responds to IPv6 echo before rules; a
+# blocked ping later is meaningful only when this independent baseline works.
+"$kubectl" -n upbound-system exec "$pod" -c node-probe -- ping -6 -c 1 -W 3 "$ip6" >/dev/null
 # CIDR-wide rules apply before a replacement pod can start, not just to an old IP.
 for family in 4 6; do
   if [ "$family" = 4 ]; then tool=iptables; cidr=$cidr4; node_ip=$ip4; else tool=ip6tables; cidr=$cidr6; node_ip=$ip6; fi
@@ -99,6 +118,9 @@ for family in 4 6; do
     # Nonterminating accounting only: do not relax IPv6 Neighbor Discovery.
     docker exec "$node" "$tool" -A CODEX-EGRESS -p ipv6-icmp --icmpv6-type 135 -m comment --comment codex-icmpv6-ns
     docker exec "$node" "$tool" -A CODEX-EGRESS -p ipv6-icmp --icmpv6-type 136 -m comment --comment codex-icmpv6-na
+    # Fake-only experiment: permit gateway neighbor solicitation, not general
+    # ICMPv6. Verify the replacement actually uses this exact exception.
+    docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -d "$gateway_multicast/128" -p ipv6-icmp --icmpv6-type 135 -m hl --hl-eq 255 -m comment --comment codex-gateway-ns -j ACCEPT
   fi
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
   docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
@@ -142,6 +164,8 @@ PYTHON
     if [ "$family" = 6 ]; then
       echo "$phase IPv6 neighbor counters before allowed GET"
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-icmpv6-/ {print "packets=" $1, $(NF-1)}'
+      mapfile -t ns_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-gateway-ns/ {print $1}')
+      test "${#ns_before[@]}" -eq 1 && [[ "${ns_before[0]}" =~ ^[0-9]+$ ]]
     fi
     for attempt in $(seq 1 10); do
       if "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
@@ -160,6 +184,10 @@ PYTHON
         docker exec "$node" ip -6 neigh show | awk '{print $NF}' | sort | uniq -c || true
       fi
       exit 1
+    fi
+    if [ "$family" = 6 ] && [ "$phase" = replacement ]; then
+      mapfile -t ns_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-gateway-ns/ {print $1}')
+      test "${#ns_after[@]}" -eq 1 && [[ "${ns_after[0]}" =~ ^[0-9]+$ ]] && (( ns_after[0] > ns_before[0] ))
     fi
     echo "$phase IPv$family forbidden POST"
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"
@@ -182,6 +210,25 @@ PYTHON
     docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
     docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    if [ "$family" = 6 ]; then
+      echo "$phase IPv6 non-NS echo denial"
+      docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p ipv6-icmp --icmpv6-type 128 -m comment --comment "codex-echo-$expected_uid"
+      mapfile -t echo_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-echo-$expected_uid" 'index($0, marker) {print $1}')
+      mapfile -t deny_before6 < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+      test "${#echo_before[@]}" -eq 1 && [[ "${echo_before[0]}" =~ ^[0-9]+$ ]]
+      test "${#deny_before6[@]}" -eq 1 && [[ "${deny_before6[0]}" =~ ^[0-9]+$ ]]
+      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if ping -6 -c 1 -W 3 "$1" >/dev/null 2>&1; then exit 42; else exit 0; fi' -- "$target"
+      mapfile -t echo_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-echo-$expected_uid" 'index($0, marker) {print $1}')
+      mapfile -t deny_after6 < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+      test "${#echo_after[@]}" -eq 1 && [[ "${echo_after[0]}" =~ ^[0-9]+$ ]] && (( echo_after[0] > echo_before[0] ))
+      test "${#deny_after6[@]}" -eq 1 && [[ "${deny_after6[0]}" =~ ^[0-9]+$ ]] && (( deny_after6[0] > deny_before6[0] ))
+      docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ping -6 -c 1 -W 3 "$target" >/dev/null
+      docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
+      docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+      docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
+      docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    fi
     if [ "$family" = 4 ]; then
       # Kubelet's node-local package mirror must not become an egress relay.
       echo "$phase IPv4 registry denial"
