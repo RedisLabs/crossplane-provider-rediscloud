@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 9c1ee00c5aaf785e85deb5de91fc9005595ae1cb; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = bd8191fe7d29a8fe35ba0b625834be9d889aae6c; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:

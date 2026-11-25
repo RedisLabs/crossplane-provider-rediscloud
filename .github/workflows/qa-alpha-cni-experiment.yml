@@ -95,7 +95,13 @@ jobs:
               sleep 1
             done
             if [ "$role" = control ]; then expected=FIRST_REACHED; else expected=FIRST_FAILED; fi
-            test "$log" = "$expected"
+            # BusyBox wget may emit a diagnostic despite -q. Require one exact
+            # result marker, and expose fake-only output if it is unexpected.
+            if [ "$(printf '%s\n' "$log" | grep -c '^FIRST_')" != 1 ] || ! printf '%s\n' "$log" | grep -qx "$expected"; then
+              echo "Unexpected fake $role probe output:" >&2
+              printf '%s\n' "$log" >&2
+              exit 1
+            fi
           done
           "$kubectl" -n cni-fixture delete networkpolicy selected-egress-deny
           # Same selected pod and endpoint must become reachable after removing
