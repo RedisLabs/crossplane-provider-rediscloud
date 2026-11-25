@@ -1,0 +1,108 @@
+name: Credential-free CNI first-action experiment
+on:
+  pull_request:
+    paths:
+      - .github/workflows/qa-alpha-cni-experiment.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cni-first-action:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+      - name: Install pinned test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          make "$GITHUB_WORKSPACE/.cache/tools/linux_x86_64/kind-v0.33.0" "$GITHUB_WORKSPACE/.cache/tools/linux_x86_64/kubectl-v1.33.5"
+          curl -fsSL --retry 3 https://get.helm.sh/helm-v3.19.2-linux-amd64.tar.gz -o "$RUNNER_TEMP/helm.tgz"
+          echo '2114c9dea2844dce6d0ee2d792a9aae846be8cf53d5b19dc2988b5a0e8fec26e  '"$RUNNER_TEMP/helm.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/helm.tgz" -C "$RUNNER_TEMP" linux-amd64/helm
+          curl -fsSL --retry 3 https://helm.cilium.io/cilium-1.20.5.tgz -o "$RUNNER_TEMP/cilium.tgz"
+          echo '0c7592eb75179ecf46dd3ec22145916f0164c4401214ea15afb5b230b1d11a21  '"$RUNNER_TEMP/cilium.tgz" | sha256sum -c -
+          echo 'Helm and Cilium archives are SHA-pinned; signature verification is not performed.'
+      - name: Bootstrap isolated policy-capable Kind cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/kind-cni.yaml" <<'YAML'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          networking:
+            disableDefaultCNI: true
+          YAML
+          .cache/tools/linux_x86_64/kind-v0.33.0 create cluster --name cni-fixture --config "$RUNNER_TEMP/kind-cni.yaml" --wait 0s
+          "$RUNNER_TEMP/linux-amd64/helm" install cilium "$RUNNER_TEMP/cilium.tgz" --namespace kube-system --set ipam.mode=kubernetes --set operator.replicas=1 --wait --timeout 8m
+          .cache/tools/linux_x86_64/kubectl-v1.33.5 -n kube-system rollout status daemonset/cilium --timeout=5m
+          .cache/tools/linux_x86_64/kubectl-v1.33.5 wait node --all --for=condition=Ready --timeout=5m
+      - name: Probe pre-existing egress policy from first container action
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl=.cache/tools/linux_x86_64/kubectl-v1.33.5
+          "$kubectl" create namespace cni-fixture
+          cat <<'YAML' | "$kubectl" apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: fake-server
+            namespace: cni-fixture
+          spec:
+            containers:
+            - name: server
+              image: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          YAML
+          "$kubectl" -n cni-fixture wait pod/fake-server --for=condition=Ready --timeout=3m
+          server_ip=$("$kubectl" -n cni-fixture get pod fake-server -o jsonpath='{.status.podIP}')
+          test -n "$server_ip"
+          cat <<'YAML' | "$kubectl" apply -f -
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: selected-egress-deny
+            namespace: cni-fixture
+          spec:
+            podSelector:
+              matchLabels:
+                fixture-provider: selected
+            policyTypes: [Egress]
+          YAML
+          # This is a sampled first-action test, not a proof of all packets or
+          # of identity propagation across API servers or nodes.
+          for role in control selected; do
+            if [ "$role" = selected ]; then label=selected; else label=unselected; fi
+            cat <<YAML | "$kubectl" apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: first-action-$role
+            namespace: cni-fixture
+            labels:
+              fixture-provider: $label
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: probe
+              image: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+              command: ["/bin/sh", "-c", "if wget -q -T 5 -O /dev/null http://$server_ip:5000/v2/; then echo FIRST_REACHED; else echo FIRST_FAILED; fi; sleep 600"]
+          YAML
+            "$kubectl" -n cni-fixture wait "pod/first-action-$role" --for=condition=Ready --timeout=3m
+            for attempt in $(seq 1 30); do
+              log=$("$kubectl" -n cni-fixture logs "first-action-$role")
+              if printf '%s' "$log" | grep -q '^FIRST_'; then break; fi
+              sleep 1
+            done
+            if [ "$role" = control ]; then expected=FIRST_REACHED; else expected=FIRST_FAILED; fi
+            test "$log" = "$expected"
+          done
+          "$kubectl" -n cni-fixture delete networkpolicy selected-egress-deny
+          # Same selected pod and endpoint must become reachable after removing
+          # deny; this helps distinguish an unusable route from policy denial.
+          for attempt in $(seq 1 30); do
+            if "$kubectl" -n cni-fixture exec first-action-selected -- wget -q -T 3 -O /dev/null "http://$server_ip:5000/v2/"; then break; fi
+            sleep 1
+          done
+          "$kubectl" -n cni-fixture exec first-action-selected -- wget -q -T 3 -O /dev/null "http://$server_ip:5000/v2/"
+          echo 'Fake sampled first action failed; unselected and same-pod removal controls reached endpoint. Cause not independently attributed to policy.'
