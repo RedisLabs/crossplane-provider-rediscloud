@@ -41,7 +41,7 @@ jobs:
           kind=.cache/tools/linux_x86_64/kind-v0.33.0
           crossplane=.cache/tools/linux_x86_64/crossplane-cli-v2.4.1
           "$kubectl" -n upbound-system rollout status deployment/crossplane --timeout=5m
-          "$kubectl" -n upbound-system patch deployment crossplane --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/-","value":{"name":"ephemeral-registry","image":"registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373","env":[{"name":"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY","value":"/tmp/registry"}],"readinessProbe":{"tcpSocket":{"port":5000},"periodSeconds":2}}}]'
+          "$kubectl" -n upbound-system patch deployment crossplane --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/-","value":{"name":"ephemeral-registry","image":"registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373","env":[{"name":"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY","value":"/tmp/registry"}],"readinessProbe":{"tcpSocket":{"port":5000},"periodSeconds":2}}},{"op":"add","path":"/spec/template/spec/hostAliases","value":[{"ip":"127.0.0.1","hostnames":["registry.localhost"]}]}]'
           "$kubectl" -n upbound-system rollout status deployment/crossplane --timeout=5m
           pod=$("$kubectl" -n upbound-system get pods -l app=crossplane -o json | python3 -c '
           import json, sys
@@ -87,10 +87,10 @@ jobs:
           echo "Ephemeral registry OCI package digest: $digest"
           echo "Manifest hash verified; package content to xpkg file mapping is not independently checked."
           for node in $("$kind" get nodes --name local-dev); do
-            docker exec "$node" mkdir -p /etc/containerd/certs.d/localhost:5000
-            printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/localhost:5000/hosts.toml >/dev/null
+            docker exec "$node" mkdir -p /etc/containerd/certs.d/registry.localhost:5000
+            printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/registry.localhost:5000/hosts.toml >/dev/null
           done
-          printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always"}}\n' "$digest" | "$kubectl" apply -f -
+          printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always"}}\n' "$digest" | "$kubectl" apply -f -
           "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=8m
           "$kubectl" -n upbound-system wait deployments --all --for=condition=Available --timeout=8m
           for crd in providerconfigs.rediscloud.redis.io subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io; do
