@@ -1,0 +1,9 @@
+apiVersion: lookup.redis.io/v1alpha1
+kind: ProSubscription
+metadata:
+  name: example-pro-subscription
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    subscriptionId: "1001"
