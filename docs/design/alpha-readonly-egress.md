@@ -46,6 +46,8 @@ The fake-only IPv6 experiment attempts a narrow Neighbor Solicitation exception:
 
 A follow-on fake-only probe places an independently reachable endpoint on the Kind bridge outside the node's network namespace. It attempts both address families from the actual original and replacement provider pods, requiring the CIDR deny and per-source accounting counters, plus a remove/reconnect/reinstate control. The bridge endpoint has no Cloud upstream. Results require hosted verification and do not cover every network destination, proxy bypass through the Kubernetes API, actual controller reconciliation, or original startup protection.
 
+A further hosted-only experiment creates a provider configuration with synthetic credentials and a Regions lookup targeting the fake proxy. It attempts to require both a newly observed fake-proxy GET and the expected ready region status from the installed controller, before and after replacement; the replacement runtime image ID must match the original digest. These remain proposed tests until hosted execution and review pass. They exercise a fake service, not an authenticated Redis Cloud read, and do not resolve the remaining full egress, API-authorization, startup or multicast-target gaps.
+
 ## Operations and rollback
 
 The fake-only guard cannot reach QA and has no credential path. Rollback removes the draft workflow and fixture. Production deployment and publication are out of scope. No shared-account lock is claimed; GET-only QA requires no Cloud writer, but any future mutation is blocked by the existing serialization and recovery requirements. Open questions: approved hosted CNI and image pins; enforced policy for this environment; verified QA origin; safe read-only selector and retention/redaction of status.
