@@ -50,6 +50,7 @@ const (
 	fixtureVolatileLRU     = "volatile-lru"
 	fixtureDatabaseIDKey   = "databaseId"
 	fixtureTagsKey         = "tags"
+	fixtureReplicationKey  = "replication"
 	fixtureNoPersistence   = "none"
 )
 
@@ -103,7 +104,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			return
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/fixed/subscriptions/1/databases" && parentCreated && !created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["dataEvictionPolicy"] != desiredEviction || body["dataPersistence"] != fixtureNoPersistence || body["replication"] != false {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["dataEvictionPolicy"] != desiredEviction || body["dataPersistence"] != fixtureNoPersistence || body[fixtureReplicationKey] != false {
 				unexpected = true
 				http.Error(w, "wrong fixture body", http.StatusBadRequest)
 				return
@@ -132,7 +133,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && created:
-			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath+"/tags" && created:
 			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && created:

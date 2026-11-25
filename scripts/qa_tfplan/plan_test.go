@@ -88,7 +88,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			_ = json.NewEncoder(w).Encode(map[string]any{fixtureTagsKey: []any{}})
 		case fixtureDatabasePath:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
 			})
 		default:
 			http.NotFound(w, r)
@@ -109,7 +109,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 	if writeErr := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0o600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": fixtureProviderSource, "version": fixtureProviderVersion}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
+	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": fixtureProviderSource, "version": fixtureProviderVersion}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, fixtureReplicationKey: false}}}}
 	b, marshalErr := json.Marshal(config)
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
