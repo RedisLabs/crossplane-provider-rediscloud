@@ -104,7 +104,7 @@ for family in 4 6; do
 done
 docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
 probe() {
-  local candidate=$1 expected_uid=$2
+  local candidate=$1 expected_uid=$2 phase=$3
   "$kubectl" -n upbound-system debug "pod/$candidate" --container=boundary-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
   for attempt in $(seq 1 60); do
     if "$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="boundary-probe")].state.running.startedAt}' | grep -q .; then break; fi
@@ -125,12 +125,19 @@ PYTHON
     # Count this candidate's probe without deciding its fate; the CIDR-wide
     # rule below remains the only rejecting rule under test.
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5555 -m comment --comment "codex-account-$family-$expected_uid"
+    echo "$phase IPv$family allowed GET"
+    for attempt in $(seq 1 10); do
+      if "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
+      sleep 2
+    done
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"
+    echo "$phase IPv$family forbidden POST"
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"
     mapfile -t before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     mapfile -t account_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-account-$family-$expected_uid" 'index($0, marker) {print $1}')
     test "${#before[@]}" -eq 1 && [[ "${before[0]}" =~ ^[0-9]+$ ]]
     test "${#account_before[@]}" -eq 1 && [[ "${account_before[0]}" =~ ^[0-9]+$ ]]
+    echo "$phase IPv$family CIDR node denial"
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5555/v2/"; then exit 42; else exit 0; fi' -- "$host"
     mapfile -t after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     mapfile -t account_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-account-$family-$expected_uid" 'index($0, marker) {print $1}')
@@ -138,6 +145,7 @@ PYTHON
     test "${#account_after[@]}" -eq 1 && [[ "${account_after[0]}" =~ ^[0-9]+$ ]] && (( account_after[0] > account_before[0] ))
     # A negative control must fail the overall test if another rule, an
     # unavailable listener, or a broken probe explains the observed denial.
+    echo "$phase IPv$family denial removal control"
     docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5555/v2/"
     docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
@@ -146,6 +154,7 @@ PYTHON
     docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     if [ "$family" = 4 ]; then
       # Kubelet's node-local package mirror must not become an egress relay.
+      echo "$phase IPv4 registry denial"
       docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5000 -m comment --comment "codex-registry-$expected_uid"
       mapfile -t registry_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-registry-$expected_uid" 'index($0, marker) {print $1}')
       mapfile -t deny_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
@@ -157,6 +166,7 @@ PYTHON
       test "${#registry_after[@]}" -eq 1 && [[ "${registry_after[0]}" =~ ^[0-9]+$ ]] && (( registry_after[0] > registry_before[0] ))
       test "${#deny_after[@]}" -eq 1 && [[ "${deny_after[0]}" =~ ^[0-9]+$ ]] && (( deny_after[0] > deny_before[0] ))
       docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
+      echo "$phase IPv4 registry removal control"
       docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
       "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5000/v2/"
       docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
@@ -168,7 +178,7 @@ PYTHON
   test "$("$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.metadata.uid}')" = "$expected_uid"
 }
 uid=$("$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.metadata.uid}')
-probe "$pod" "$uid"
+probe "$pod" "$uid" original
 "$kubectl" -n upbound-system delete pod "$pod" --wait=true
 for attempt in $(seq 1 120); do
   "$kubectl" -n upbound-system get pods -o json > "$RUNNER_TEMP/boundary-pods.json"
@@ -203,5 +213,5 @@ fi
 replacement=$(cat "$RUNNER_TEMP/replacement-name")
 new_uid=$("$kubectl" -n upbound-system get pod "$replacement" -o jsonpath='{.metadata.uid}')
 test "$new_uid" != "$uid"
-probe "$replacement" "$new_uid"
+probe "$replacement" "$new_uid" replacement
 echo 'Credential-free IPv4/IPv6 node proxy and node-denial probes passed for the original and replacement provider pods. This does not establish full API/RBAC or live QA safety.'
