@@ -3,6 +3,7 @@ package qatfplan
 import (
 	"context"
 	"testing"
+	"time"
 
 	providerconfig "github.com/RedisLabs/provider-rediscloud/config"
 	xpmeta "github.com/crossplane/crossplane-runtime/v2/pkg/meta"
@@ -57,5 +58,38 @@ func verifyACLObserveOnly(t *testing.T, item ujresource.Terraformed, scheme *run
 	observation, err := item.GetObservation()
 	if err != nil || observation["id"] != "42" {
 		t.Fatalf("import observation missing exact ID: %v", err)
+	}
+}
+
+// Wait for any newly scheduled async operation before declaring no replay.
+func verifyNoACLCreateReplay(t *testing.T, rec *managed.Reconciler, store *trackingNativeStore, callback *fakeCallback, name string) { //nolint:gocyclo // Observe and drain any unexpected asynchronous replay.
+	t.Helper()
+	if store.current == nil || (!store.current.LastOperation.IsEnded() && !store.current.LastOperation.IsRunning()) {
+		t.Fatal("original async create was not tracked")
+	}
+	originalStart := store.current.LastOperation.StartTime()
+	for i := 0; i < 3; i++ {
+		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+			t.Fatal(err)
+		}
+		op := store.current.LastOperation
+		if op.IsRunning() || (op.IsEnded() && !op.StartTime().Equal(originalStart)) {
+			if op.IsRunning() {
+				select {
+				case callbackErr := <-callback.done:
+					_ = callbackErr
+				case <-time.After(90 * time.Second):
+					t.Fatal("replayed async operation did not finish")
+				}
+			}
+			t.Fatal("reconcile scheduled an asynchronous replay")
+		}
+		select {
+		case callbackErr := <-callback.done:
+			_ = callbackErr
+			t.Fatal("unexpected async callback after failed create")
+		default:
+		}
+		time.Sleep(time.Second)
 	}
 }

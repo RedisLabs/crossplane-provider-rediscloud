@@ -211,11 +211,7 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	}
 	if mode != "success" {
 		await("terraform apply ", true)
-		for i := 0; i < 3; i++ {
-			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
-				t.Fatal(err)
-			}
-		}
+		verifyNoACLCreateReplay(t, rec, store, callback, name)
 		mu.Lock()
 		if exists != (mode == fixtureUncertainMode) || unexpected || createRequests != 1 || deleteRequests != 0 {
 			mu.Unlock()

@@ -228,12 +228,13 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 			t.Fatal(err)
 		}
+		time.Sleep(time.Second)
 	}
-	time.Sleep(time.Second)
 	mu.Lock()
 	if reads <= readsBefore || writes != writesBefore {
+		afterReads, afterWrites := reads, writes
 		mu.Unlock()
-		t.Fatal("unchanged reconcile did not perform GET-only observation")
+		t.Fatalf("unchanged reconcile: GETs %d->%d, non-GET requests %d->%d", readsBefore, afterReads, writesBefore, afterWrites)
 	}
 	mu.Unlock()
 	if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
