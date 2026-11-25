@@ -172,7 +172,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, k := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, k := range []string{fixtureTFCLIArgs, fixtureTFCLIArgsInit, fixtureTFCLIArgsApply, fixtureTFCLIArgsPlan, fixtureTFCLIArgsDestroy} {
 		t.Setenv(k, "")
 	}
 	for _, k := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
