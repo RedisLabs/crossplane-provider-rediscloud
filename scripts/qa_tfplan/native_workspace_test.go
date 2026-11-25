@@ -48,7 +48,7 @@ func TestNativeWorkspaceStoreRegenerates(t *testing.T) {
 	item.Spec.ForProvider.Replication = &replication
 	item.Spec.ForProvider.SubscriptionID = &sub
 	store := terraform.NewWorkspaceStore(logging.NewNopLogger())
-	setup := terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: "http://127.0.0.1:1/v1"}}
+	setup := terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: "http://127.0.0.1:1/v1"}}
 	cfg := providerconfig.GetProvider().Resources["rediscloud_essentials_database"]
 	if _, err := store.Workspace(context.Background(), nil, item, setup, cfg); err != nil {
 		t.Fatal(err)

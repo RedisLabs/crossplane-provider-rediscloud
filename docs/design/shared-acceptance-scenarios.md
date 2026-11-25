@@ -45,3 +45,5 @@ Separately, `TestNativeWorkspaceStoreRegenerates` exercises the production Upjet
 
 
 The Pro database lifecycle fixture is a work in progress: actual managed reconciliation and Terraform use a loopback fake Cloud and a pre-existing fake parent. It must pass hosted CI before reporting simulated coverage. This does not test subscription creation, a real account or live cleanup.
+
+A work-in-progress Pro subscription fixture uses a loopback parent and run-created bootstrap database and exercises managed creation and deletion; hosted verification is required. It does not authorize a live writer or establish recovery.
