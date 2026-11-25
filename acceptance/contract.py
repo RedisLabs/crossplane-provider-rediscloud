@@ -106,6 +106,12 @@ def classify_claim(scenario: Scenario, evidence: Evidence) -> str:
         return "invalid"
     if evidence.source_revision and not revision or evidence.artifact_digest and not digest:
         return "invalid"
+    if evidence.mode == "live":
+        urls = (evidence.run_url, evidence.evidence_url, *(receipt.evidence_url for receipt in evidence.steps))
+        if any(_fixture_host(url) for url in urls):
+            return "invalid"
+        if evidence.source_revision == "0" * 40 or evidence.artifact_digest == "sha256:" + "0" * 64:
+            return "invalid"
     return f"{evidence.mode}_claim_requires_verification"
 
 
@@ -117,3 +123,9 @@ def _https_url(value: object) -> bool:
         return parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and parsed.port in (None, 443)
     except ValueError:
         return False
+
+
+def _fixture_host(url: str) -> bool:
+    # Reserved fixture domains cannot serve as real run or evidence locations.
+    hostname = (urlsplit(url).hostname or "").rstrip(".")
+    return any(hostname == suffix or hostname.endswith("." + suffix) for suffix in ("invalid", "test", "example", "localhost"))

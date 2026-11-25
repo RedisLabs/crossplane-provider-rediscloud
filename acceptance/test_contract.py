@@ -63,9 +63,31 @@ class ScenarioContractTests(unittest.TestCase):
                 self.assertEqual(classify_claim(self.scenario, evidence), "invalid")
 
     def test_live_is_only_an_unverified_claim_and_never_simulated(self):
-        live = replace(self.evidence, mode="live", source_revision="", artifact_digest="sha256:" + "a" * 64)
+        steps = tuple(replace(receipt, evidence_url="https://github.com/example/evidence") for receipt in self.evidence.steps)
+        live = replace(self.evidence, mode="live", source_revision="", artifact_digest="sha256:" + "a" * 64, run_url="https://github.com/example/run", evidence_url="https://github.com/example/evidence", steps=steps)
         self.assertEqual(classify_claim(self.scenario, live), "live_claim_requires_verification")
         self.assertNotEqual(classify_claim(self.scenario, self.evidence), classify_claim(self.scenario, live))
+
+    def test_live_claim_rejects_fixture_hosts_and_placeholder_identity(self):
+        steps = tuple(replace(receipt, evidence_url="https://github.com/example/evidence") for receipt in self.evidence.steps)
+        live = replace(self.evidence, mode="live", run_url="https://github.com/example/run", evidence_url="https://github.com/example/evidence", steps=steps)
+        for claim in (
+            replace(live, run_url="https://fixture.invalid/run"),
+            replace(live, run_url="https://example.test/run"),
+            replace(live, run_url="https://localhost/run"),
+            replace(live, evidence_url="https://FIXTURE.INVALID./log"),
+            replace(live, steps=(replace(live.steps[0], evidence_url="https://sub.fixture.invalid/log"), *live.steps[1:])),
+            replace(live, source_revision="0" * 40),
+            replace(live, artifact_digest="sha256:" + "0" * 64),
+            replace(live, source_revision="", artifact_digest="sha256:" + "0" * 64),
+        ):
+            with self.subTest(claim=claim):
+                self.assertEqual(classify_claim(self.scenario, claim), "invalid")
+
+    def test_simulated_fixture_placeholders_remain_simulated(self):
+        receipt = replace(self.evidence.steps[0], evidence_url="https://fixture.invalid/log")
+        simulated = replace(self.evidence, source_revision="0" * 40, run_url="https://fixture.invalid/run", steps=(receipt, *self.evidence.steps[1:]))
+        self.assertEqual(classify_claim(self.scenario, simulated), "simulated_claim_requires_verification")
 
     def test_unsupported_and_failed_are_not_passes_even_with_residue(self):
         for outcome in ("unsupported", "blocked", "fail"):
