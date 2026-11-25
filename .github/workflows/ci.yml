@@ -221,6 +221,9 @@ jobs:
       - name: Validate shared acceptance scenario contract
         run: python3 -m unittest discover -s acceptance -p 'test_*.py'
 
+      - name: Exercise simulated read-only Crossplane lookup
+        run: python3 acceptance/crossplane_alpha_lookup.py
+
       - name: Test durable QA ownership recovery without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_recovery.py'
 
