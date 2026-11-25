@@ -1,0 +1,69 @@
+{
+  "version": 2,
+  "scenarios": [
+    {
+      "id": "pro-database-lifecycle",
+      "steps": [
+        "admission_and_clean_baseline",
+        "create_subscription",
+        "read_subscription_active",
+        "create_database",
+        "read_database_active",
+        "delete_database",
+        "read_database_absent_parent_present",
+        "delete_subscription",
+        "read_subscription_absent",
+        "complete_clean_inventory"
+      ],
+      "access": "write"
+    },
+    {
+      "id": "pro-database-eviction-update",
+      "steps": [
+        "admission_and_clean_baseline",
+        "create_subscription",
+        "read_subscription_active",
+        "create_database",
+        "read_database_active",
+        "update_eviction",
+        "read_updated_eviction_same_identity",
+        "delete_database",
+        "read_database_absent_parent_present",
+        "delete_subscription",
+        "read_subscription_absent",
+        "complete_clean_inventory"
+      ],
+      "access": "write"
+    },
+    {
+      "id": "read-only-payment-method-lookup",
+      "access": "read_only",
+      "steps": [
+        "read_only_preflight",
+        "lookup_by_identity",
+        "verify_expected_response",
+        "verify_no_cloud_mutations"
+      ]
+    },
+    {
+      "id": "read-only-region-lookup",
+      "access": "read_only",
+      "steps": [
+        "read_only_preflight",
+        "lookup_by_identity",
+        "verify_expected_response",
+        "verify_no_cloud_mutations"
+      ]
+    },
+    {
+      "id": "read-only-pro-subscription-lookup",
+      "access": "read_only",
+      "steps": [
+        "read_only_preflight",
+        "lookup_by_identity",
+        "verify_expected_response",
+        "verify_no_cloud_mutations"
+      ]
+    }
+  ]
+}

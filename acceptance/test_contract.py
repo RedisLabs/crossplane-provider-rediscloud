@@ -4,7 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from contract import Adapter, Evidence, StepReceipt, classify_claim, load_scenarios
+from contract import Adapter, Evidence, Scenario, StepReceipt, classify_claim, load_scenarios
 
 
 SCENARIOS = Path(__file__).with_name("scenarios.json")
@@ -99,6 +99,28 @@ class ScenarioContractTests(unittest.TestCase):
         self.assertEqual(classify_claim(update, self.evidence), "invalid")
         copied = replace(self.evidence, scenario_id=update.id)
         self.assertEqual(classify_claim(update, copied), "invalid")
+
+    def test_alpha_read_only_claim_requires_no_cleanup_and_complete_receipts(self):
+        cases = load_scenarios(Path(__file__).with_name("alpha-scenarios.json"))
+        scenario = cases["read-only-payment-method-lookup"]
+        self.assertEqual(scenario.access, "read_only")
+        claim = replace(FixtureAdapter("pulumi").execute(scenario), cleanup="not_started")
+        self.assertEqual(classify_claim(scenario, claim), "simulated_claim_requires_verification")
+        for bad in (replace(claim, cleanup="clean"), replace(claim, cleanup="unknown"),
+                    replace(claim, direct_cloud_recovery=True), replace(claim, steps=claim.steps[:-1])):
+            self.assertEqual(classify_claim(scenario, bad), "invalid")
+        self.assertEqual(cases["pro-database-lifecycle"].access, "write")
+
+    def test_read_only_schema_cannot_declare_write_steps(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "alpha.json"
+            for access, steps in (("read_only", ["read_only_preflight", "create_database", "verify_no_cloud_mutations"]),
+                                  ("", ["read_only_preflight", "lookup_by_identity", "verify_expected_response", "verify_no_cloud_mutations"]),
+                                  ("write", ["read_only_preflight", "lookup_by_identity", "verify_expected_response", "verify_no_cloud_mutations"])):
+                path.write_text(json.dumps({"version": 2, "scenarios": [{"id": "x", "access": access, "steps": steps}]}))
+                with self.assertRaises(ValueError):
+                    load_scenarios(path)
+        self.assertEqual(classify_claim(Scenario("x", (), "unknown"), replace(self.evidence, scenario_id="x")), "invalid")
 
     def test_invalid_scenario_documents_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp:
