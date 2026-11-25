@@ -56,9 +56,9 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
 			response = map[string]any{"id": 1, fixtureNameKey: "fixture-existing-parent", fixtureStatusKey: fixtureActive}
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/subscriptions/1/databases" && !exists:
+		case r.Method == http.MethodPost && r.URL.Path == fixtureProDBsPath && !exists:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != "fixture-pro-db" || body["dataEvictionPolicy"] != rule {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureProDBName || body[fixtureEvictionKey] != rule {
 				unexpected = true
 				http.Error(w, "bad create", http.StatusBadRequest)
 				return
@@ -70,9 +70,9 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 42}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && exists:
-			response = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}, "clustering": map[string]any{"regexRules": []any{}}}
+			response = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureProDatabasePath && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil {
@@ -80,7 +80,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				http.Error(w, "malformed update", http.StatusBadRequest)
 				return
 			}
-			if policy, present := body["dataEvictionPolicy"]; present {
+			if policy, present := body[fixtureEvictionKey]; present {
 				if policy != desiredEviction && policy != fixtureVolatileLRU {
 					unexpected = true
 					http.Error(w, "bad eviction policy", http.StatusBadRequest)
@@ -99,10 +99,10 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && !exists:
 			http.NotFound(w, r)
 			return
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases":
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: "fixture-pro-db", "dataEvictionPolicy": rule, fixtureStatusKey: "active", "protocol": "redis", "dataPersistence": "none", fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}, "clustering": map[string]any{"regexRules": []any{}}})
+				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}})
 			}
 			response = map[string]any{"databases": rows}
 		default:
@@ -120,7 +120,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
-	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(key, "http://127.0.0.1:1")
 	}
 	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -137,11 +137,11 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		t.Fatal(err)
 	}
 	name, value := fixtureName, rule
-	resourceName := "fixture-pro-db"
+	resourceName := fixtureProDBName
 	item := &pro.Database{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-pro-db-uid")}}
 	item.Spec.ForProvider.Name = &resourceName
 	item.Spec.ForProvider.DataEviction = &value
-	parent, memory, by, throughput, persistence, replication := float64(1), float64(1), "operations-per-second", float64(1000), "none", false
+	parent, memory, by, throughput, persistence, replication := float64(1), float64(1), fixtureThroughputBy, float64(1000), fixtureNoPersistence, false
 	item.Spec.ForProvider.SubscriptionID = &parent
 	item.Spec.ForProvider.MemoryLimitInGb = &memory
 	item.Spec.ForProvider.ThroughputMeasurementBy = &by
@@ -198,12 +198,12 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
 			t.Fatal(err)
 		}
-		if current.Status.AtProvider.ID != nil && *current.Status.AtProvider.ID == "1/42" {
+		if current.Status.AtProvider.ID != nil && *current.Status.AtProvider.ID == fixtureProDBID {
 			item = current
 			break
 		}
 	}
-	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1/42" {
+	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database identity missing")
 	}
 	updated := fixtureVolatileLRU
@@ -222,7 +222,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
 		t.Fatal(err)
 	}
-	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != "1/42" {
+	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database ID changed")
 	}
 	if err := kube.Delete(context.Background(), current); err != nil {
