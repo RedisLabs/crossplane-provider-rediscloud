@@ -48,6 +48,8 @@ A follow-on fake-only probe places an independently reachable endpoint on the Ki
 
 A further hosted-only experiment creates a provider configuration with synthetic credentials and a Regions lookup targeting the fake proxy. It attempts to require both a newly observed fake-proxy GET and the expected ready region status from the installed controller, before and after replacement; the replacement runtime image ID must match the original digest. These remain proposed tests until hosted execution and review pass. They exercise a fake service, not an authenticated Redis Cloud read, and do not resolve the remaining full egress, API-authorization, startup or multicast-target gaps.
 
+The installed package in this experiment is built from pinned source `f2e4bbc86495d31eb2bed76ebe4124622150c80a`, not the separate integrated PR #81. The fake proxy's marker is an aggregate count of accepted GETs; it is not independent per-request source attribution. The test sequences its own debug requests before each count and requires fresh controller status, but must not describe that marker as a source trace.
+
 ## Operations and rollback
 
 The fake-only guard cannot reach QA and has no credential path. Rollback removes the draft workflow and fixture. Production deployment and publication are out of scope. No shared-account lock is claimed; GET-only QA requires no Cloud writer, but any future mutation is blocked by the existing serialization and recovery requirements. Open questions: approved hosted CNI and image pins; enforced policy for this environment; verified QA origin; safe read-only selector and retention/redaction of status.
