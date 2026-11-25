@@ -30,3 +30,9 @@ jobs:
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
           python3 acceptance/crossplane_plan_adapter.py
+
+      - name: Exercise simulated managed ACL lifecycle
+        run: |
+          export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
+          export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
+          go test ./scripts/qa_tfplan -run '^TestACLRuleManagedLifecycleLoopback$' -count=1 -v
