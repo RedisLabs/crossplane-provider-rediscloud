@@ -6,6 +6,8 @@ package lookup
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,10 +16,60 @@ import (
 	"time"
 
 	lookupv1alpha1 "github.com/RedisLabs/provider-rediscloud/apis/lookup/v1alpha1"
+	rediscloud "github.com/RedisLabs/rediscloud-go-api"
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+type proFixtureTransport func(*http.Request) (*http.Response, error)
+
+func (f proFixtureTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestProSubscriptionHTTPSRedirectsAndTransportError(t *testing.T) {
+	for _, tt := range []struct {
+		name, location string
+		code           int
+	}{
+		{"same-origin", "https://fixture.invalid/other", http.StatusFound},
+		{"cross-origin", "https://other.invalid/other", http.StatusTemporaryRedirect},
+		{"permanent", "https://other.invalid/other", http.StatusPermanentRedirect},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			transport := proFixtureTransport(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if r.URL.Host != "fixture.invalid" || r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+					t.Error("unexpected target or missing fixture credentials")
+				}
+				return &http.Response{StatusCode: tt.code, Header: http.Header{"Location": []string{tt.location}}, Body: io.NopCloser(strings.NewReader("fixture-sensitive-body")), Request: r}, nil
+			})
+			api, err := rediscloud.NewClient(rediscloud.Auth("key", "secret"), rediscloud.BaseURL("https://fixture.invalid"), rediscloud.Transporter(noRedirectTransport{next: transport}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			obj := &lookupv1alpha1.ProSubscription{Spec: lookupv1alpha1.ProSubscriptionSpec{ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}}
+			_, err = readProSubscription(context.Background(), api, obj)
+			if err == nil || err.Error() != "cannot get Pro subscription from Redis Cloud" || calls != 1 {
+				t.Fatalf("redirect was not safely rejected: calls=%d err=%v", calls, err)
+			}
+		})
+	}
+	t.Run("transport-error", func(t *testing.T) {
+		transport := proFixtureTransport(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("fixture-sensitive-transport-error")
+		})
+		api, err := rediscloud.NewClient(rediscloud.Auth("key", "secret"), rediscloud.BaseURL("https://fixture.invalid"), rediscloud.Transporter(noRedirectTransport{next: transport}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		obj := &lookupv1alpha1.ProSubscription{Spec: lookupv1alpha1.ProSubscriptionSpec{ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}}
+		_, err = readProSubscription(context.Background(), api, obj)
+		if err == nil || err.Error() != "cannot get Pro subscription from Redis Cloud" {
+			t.Fatal("transport error was not sanitized")
+		}
+	})
+}
 
 func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) { //nolint:gocyclo // Exercise the same controller over success and invalid responses.
 	for _, tt := range []struct {
