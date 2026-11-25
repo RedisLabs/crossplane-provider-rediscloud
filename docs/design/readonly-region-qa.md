@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Exercise the real Regions and PaymentMethod reconcilers against the existing QA
+Exercise the real Regions, PaymentMethod and ACLRule reconcilers against the existing QA
 account with an in-memory Kubernetes client. Per-case fail-closed HTTP transports
 permit only the exact GET route at an independently allowlisted HTTPS origin and
 reject redirects.
@@ -26,9 +26,13 @@ reconciles that exact filter, then checks that a nonmatching filter clears stale
 status. Three independently guarded GETs are allowed for this test. If no unique
 unexpired method exists, this case is blocked; no resource is created to supply
 one. No payment IDs, card details, account IDs or credentials are logged.
+The ACL rule case selects a uniquely named rule in memory, checks the exact
+reconciler result and clears the status after a no-match filter. It issues three
+GETs and logs neither names nor rule contents. An empty or ambiguous ACL rule
+list blocks that case; no rule is created to supply a fixture.
 
 Each test creates its own guard for exactly one allowed path: `/v1/regions` or
-`/v1/payment-methods`. The guard rejects other methods, hosts, paths, queries, request bodies, plaintext
+`/v1/payment-methods`, or `/v1/acl/redisRules`. The guard rejects other methods, hosts, paths, queries, request bodies, plaintext
 and any redirect before following it. The QA URL must match the independently
 configured origin hashes used by the existing QA harness; the binary additionally
 requires an opt-in GitHub Actions run in this repository. The guard is an
@@ -48,6 +52,8 @@ jobs and do not alter the disabled Pulumi workflow.
 
 The repo has no Pro subscription lookup kind/reconciler, so that requested
 data-source case remains unsupported and is not simulated by another resource.
+PrivateLink and PSC lookup require an exact Pro subscription selector and use
+asynchronous task reads; no qualifying existing selector has been established.
 
 ADR: no new decision for a bounded test harness; the shared-account admission
 architecture remains proposed separately. BDR: none. Live provider deployment,
