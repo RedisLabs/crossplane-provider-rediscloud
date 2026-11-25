@@ -111,8 +111,9 @@ not read or represented.
 
 The shared lookup HTTP transport denies redirects before the SDK can issue a
 second authenticated request. This applies to all lookup controllers, not the
-managed-resource clients. Pro subscription API failures use a fixed condition
-message so response bodies and transport errors cannot leak into CR status.
+managed-resource clients. All lookup failures use a fixed condition message so
+API response bodies, transport errors and credential errors cannot leak into
+CR status. This trades detailed error messages for a safer status surface.
 
 Credential-free controller tests should verify the authenticated GET, rejected
 identities and types, API errors, stale status clearing, and no request on
