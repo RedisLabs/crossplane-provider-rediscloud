@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 71af6383ad3e8a0e40c2952f1530c45b9e370f84; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = e4beca26f674a99f90e3b7cd3130cb5b3ae75359; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
@@ -313,6 +313,8 @@ jobs:
       - name: Probe fake proxy and CIDR rules through provider replacement
         shell: bash
         run: bash proof-source/scripts/readonly_boundary/hosted_probe.sh
+      - name: Audit provider API relay authorization
+        run: python3 proof-source/scripts/readonly_boundary/api_relay_probe.py
       - name: Preserve package and OCI manifest
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:

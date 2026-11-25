@@ -50,6 +50,8 @@ A further hosted-only experiment creates a provider configuration with synthetic
 
 The installed package in this experiment is built from pinned source `f2e4bbc86495d31eb2bed76ebe4124622150c80a`, not the separate integrated PR #81. The fake proxy's marker is an aggregate count of accepted GETs; it is not independent per-request source attribution. The test sequences its own debug requests before each count and requires fresh controller status, but must not describe that marker as a source trace.
 
+The next hosted-only API audit uses the actual replacement provider service-account identity. It requires a positive Regions read authorization, samples relay and policy mutation permissions in every observed namespace plus selected cluster-scoped permissions, and attempts two direct proxy requests and a server-side dry-run pod creation expecting explicit Forbidden responses. Namespace inventory must remain stable during the audit. These checks run after the fake network experiment restores its rules and do not prove all Kubernetes API paths, token security, admission constraints, or startup-time isolation. A missing or incomplete authorization result fails the job; live QA remains blocked.
+
 ## Operations and rollback
 
 The fake-only guard cannot reach QA and has no credential path. Rollback removes the draft workflow and fixture. Production deployment and publication are out of scope. No shared-account lock is claimed; GET-only QA requires no Cloud writer, but any future mutation is blocked by the existing serialization and recovery requirements. Open questions: approved hosted CNI and image pins; enforced policy for this environment; verified QA origin; safe read-only selector and retention/redaction of status.
