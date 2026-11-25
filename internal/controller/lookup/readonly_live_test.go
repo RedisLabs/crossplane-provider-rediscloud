@@ -38,7 +38,7 @@ type regionReadGuard struct {
 	allowed, denied, ok atomic.Int32
 }
 
-func (g *regionReadGuard) RoundTrip(r *http.Request) (*http.Response, error) {
+func (g *regionReadGuard) RoundTrip(r *http.Request) (*http.Response, error) { //nolint:gocyclo // Each condition is a distinct fail-closed request boundary.
 	if r.Method != http.MethodGet || r.URL.Scheme != "https" || r.URL.Host != g.origin || r.URL.Path != "/v1/regions" || r.URL.RawQuery != "" || r.URL.User != nil || r.Body != nil {
 		g.denied.Add(1)
 		return nil, errors.New("request denied by read-only region guard")
@@ -46,7 +46,7 @@ func (g *regionReadGuard) RoundTrip(r *http.Request) (*http.Response, error) {
 	g.allowed.Add(1)
 	resp, err := g.next.RoundTrip(r)
 	if err == nil && resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		g.denied.Add(1)
 		return nil, errors.New("redirect denied by read-only region guard")
 	}
@@ -61,14 +61,15 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) {
+	const fixtureURL = "https://qa.example.test/v1/regions"
 	var forwarded atomic.Int32
 	guard := &regionReadGuard{origin: "qa.example.test", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		forwarded.Add(1)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
 	for _, item := range []struct{ method, raw string }{
-		{"POST", "https://qa.example.test/v1/regions"}, {"DELETE", "https://qa.example.test/v1/regions"},
-		{"PUT", "https://qa.example.test/v1/regions"}, {"PATCH", "https://qa.example.test/v1/regions"},
+		{"POST", fixtureURL}, {"DELETE", fixtureURL},
+		{"PUT", fixtureURL}, {"PATCH", fixtureURL},
 		{"GET", "https://elsewhere.example.test/v1/regions"}, {"GET", "http://qa.example.test/v1/regions"},
 		{"GET", "https://qa.example.test/v1/subscriptions"}, {"GET", "https://qa.example.test/v1/regions?x=1"},
 	} {
@@ -83,14 +84,18 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) {
 	if forwarded.Load() != 0 || guard.denied.Load() != 8 {
 		t.Fatal("unsafe fixture request reached transport")
 	}
-	req, _ := http.NewRequest("GET", "https://qa.example.test/v1/regions", nil)
+	withBody, _ := http.NewRequest("GET", fixtureURL, strings.NewReader("data"))
+	if _, err := guard.RoundTrip(withBody); err == nil || forwarded.Load() != 0 {
+		t.Fatal("GET request with body reached transport")
+	}
+	req, _ := http.NewRequest("GET", fixtureURL, nil)
 	response, err := guard.RoundTrip(req)
 	if err != nil || response.StatusCode != http.StatusOK || forwarded.Load() != 1 {
 		t.Fatal("allowed fixture request failed")
 	}
-	response.Body.Close()
+	_ = response.Body.Close()
 	guard.next = roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusFound, Body: io.NopCloser(strings.NewReader("")), Header: http.Header{"Location": []string{"https://qa.example.test/v1/regions"}}}, nil
+		return &http.Response{StatusCode: http.StatusFound, Body: io.NopCloser(strings.NewReader("")), Header: http.Header{"Location": []string{fixtureURL}}}, nil
 	})
 	if _, err = guard.RoundTrip(req); err == nil {
 		t.Fatal("redirect was accepted")
@@ -100,6 +105,7 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) {
 // TestLiveReadonlyRegions is invoked only by the explicitly dispatched hosted
 // workflow. It makes only guarded Cloud reads and uses a fake Kubernetes client.
 func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at every credential, endpoint, request and result boundary.
+	const secretDataKey = "qa-key"
 	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("GITHUB_REPOSITORY") != "RedisLabs/crossplane-provider-rediscloud" || os.Getenv("QA_READONLY_REGIONS") != "1" {
 		t.Skip("hosted opt-in required")
 	}
@@ -141,8 +147,8 @@ func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at 
 			t.Fatal("unable to initialize in-memory schema")
 		}
 	}
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "creds", Namespace: "crossplane-system"}, Data: map[string][]byte{"credentials": encoded}}
-	config := &v1beta1.ProviderConfig{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1beta1.ProviderConfigSpec{Credentials: v1beta1.ProviderCredentials{Source: xpv1.CredentialsSourceSecret, CommonCredentialSelectors: xpv1.CommonCredentialSelectors{SecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Name: "creds", Namespace: "crossplane-system"}, Key: "credentials"}}}}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "readonly-secret", Namespace: "crossplane-system"}, Data: map[string][]byte{secretDataKey: encoded}}
+	config := &v1beta1.ProviderConfig{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1beta1.ProviderConfigSpec{Credentials: v1beta1.ProviderCredentials{Source: xpv1.CredentialsSourceSecret, CommonCredentialSelectors: xpv1.CommonCredentialSelectors{SecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Name: "readonly-secret", Namespace: "crossplane-system"}, Key: secretDataKey}}}}}
 	for _, provider := range []string{"AWS", "GCP"} {
 		region := &lookupv1alpha1.Regions{ObjectMeta: metav1.ObjectMeta{Name: "qa-regions"}, Spec: lookupv1alpha1.RegionsSpec{ProviderConfigRef: xpv1.Reference{Name: "default"}, ForProvider: lookupv1alpha1.RegionsParameters{ProviderName: &provider}}}
 		kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(region).WithObjects(secret.DeepCopy(), config.DeepCopy(), region).Build()
