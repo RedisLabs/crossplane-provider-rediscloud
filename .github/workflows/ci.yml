@@ -20,6 +20,22 @@ env:
   UPBOUND_MARKETPLACE_PUSH_ROBOT_USR: ${{ secrets.UPBOUND_MARKETPLACE_PUSH_ROBOT_USR }}
 
 jobs:
+  qa-origin-binding:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/qa-origin-binding' && github.actor == 'shay-berman'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          persist-credentials: false
+      - name: Compare protected origin without network access
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_TARGET_ORIGIN_SHA256: ${{ secrets.QA_TARGET_ORIGIN_SHA256 }}
+        run: python3 scripts/qa_origin_binding.py
+
   detect-noop:
     runs-on: ubuntu-24.04
     outputs:
@@ -223,6 +239,9 @@ jobs:
 
       - name: Test one-shot recovery fences without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_delete_fence.py'
+
+      - name: Test no-network origin comparison with dummy values
+        run: python3 -m unittest discover -s scripts -p 'test_qa_origin_binding.py' -v
 
       - name: Rehearse UID delete preconditions against local HTTP with pinned kubectl
         run: |
