@@ -3,10 +3,10 @@ package qatfplan
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -144,7 +144,8 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	defer server.Close()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
-	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "empty.tfrc"))
+	t.Setenv("TMPDIR", dir)
+	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
 	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
@@ -157,28 +158,17 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
 	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := os.WriteFile(filepath.Join(dir, "empty.tfrc"), nil, 0o600); err != nil {
+	mirror := fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)
+	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(mirror), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	assertEmptyFakeInventory(t, server.URL)
 	t.Log("SIMULATED: authenticated fake baseline inventory empty")
-	parent := createManagedParent(t, tf, plugins, server.URL, schemeForParent(t))
+	parent := createManagedParent(t, server.URL, schemeForParent(t))
 	t.Log("SIMULATED: managed fake parent created and observed")
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": fixtureProviderSource, "version": fixtureProviderVersion}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_database": map[string]any{"test": map[string]any{"subscription_id": 1, fixtureNameKey: fixtureName, "data_eviction": desiredEviction, "data_persistence": fixtureNoPersistence, "replication": false}}}}
-	b, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	init := exec.Command(tf, "init", "-no-color", "-input=false", "-plugin-dir="+plugins)
-	init.Dir = dir
-	if out, initErr := init.CombinedOutput(); initErr != nil {
-		t.Fatalf("fixture init failed: %v\n%s", initErr, out)
-	}
-	spy := &spyExecutor{Interface: kexec.New()}
-	ws := terraform.NewWorkspace(dir, terraform.WithExecutor(spy), terraform.WithFilterFn(func(s string) string { return s }))
+	store := newTrackingNativeStore()
+	spy := &spyExecutor{Interface: kexec.New(), tracked: store}
+	var err error
 	scheme := runtime.NewScheme()
 	if err = api.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -197,8 +187,8 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, regeneratingStore{dir, ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_database"], ujcontroller.WithCallbackProvider(callback))
-	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(api.Database_GroupVersionKind), managed.WithExternalConnector(connector))
+	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_database"], ujcontroller.WithCallbackProvider(callback))
+	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(api.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	createdDone := false
 createLoop:
 	for i := 0; i < 8; i++ {
@@ -285,7 +275,7 @@ createLoop:
 				t.Fatalf("managed delete failed: %v", err)
 			}
 			assertManagedFakeDelete(t, server.URL, &mu, &deleted, &unexpected)
-			assertManagedObjectGone(t, rec, kube)
+			assertManagedObjectGone(t, rec, kube, filepath.Join(dir, "fixture-uid"))
 			parent.destroy(t)
 			return
 		case <-time.After(2 * time.Second):
@@ -298,7 +288,7 @@ createLoop:
 						t.Fatalf("managed delete failed: %v", err)
 					}
 					assertManagedFakeDelete(t, server.URL, &mu, &deleted, &unexpected)
-					assertManagedObjectGone(t, rec, kube)
+					assertManagedObjectGone(t, rec, kube, filepath.Join(dir, "fixture-uid"))
 					parent.destroy(t)
 					return
 				case <-time.After(90 * time.Second):
@@ -390,7 +380,7 @@ func assertManagedFakeDelete(t *testing.T, base string, mu *sync.Mutex, deleted,
 	t.Log("SIMULATED: managed fake child 404 while fake parent 200")
 }
 
-func assertManagedObjectGone(t *testing.T, rec *managed.Reconciler, kube client.Client) {
+func assertManagedObjectGone(t *testing.T, rec *managed.Reconciler, kube client.Client, workspacePath string) {
 	t.Helper()
 	for i := 0; i < 5; i++ {
 		_, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}})
@@ -400,6 +390,9 @@ func assertManagedObjectGone(t *testing.T, rec *managed.Reconciler, kube client.
 		current := &api.Database{}
 		err = kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current)
 		if apierrors.IsNotFound(err) {
+			if _, statErr := os.Stat(workspacePath); !os.IsNotExist(statErr) {
+				t.Fatal("fake child workspace remains or cannot be checked")
+			}
 			return
 		}
 		if err != nil {
@@ -410,11 +403,12 @@ func assertManagedObjectGone(t *testing.T, rec *managed.Reconciler, kube client.
 }
 
 type managedParentFixture struct {
-	rec      *managed.Reconciler
-	kube     client.Client
-	callback *fakeCallback
-	spy      *spyExecutor
-	url      string
+	rec           *managed.Reconciler
+	kube          client.Client
+	callback      *fakeCallback
+	spy           *spyExecutor
+	url           string
+	workspacePath string
 }
 
 func schemeForParent(t *testing.T) *runtime.Scheme {
@@ -426,24 +420,11 @@ func schemeForParent(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-func createManagedParent(t *testing.T, tf, plugins, url string, scheme *runtime.Scheme) *managedParentFixture {
+func createManagedParent(t *testing.T, url string, scheme *runtime.Scheme) *managedParentFixture {
 	t.Helper()
-	dir := t.TempDir()
-	config := map[string]any{"terraform": map[string]any{"required_providers": map[string]any{fixtureProviderName: map[string]any{"source": fixtureProviderSource, "version": fixtureProviderVersion}}}, fixtureProviderKey: map[string]any{fixtureProviderName: map[string]any{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, "resource": map[string]any{"rediscloud_essentials_subscription": map[string]any{"test": map[string]any{fixtureNameKey: fixtureName, "plan_id": 1}}}}
-	b, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "main.tf.json"), b, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	init := exec.Command(tf, "init", "-no-color", "-input=false", "-plugin-dir="+plugins)
-	init.Dir = dir
-	if out, initErr := init.CombinedOutput(); initErr != nil {
-		t.Fatalf("parent init: %v\n%s", initErr, out)
-	}
-	spy := &spyExecutor{Interface: kexec.New()}
-	ws := terraform.NewWorkspace(dir, terraform.WithExecutor(spy), terraform.WithFilterFn(func(s string) string { return s }))
+	store := newTrackingNativeStore()
+	spy := &spyExecutor{Interface: kexec.New(), tracked: store}
+	var err error
 	item := &api.Subscription{ObjectMeta: metav1.ObjectMeta{Name: fixtureName, UID: types.UID("fixture-parent-uid")}}
 	name, plan := fixtureName, float64(1)
 	item.Spec.ForProvider.Name, item.Spec.ForProvider.PlanID = &name, &plan
@@ -454,8 +435,8 @@ func createManagedParent(t *testing.T, tf, plugins, url string, scheme *runtime.
 		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, regeneratingStore{dir, ws}, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))
-	parent := &managedParentFixture{managed.NewReconciler(mgr, xpresource.ManagedKind(api.Subscription_GroupVersionKind), managed.WithExternalConnector(connector)), kube, callback, spy, url}
+	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))
+	parent := &managedParentFixture{rec: managed.NewReconciler(mgr, xpresource.ManagedKind(api.Subscription_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName)))), kube: kube, callback: callback, spy: spy, url: url, workspacePath: filepath.Join(os.TempDir(), "fixture-parent-uid")}
 	parent.await(t, "terraform apply ")
 	for i := 0; i < 5; i++ {
 		if _, err = parent.rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}); err != nil {
@@ -501,7 +482,9 @@ func (p *managedParentFixture) await(t *testing.T, command string) { //nolint:go
 			}
 		}
 	}
-	t.Fatal("parent callback missing")
+	current := &api.Subscription{}
+	_ = p.kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current)
+	t.Fatalf("parent callback missing: status=%#v annotations=%#v", current.Status, current.Annotations)
 }
 
 func (p *managedParentFixture) destroy(t *testing.T) { //nolint:gocyclo // Check each deletion and inventory boundary.
@@ -544,6 +527,9 @@ func (p *managedParentFixture) destroy(t *testing.T) { //nolint:gocyclo // Check
 		t.Fatalf("parent read after delete = %d", resp.StatusCode)
 	}
 	assertEmptyFakeInventory(t, p.url)
+	if _, err := os.Stat(p.workspacePath); !os.IsNotExist(err) {
+		t.Fatal("fake parent workspace remains or cannot be checked")
+	}
 	t.Log("SIMULATED: managed fake parent 404 and fake inventory empty")
 }
 
