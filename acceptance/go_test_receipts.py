@@ -43,9 +43,10 @@ def run_selected(package: str, names: tuple[str, ...], *, require_fixture: bool 
         raise ValueError("integration fixture execution requires GitHub Actions")
     if require_fixture and not all(os.environ.get(key) for key in ("QA_TEST_TERRAFORM", "QA_TEST_PROVIDER_DIR")):
         raise ValueError("pinned fixture dependencies are required")
-    pattern = "^(" + "|".join(re.escape(name) for name in names) + ")$"
-    if not names or any(not re.fullmatch(r"Test[A-Za-z0-9_]+", name) for name in names):
+    if not names or any(not re.fullmatch(r"Test[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*", name) for name in names):
         raise ValueError("invalid selected test names")
+    roots = sorted({name.split("/", 1)[0] for name in names})
+    pattern = "^(" + "|".join(re.escape(name) for name in roots) + ")$"
     run = subprocess.run(
         ["go", "test", "-json", package, "-run", pattern, "-count=1", "-timeout=15m"],
         cwd=ROOT, text=True, capture_output=True, timeout=timeout, check=False,

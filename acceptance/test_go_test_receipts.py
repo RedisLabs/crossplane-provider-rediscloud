@@ -34,6 +34,12 @@ class TestGoTestReceipts(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_events(stream(("run", NAME), ("pass", NAME), ("pass", "")), PACKAGE, (NAME, "TestMissing"))
 
+    def test_missing_expected_subtest_is_rejected(self):
+        case = stream(("run", NAME), ("run", NAME + "/lifecycle"), ("pass", NAME + "/lifecycle"), ("pass", NAME), ("pass", ""))
+        validate_events(case, PACKAGE, (NAME, NAME + "/lifecycle"))
+        with self.assertRaises(ValueError):
+            validate_events(case, PACKAGE, (NAME, NAME + "/lifecycle", NAME + "/accepted_then_503"))
+
     @patch.dict("os.environ", {}, clear=True)
     def test_not_hosted_or_missing_pinned_fixture_never_launches(self):
         with patch("go_test_receipts.subprocess.run") as run:
