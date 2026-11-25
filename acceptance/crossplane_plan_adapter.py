@@ -39,6 +39,7 @@ if __name__ == "__main__":
         raise SystemExit("pinned fixture dependencies missing")
     case = load_scenarios(ROOT / "acceptance" / "scenarios.json")["essentials-database-eviction-update"]
     claim = CrossplanePlanAdapter().execute(case)
-    print("loopback fixture outcome:", claim.outcome, "(no live lifecycle qualification)")
     if claim.outcome != "blocked":
         raise SystemExit(1)
+    print("PASS loopback managed reconciler and Terraform no-op/drift fixture")
+    print("BLOCKED shared lifecycle: admission, creation, deletion and cleanup not exercised")
