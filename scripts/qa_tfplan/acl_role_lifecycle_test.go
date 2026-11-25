@@ -36,14 +36,20 @@ import (
 const fixtureACLRolePath = "/v1/acl/roles/42"
 const fixtureACLRolesPath = "/v1/acl/roles"
 
-func TestACLRoleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+func TestACLRoleManagedLifecycleLoopback(t *testing.T) {
+	t.Run("create_rejected", func(t *testing.T) { runACLRoleFixture(t, true) })
+	t.Run("lifecycle", func(t *testing.T) { runACLRoleFixture(t, false) })
+}
+
+func runACLRoleFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	rejectCreate, rejectUpdate, rejectDelete := true, true, true
+	rejectCreate, rejectUpdate, rejectDelete := failCreate, true, true
+	createRequests := 0
 	rule := "fixture-rule-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -57,6 +63,7 @@ func TestACLRoleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		var response any
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == fixtureACLRolesPath && !exists:
+			createRequests++
 			if rejectCreate {
 				rejectCreate = false
 				http.Error(w, "injected create rejection", http.StatusForbidden)
@@ -188,13 +195,22 @@ func TestACLRoleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		}
 		t.Fatal("callback missing")
 	}
-	await("terraform apply ", true)
-	mu.Lock()
-	if exists || unexpected {
+	if failCreate {
+		await("terraform apply ", true)
+		for i := 0; i < 3; i++ {
+			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mu.Lock()
+		if exists || unexpected || createRequests != 1 {
+			mu.Unlock()
+			t.Fatal("rejected create was replayed or changed fake inventory")
+		}
 		mu.Unlock()
-		t.Fatal("rejected create changed fake inventory")
+		verifyForeignACLInventory(t, server.URL+fixtureACLRolesPath, "roles", "foreign-role")
+		return
 	}
-	mu.Unlock()
 	await("terraform apply ", false)
 	for i := 0; i < 5; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
@@ -322,4 +338,24 @@ func validFakeRoleAssociation(body map[string]any, expected string) bool {
 	}
 	database, ok := databases[0].(map[string]any)
 	return ok && database["subscriptionId"] == float64(1) && database[fixtureDatabaseIDKey] == float64(2)
+}
+
+func verifyForeignACLInventory(t *testing.T, url, key, name string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Api-Key", dummyCredential)
+	req.Header.Set("X-Api-Secret-Key", dummyCredential)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string][]map[string]any
+	err = json.NewDecoder(res.Body).Decode(&body)
+	_ = res.Body.Close()
+	if err != nil || res.StatusCode != http.StatusOK || len(body[key]) != 1 || body[key][0]["id"] != float64(99) || body[key][0][fixtureNameKey] != name {
+		t.Fatal("foreign fake ACL inventory was not preserved")
+	}
 }

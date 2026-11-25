@@ -37,14 +37,20 @@ import (
 const fixtureACLUserPath = "/v1/acl/users/42"
 const fixtureACLUsersPath = "/v1/acl/users"
 
-func TestACLUserManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+func TestACLUserManagedLifecycleLoopback(t *testing.T) {
+	t.Run("create_rejected", func(t *testing.T) { runACLUserFixture(t, true) })
+	t.Run("lifecycle", func(t *testing.T) { runACLUserFixture(t, false) })
+}
+
+func runACLUserFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	rejectCreate, rejectUpdate, rejectDelete := true, true, true
+	rejectCreate, rejectUpdate, rejectDelete := failCreate, true, true
+	createRequests := 0
 	rule := "fixture-rule-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -58,6 +64,7 @@ func TestACLUserManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		var response any
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == fixtureACLUsersPath && !exists:
+			createRequests++
 			if rejectCreate {
 				rejectCreate = false
 				http.Error(w, "injected create rejection", http.StatusForbidden)
@@ -193,13 +200,22 @@ func TestACLUserManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		}
 		t.Fatal("callback missing")
 	}
-	await("terraform apply ", true)
-	mu.Lock()
-	if exists || unexpected {
+	if failCreate {
+		await("terraform apply ", true)
+		for i := 0; i < 3; i++ {
+			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mu.Lock()
+		if exists || unexpected || createRequests != 1 {
+			mu.Unlock()
+			t.Fatal("rejected create was replayed or changed fake inventory")
+		}
 		mu.Unlock()
-		t.Fatal("rejected create changed fake inventory")
+		verifyForeignACLInventory(t, server.URL+fixtureACLUsersPath, "users", "foreign-user")
+		return
 	}
-	mu.Unlock()
 	await("terraform apply ", false)
 	for i := 0; i < 5; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
