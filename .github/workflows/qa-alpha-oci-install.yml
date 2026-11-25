@@ -41,26 +41,51 @@ jobs:
           kind=.cache/tools/linux_x86_64/kind-v0.33.0
           crossplane=.cache/tools/linux_x86_64/crossplane-cli-v2.4.1
           "$kubectl" -n upbound-system rollout status deployment/crossplane --timeout=5m
-          "$kubectl" -n upbound-system patch deployment crossplane --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/-","value":{"name":"ephemeral-registry","image":"registry:2.8.3","env":[{"name":"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY","value":"/tmp/registry"}]}}]'
+          "$kubectl" -n upbound-system patch deployment crossplane --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/-","value":{"name":"ephemeral-registry","image":"registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373","env":[{"name":"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY","value":"/tmp/registry"}],"readinessProbe":{"tcpSocket":{"port":5000},"periodSeconds":2}}}]'
           "$kubectl" -n upbound-system rollout status deployment/crossplane --timeout=5m
-          pod=$("$kubectl" -n upbound-system get pods -l app=crossplane -o jsonpath='{.items[0].metadata.name}')
+          pod=$("$kubectl" -n upbound-system get pods -l app=crossplane -o json | python3 -c '
+          import json, sys
+          pods = json.load(sys.stdin)["items"]
+          ready = [p["metadata"]["name"] for p in pods if not p["metadata"].get("deletionTimestamp") and p.get("status", {}).get("phase") == "Running" and any(c["name"] == "ephemeral-registry" and c.get("ready") for c in p["status"].get("containerStatuses", []))]
+          if len(ready) != 1:
+              raise SystemExit("expected exactly one running registry-ready Crossplane pod")
+          print(ready[0])
+          ')
           pod_ip=$("$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.status.podIP}')
           test -n "$pod_ip"
           "$kubectl" -n upbound-system port-forward "pod/$pod" 5001:5000 >"$RUNNER_TEMP/registry-forward.log" 2>&1 &
           forward=$!
           trap 'kill "$forward" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 60); do
-            if curl -fsS http://localhost:5001/v2/ >/dev/null; then break; fi
+            if curl -fsS --max-time 3 http://localhost:5001/v2/ >/dev/null 2>&1; then break; fi
+            if ! kill -0 "$forward" 2>/dev/null; then
+              cat "$RUNNER_TEMP/registry-forward.log"
+              "$kubectl" -n upbound-system logs "$pod" -c ephemeral-registry --tail=40 || true
+              exit 1
+            fi
             sleep 1
           done
-          curl -fsS http://localhost:5001/v2/ >/dev/null
+          if ! curl -fsS --max-time 3 http://localhost:5001/v2/ >/dev/null; then
+            cat "$RUNNER_TEMP/registry-forward.log"
+            "$kubectl" -n upbound-system logs "$pod" -c ephemeral-registry --tail=40 || true
+            exit 1
+          fi
           mapfile -t packages < <(find _output/xpkg/linux_amd64 -maxdepth 1 -type f -name '*.xpkg' -print)
           test "${#packages[@]}" -eq 1
           sha256sum "${packages[0]}"
           "$crossplane" xpkg push -f "${packages[0]}" localhost:5001/provider-rediscloud:v0.0.1
           digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' http://localhost:5001/v2/provider-rediscloud/manifests/v0.0.1 | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:" {print $2}')
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' "http://localhost:5001/v2/provider-rediscloud/manifests/$digest" -o "$RUNNER_TEMP/oci-manifest.json"
+          echo "${digest#sha256:}  $RUNNER_TEMP/oci-manifest.json" | sha256sum -c -
+          wrong="0${digest:8}"
+          if [[ "$wrong" == "${digest#sha256:}" ]]; then wrong="1${digest:8}"; fi
+          if echo "$wrong  $RUNNER_TEMP/oci-manifest.json" | sha256sum -c --status; then
+            echo "Corrupt manifest digest unexpectedly passed" >&2
+            exit 1
+          fi
           echo "Ephemeral registry OCI package digest: $digest"
+          echo "Manifest hash verified; package content to xpkg file mapping is not independently checked."
           for node in $("$kind" get nodes --name local-dev); do
             docker exec "$node" mkdir -p /etc/containerd/certs.d/localhost:5000
             printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/localhost:5000/hosts.toml >/dev/null

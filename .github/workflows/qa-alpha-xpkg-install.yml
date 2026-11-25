@@ -23,7 +23,7 @@ jobs:
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
           if [ -n "$PR_BASE_SHA" ]; then
-            test "$PR_BASE_SHA" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
+            test "$PR_BASE_SHA" = aa2570cdd3c767a9e9b0324e0238efb96af8a831
           else
             echo "Dispatch tests the fixed source pin; no PR base was supplied."
           fi
