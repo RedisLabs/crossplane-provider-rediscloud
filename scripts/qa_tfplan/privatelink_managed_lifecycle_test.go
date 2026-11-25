@@ -36,6 +36,9 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		t.Skip("provider acceptance fixture runs only in GitHub Actions")
 	}
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
+	if tf == "" && plugins == "" {
+		t.Skip("pinned Terraform fixture not configured")
+	}
 	if tf == "" || plugins == "" {
 		t.Fatal("pinned Terraform and provider are required")
 	}
