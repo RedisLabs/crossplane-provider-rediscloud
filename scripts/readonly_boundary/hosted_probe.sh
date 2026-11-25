@@ -50,6 +50,9 @@ PY
 )
 cleanup() {
   for tool in iptables ip6tables; do
+    docker exec "$node" "$tool" -D FORWARD -j CODEX-FORWARD-COUNT 2>/dev/null || true
+    docker exec "$node" "$tool" -F CODEX-FORWARD-COUNT 2>/dev/null || true
+    docker exec "$node" "$tool" -X CODEX-FORWARD-COUNT 2>/dev/null || true
     for chain in INPUT FORWARD; do
       docker exec "$node" "$tool" -D "$chain" -j CODEX-EGRESS 2>/dev/null || true
       docker exec "$node" "$tool" -F CODEX-EGRESS 2>/dev/null || true
@@ -154,6 +157,8 @@ for family in 4 6; do
   docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
   docker exec "$node" "$tool" -I INPUT 1 -j CODEX-EGRESS
   docker exec "$node" "$tool" -I FORWARD 1 -j CODEX-EGRESS
+  docker exec "$node" "$tool" -N CODEX-FORWARD-COUNT
+  docker exec "$node" "$tool" -I FORWARD 1 -j CODEX-FORWARD-COUNT
   docker exec "$node" "$tool" -C INPUT -j CODEX-EGRESS
   docker exec "$node" "$tool" -C FORWARD -j CODEX-EGRESS
 done
@@ -250,15 +255,20 @@ PYTHON
     docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     echo "$phase IPv$family non-node denial"
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$external_target" -p tcp --dport 5556 -m comment --comment "codex-external-$family-$expected_uid"
+    docker exec "$node" "$tool" -A CODEX-FORWARD-COUNT -s "$source_ip" -d "$external_target" -p tcp --dport 5556 -m comment --comment "codex-forward-$family-$expected_uid"
     mapfile -t ext_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-external-$family-$expected_uid" 'index($0, marker) {print $1}')
     mapfile -t ext_deny_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+    mapfile -t forward_before < <(docker exec "$node" "$tool" -nvx -L CODEX-FORWARD-COUNT | awk -v marker="codex-forward-$family-$expected_uid" 'index($0, marker) {print $1}')
     test "${#ext_before[@]}" -eq 1 && [[ "${ext_before[0]}" =~ ^[0-9]+$ ]]
     test "${#ext_deny_before[@]}" -eq 1 && [[ "${ext_deny_before[0]}" =~ ^[0-9]+$ ]]
+    test "${#forward_before[@]}" -eq 1 && [[ "${forward_before[0]}" =~ ^[0-9]+$ ]]
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions"; then exit 42; else exit 0; fi' -- "$external_host"
     mapfile -t ext_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-external-$family-$expected_uid" 'index($0, marker) {print $1}')
     mapfile -t ext_deny_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+    mapfile -t forward_after < <(docker exec "$node" "$tool" -nvx -L CODEX-FORWARD-COUNT | awk -v marker="codex-forward-$family-$expected_uid" 'index($0, marker) {print $1}')
     test "${#ext_after[@]}" -eq 1 && [[ "${ext_after[0]}" =~ ^[0-9]+$ ]] && (( ext_after[0] > ext_before[0] ))
     test "${#ext_deny_after[@]}" -eq 1 && [[ "${ext_deny_after[0]}" =~ ^[0-9]+$ ]] && (( ext_deny_after[0] > ext_deny_before[0] ))
+    test "${#forward_after[@]}" -eq 1 && [[ "${forward_after[0]}" =~ ^[0-9]+$ ]] && (( forward_after[0] > forward_before[0] ))
     docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
     docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
