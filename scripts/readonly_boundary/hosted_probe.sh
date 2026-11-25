@@ -56,7 +56,7 @@ cleanup() {
       docker exec "$node" "$tool" -X CODEX-EGRESS 2>/dev/null || true
     done
   done
-  docker rm -f boundary-proxy boundary-denied4 boundary-denied6 boundary-registry >/dev/null 2>&1 || true
+  docker rm -f boundary-proxy boundary-denied4 boundary-denied6 boundary-registry boundary-external >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 # Mirror the already-built package onto the node. The existing registry is a
@@ -95,9 +95,37 @@ echo "${digest#sha256:}  $RUNNER_TEMP/boundary-registry-manifest.json" | sha256s
 docker exec "$node" sh -c 'printf "[host.\"http://127.0.0.1:5000\"]\n" > /etc/containerd/certs.d/registry.localhost:5000/hosts.toml'
 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/boundary-proxy" ./proof-source/scripts/readonly_boundary/fake_proxy.go
 docker run -d --name boundary-proxy --network "container:$node" -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e LISTEN_ADDRESS=:5556 --entrypoint /fixture "$image" >/dev/null
+# An independent fake endpoint on the Kind bridge exercises forwarded traffic
+# to a non-node destination. It has no Cloud upstream and only fake keys.
+docker run -d --name boundary-external --network kind -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e LISTEN_ADDRESS=:5556 --entrypoint /fixture "$image" >/dev/null
+docker inspect boundary-external > "$RUNNER_TEMP/boundary-external.json"
+python3 - "$RUNNER_TEMP/boundary-external.json" "$RUNNER_TEMP/boundary-external.env" "$ip4" "$ip6" <<'PY'
+import ipaddress, json, pathlib, sys
+items = json.loads(pathlib.Path(sys.argv[1]).read_text())
+if len(items) != 1:
+    raise SystemExit('expected one fake external endpoint')
+network = items[0]['NetworkSettings']['Networks']['kind']
+v4 = ipaddress.IPv4Address(network['IPAddress'])
+v6 = ipaddress.IPv6Address(network['GlobalIPv6Address'])
+if v4 == ipaddress.ip_address(sys.argv[3]) or v6 == ipaddress.ip_address(sys.argv[4]):
+    raise SystemExit('fake external endpoint must not be the node')
+pathlib.Path(sys.argv[2]).write_text(f'external4={v4}\nexternal6={v6}\n')
+PY
+source "$RUNNER_TEMP/boundary-external.env"
 for family in 4 6; do
   if [ "$family" = 4 ]; then denied_addr=0.0.0.0:5555; else denied_addr='[::]:5555'; fi
   docker run -d --rm --name "boundary-denied$family" --network "container:$node" -e "REGISTRY_HTTP_ADDR=$denied_addr" "$image" >/dev/null
+done
+# Both the node network and actual provider pod must reach the non-node fake
+# endpoint before default denial. An unavailable fixture cannot prove denial.
+for family in 4 6; do
+  if [ "$family" = 4 ]; then external_host=$external4; else external_host="[$external6]"; fi
+  for attempt in $(seq 1 10); do
+    if docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"; then break; fi
+    sleep 1
+  done
+  docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
+  "$kubectl" -n upbound-system exec "$pod" -c node-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
 done
 # Confirm all positive and negative targets are independently reachable first.
 for family in 4 6; do
@@ -140,6 +168,7 @@ probe() {
   "$kubectl" -n upbound-system get pod "$candidate" -o json > "$RUNNER_TEMP/current-boundary-pod.json"
   for family in 4 6; do
     if [ "$family" = 4 ]; then host=$ip4; target=$ip4; cidr=$cidr4; tool=iptables; else host="[$ip6]"; target=$ip6; cidr=$cidr6; tool=ip6tables; fi
+    if [ "$family" = 4 ]; then external_host=$external4; external_target=$external4; else external_host="[$external6]"; external_target=$external6; fi
     source_ip=$(python3 - "$RUNNER_TEMP/current-boundary-pod.json" "$family" "$cidr" <<'PYTHON'
 import ipaddress, json, pathlib, sys
 pod = json.loads(pathlib.Path(sys.argv[1]).read_text())
@@ -215,6 +244,24 @@ PYTHON
     echo "$phase IPv$family denial removal control"
     docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5555/v2/"
+    docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
+    docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
+    docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    echo "$phase IPv$family non-node denial"
+    docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$external_target" -p tcp --dport 5556 -m comment --comment "codex-external-$family-$expected_uid"
+    mapfile -t ext_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-external-$family-$expected_uid" 'index($0, marker) {print $1}')
+    mapfile -t ext_deny_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+    test "${#ext_before[@]}" -eq 1 && [[ "${ext_before[0]}" =~ ^[0-9]+$ ]]
+    test "${#ext_deny_before[@]}" -eq 1 && [[ "${ext_deny_before[0]}" =~ ^[0-9]+$ ]]
+    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions"; then exit 42; else exit 0; fi' -- "$external_host"
+    mapfile -t ext_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-external-$family-$expected_uid" 'index($0, marker) {print $1}')
+    mapfile -t ext_deny_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+    test "${#ext_after[@]}" -eq 1 && [[ "${ext_after[0]}" =~ ^[0-9]+$ ]] && (( ext_after[0] > ext_before[0] ))
+    test "${#ext_deny_after[@]}" -eq 1 && [[ "${ext_deny_after[0]}" =~ ^[0-9]+$ ]] && (( ext_deny_after[0] > ext_deny_before[0] ))
+    docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
+    docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
     docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
     docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN

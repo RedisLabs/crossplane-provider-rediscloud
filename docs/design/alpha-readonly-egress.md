@@ -44,6 +44,8 @@ An initial guarded replacement reached ImagePullBackOff. A proposed mitigation m
 
 The fake-only IPv6 experiment attempts a narrow Neighbor Solicitation exception: source pod CIDR, type 135, hop limit 255, and the solicited-node multicast address derived from the observed gateway. It must show the replacement uses that rule and that independently reachable non-NS echo and other node endpoints remain denied. The multicast address is derived from only 24 target bits; this rule does not inspect the ICMP payload or prove a unique gateway target, and it is not a production isolation boundary. Live credentials remain prohibited.
 
+A follow-on fake-only probe places an independently reachable endpoint on the Kind bridge outside the node's network namespace. It attempts both address families from the actual original and replacement provider pods, requiring the CIDR deny and per-source accounting counters, plus a remove/reconnect/reinstate control. The bridge endpoint has no Cloud upstream. Results require hosted verification and do not cover every network destination, proxy bypass through the Kubernetes API, actual controller reconciliation, or original startup protection.
+
 ## Operations and rollback
 
 The fake-only guard cannot reach QA and has no credential path. Rollback removes the draft workflow and fixture. Production deployment and publication are out of scope. No shared-account lock is claimed; GET-only QA requires no Cloud writer, but any future mutation is blocked by the existing serialization and recovery requirements. Open questions: approved hosted CNI and image pins; enforced policy for this environment; verified QA origin; safe read-only selector and retention/redaction of status.
