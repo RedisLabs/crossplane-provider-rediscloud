@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 6be53081e30f51e8d2d5fbbe8e80916a86c77a43; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = e8ed94c75e0dfa0e6e965df46c6899bd6c04bb6c; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
@@ -32,6 +32,9 @@ jobs:
           set -euo pipefail
           make vendor vendor.check
           make build
+          make "$GITHUB_WORKSPACE/.cache/tools/linux_x86_64/kind-v0.33.0"
+          printf 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnetworking:\n  ipFamily: dual\n' > "$RUNNER_TEMP/dual-kind.yaml"
+          .cache/tools/linux_x86_64/kind-v0.33.0 create cluster --name local-dev --config "$RUNNER_TEMP/dual-kind.yaml"
           make controlplane.up
       - name: Pull immutable package digest from ephemeral registry
         shell: bash
@@ -187,6 +190,22 @@ jobs:
           "$kubectl" -n upbound-system cp -c package-runtime "$runtime_pod:/usr/local/bin/provider" "$RUNNER_TEMP/running-provider"
           cmp _output/bin/linux_amd64/provider "$RUNNER_TEMP/running-provider"
           echo "Provider binary in running pod matches the binary built from the pinned source."
+      - name: Verify actual provider has dual-stack addresses
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl=.cache/tools/linux_x86_64/kubectl-v1.33.5
+          runtime_pod=$(cat "$RUNNER_TEMP/provider-pod.txt")
+          "$kubectl" -n upbound-system get pod "$runtime_pod" -o json | python3 -c '
+          import ipaddress, json, sys
+          pod = json.load(sys.stdin)
+          addresses = [ipaddress.ip_address(item["ip"]) for item in pod.get("status", {}).get("podIPs", [])]
+          if {address.version for address in addresses} != {4, 6}:
+              raise SystemExit("installed provider pod does not have IPv4 and IPv6 addresses")
+          if pod["spec"].get("hostNetwork", False):
+              raise SystemExit("provider pod unexpectedly uses host networking")
+          print("Installed provider pod has IPv4 and IPv6 addresses; no egress containment claim.")
+          '
       - name: Probe installed-provider node relay and API permissions (partial proof)
         shell: bash
         run: |
@@ -201,30 +220,42 @@ jobs:
           if spec.get("hostNetwork", False) or status.get("phase") != "Running":
               raise SystemExit("provider must be a running non-host-network pod")
           ip = str(ipaddress.IPv4Address(status["podIP"]))
-          fields = {"POD_UID": metadata["uid"], "POD_IP": ip, "NODE": spec["nodeName"], "SA": spec["serviceAccountName"]}
+          v6 = [str(ipaddress.IPv6Address(item["ip"])) for item in status.get("podIPs", []) if ipaddress.ip_address(item["ip"]).version == 6]
+          if len(v6) != 1:
+              raise SystemExit("expected exactly one provider IPv6 address")
+          fields = {"POD_UID": metadata["uid"], "POD_IP": ip, "POD_IP6": v6[0], "NODE": spec["nodeName"], "SA": spec["serviceAccountName"]}
           if any(not re.fullmatch(r"[a-zA-Z0-9.:-]+", value) for value in fields.values()):
               raise SystemExit("invalid provider identity")
           pathlib.Path(sys.argv[2]).write_text("".join(f"{key}={value}\n" for key, value in fields.items()))
           PYTHON
           source "$RUNNER_TEMP/provider-identity.env"
           test "$NODE" = local-dev-control-plane
-          node_ip=$("$kubectl" get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-          python3 - "$node_ip" <<'PYTHON'
-          import ipaddress, sys
-          ipaddress.IPv4Address(sys.argv[1])
+          "$kubectl" get node "$NODE" -o json > "$RUNNER_TEMP/node-identity.json"
+          python3 - "$RUNNER_TEMP/node-identity.json" "$RUNNER_TEMP/node-identity.env" <<'PYTHON'
+          import ipaddress, json, pathlib, sys
+          node = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          addresses = [ipaddress.ip_address(item["address"]) for item in node["status"]["addresses"] if item["type"] == "InternalIP"]
+          v4 = [str(address) for address in addresses if address.version == 4]
+          v6 = [str(address) for address in addresses if address.version == 6]
+          if len(v4) != 1 or len(v6) != 1:
+              raise SystemExit("expected one node internal address in each family")
+          pathlib.Path(sys.argv[2]).write_text(f"node_ip={v4[0]}\nnode_ip6={v6[0]}\n")
           PYTHON
+          source "$RUNNER_TEMP/node-identity.env"
           image='registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373'
-          docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e REGISTRY_HTTP_ADDR=0.0.0.0:5555 "$image" >/dev/null
           cleanup() {
             docker exec "$NODE" iptables -D INPUT -s "$POD_IP/32" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe -j REJECT 2>/dev/null || true
-            docker stop node-relay-fixture >/dev/null 2>&1 || true
+            docker exec "$NODE" ip6tables -D INPUT -s "$POD_IP6/128" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe-v6 -j REJECT 2>/dev/null || true
+            docker stop node-relay-fixture node-relay-fixture-v6 >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+          docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e REGISTRY_HTTP_ADDR=0.0.0.0:5555 "$image" >/dev/null
+          docker run -d --rm --name node-relay-fixture-v6 --network "container:$NODE" -e 'REGISTRY_HTTP_ADDR=[::]:5555' "$image" >/dev/null
           for attempt in $(seq 1 60); do
             if docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/; then break; fi
             sleep 1
           done
-          docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
+          if ! docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/; then docker logs node-relay-fixture; exit 1; fi
           "$kubectl" -n upbound-system debug "pod/$runtime_pod" --container=node-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
           for attempt in $(seq 1 60); do
             if "$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="node-probe")].state.running.startedAt}' | grep -q .; then break; fi
@@ -242,6 +273,21 @@ jobs:
           docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
           test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
           echo "One IPv4 node-listener port was blocked; this is not a full egress boundary."
+          for attempt in $(seq 1 60); do
+            if docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null 'http://[::1]:5555/v2/'; then break; fi
+            sleep 1
+          done
+          if ! docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null 'http://[::1]:5555/v2/'; then docker logs node-relay-fixture-v6; exit 1; fi
+          "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- wget -q -T 3 -O /dev/null "http://[$node_ip6]:5555/v2/"
+          docker exec "$NODE" ip6tables -I INPUT 1 -s "$POD_IP6/128" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe-v6 -j REJECT
+          mapfile -t before6 < <(docker exec "$NODE" ip6tables -nvx -L INPUT | awk '/codex-provider-node-probe-v6/ {print $1}')
+          test "${#before6[@]}" -eq 1 && [[ "${before6[0]}" =~ ^[0-9]+$ ]]
+          "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://[$1]:5555/v2/"; then exit 42; else exit 0; fi' -- "$node_ip6"
+          mapfile -t after6 < <(docker exec "$NODE" ip6tables -nvx -L INPUT | awk '/codex-provider-node-probe-v6/ {print $1}')
+          test "${#after6[@]}" -eq 1 && [[ "${after6[0]}" =~ ^[0-9]+$ ]] && (( after6[0] > before6[0] ))
+          docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null 'http://[::1]:5555/v2/'
+          test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
+          echo "One IPv6 node-listener port was blocked; this is not a full egress boundary."
           for rule in 'create pods' 'create pods/exec' 'create pods/portforward' 'get pods/proxy' 'get services/proxy' 'create networkpolicies.networking.k8s.io'; do
             read -r verb resource <<< "$rule"
             set +e
