@@ -40,9 +40,43 @@ cleanup() {
       docker exec "$node" "$tool" -X CODEX-EGRESS 2>/dev/null || true
     done
   done
-  docker stop boundary-proxy4 boundary-proxy6 boundary-denied4 boundary-denied6 >/dev/null 2>&1 || true
+  docker stop boundary-proxy4 boundary-proxy6 boundary-denied4 boundary-denied6 boundary-registry >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+# Mirror the already-built package onto the node. The existing registry is a
+# pod in the guarded CIDR, so kubelet may be unable to pull from it after the
+# guard is installed. The mirror is reachable by kubelet but is not allowed
+# to the provider pod by the firewall below.
+"$kubectl" -n upbound-system get pods -l app=crossplane -o json > "$RUNNER_TEMP/crossplane-pods.json"
+python3 - "$RUNNER_TEMP/crossplane-pods.json" "$RUNNER_TEMP/registry-pod" <<'PY'
+import json, pathlib, sys
+pods = json.loads(pathlib.Path(sys.argv[1]).read_text())['items']
+ready = [p['metadata']['name'] for p in pods if not p['metadata'].get('deletionTimestamp') and any(c['name'] == 'ephemeral-registry' and c.get('ready') for c in p.get('status', {}).get('containerStatuses', []))]
+if len(ready) != 1:
+    raise SystemExit('expected one ready ephemeral registry')
+pathlib.Path(sys.argv[2]).write_text(ready[0])
+PY
+registry_pod=$(cat "$RUNNER_TEMP/registry-pod")
+mkdir -p "$RUNNER_TEMP/boundary-registry-data"
+"$kubectl" -n upbound-system cp -c ephemeral-registry "$registry_pod:/tmp/registry/." "$RUNNER_TEMP/boundary-registry-data"
+docker run -d --rm --name boundary-registry --network "container:$node" -v "$RUNNER_TEMP/boundary-registry-data:/var/lib/registry" -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 "$image" >/dev/null
+for attempt in $(seq 1 60); do
+  if docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/; then break; fi
+  sleep 1
+done
+docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
+digest=$(python3 - "$RUNNER_TEMP/boundary-pod.json" <<'PY'
+import json, pathlib, re, sys
+pod = json.loads(pathlib.Path(sys.argv[1]).read_text())
+ids = [c['imageID'].rsplit('@', 1)[-1] for c in pod['status']['containerStatuses'] if c['name'] == 'package-runtime' and c.get('ready')]
+if len(ids) != 1 or not re.fullmatch(r'sha256:[0-9a-f]{64}', ids[0]):
+    raise SystemExit('missing immutable runtime digest')
+print(ids[0])
+PY
+)
+curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' "http://$ip4:5000/v2/provider-rediscloud/manifests/$digest" -o "$RUNNER_TEMP/boundary-registry-manifest.json"
+echo "${digest#sha256:}  $RUNNER_TEMP/boundary-registry-manifest.json" | sha256sum -c -
+docker exec "$node" sh -c 'printf "[host.\"http://127.0.0.1:5000\"]\n" > /etc/containerd/certs.d/registry.localhost:5000/hosts.toml'
 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/boundary-proxy" ./proof-source/scripts/readonly_boundary/fake_proxy.go
 for family in 4 6; do
   if [ "$family" = 4 ]; then proxy_addr=0.0.0.0:5556; denied_addr=0.0.0.0:5555; else proxy_addr='[::]:5556'; denied_addr='[::]:5555'; fi
@@ -68,6 +102,7 @@ for family in 4 6; do
   docker exec "$node" "$tool" -C INPUT -j CODEX-EGRESS
   docker exec "$node" "$tool" -C FORWARD -j CODEX-EGRESS
 done
+docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
 probe() {
   local candidate=$1 expected_uid=$2
   "$kubectl" -n upbound-system debug "pod/$candidate" --container=boundary-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
@@ -109,6 +144,26 @@ PYTHON
     docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
     docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    if [ "$family" = 4 ]; then
+      # Kubelet's node-local package mirror must not become an egress relay.
+      docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5000 -m comment --comment "codex-registry-$expected_uid"
+      mapfile -t registry_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-registry-$expected_uid" 'index($0, marker) {print $1}')
+      mapfile -t deny_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+      test "${#registry_before[@]}" -eq 1 && [[ "${registry_before[0]}" =~ ^[0-9]+$ ]]
+      test "${#deny_before[@]}" -eq 1 && [[ "${deny_before[0]}" =~ ^[0-9]+$ ]]
+      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5000/v2/"; then exit 42; else exit 0; fi' -- "$host"
+      mapfile -t registry_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-registry-$expected_uid" 'index($0, marker) {print $1}')
+      mapfile -t deny_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
+      test "${#registry_after[@]}" -eq 1 && [[ "${registry_after[0]}" =~ ^[0-9]+$ ]] && (( registry_after[0] > registry_before[0] ))
+      test "${#deny_after[@]}" -eq 1 && [[ "${deny_after[0]}" =~ ^[0-9]+$ ]] && (( deny_after[0] > deny_before[0] ))
+      docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
+      docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5000/v2/"
+      docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
+      docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+      docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
+      docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    fi
   done
   test "$("$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.metadata.uid}')" = "$expected_uid"
 }
