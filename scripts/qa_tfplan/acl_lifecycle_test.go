@@ -33,6 +33,9 @@ import (
 
 // TestACLRuleManagedLifecycleLoopback runs actual managed reconciliation and
 // Terraform against a closed, credential-free loopback fixture, never Cloud.
+const fixtureACLRulePath = "/v1/acl/redisRules/42"
+const fixtureACLRulesPath = "/v1/acl/redisRules"
+
 func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
@@ -52,7 +55,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		w.Header().Set("Content-Type", "application/json")
 		var response any
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/acl/redisRules" && !exists:
+		case r.Method == http.MethodPost && r.URL.Path == fixtureACLRulesPath && !exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["name"] != "fixture-acl" || body["redisRule"] != rule {
 				unexpected = true
@@ -63,9 +66,9 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 			response = map[string]any{"taskId": "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
 			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 42}}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/acl/redisRules/42" && exists:
+		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulePath && exists:
 			response = map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, fixtureStatusKey: "active"}
-		case r.Method == http.MethodPut && r.URL.Path == "/v1/acl/redisRules/42" && exists:
+		case r.Method == http.MethodPut && r.URL.Path == fixtureACLRulePath && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["redisRule"] != "+@all ~*" {
 				unexpected = true
@@ -76,15 +79,15 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 			response = map[string]any{"taskId": "update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
 			response = map[string]any{fixtureStatusKey: "processing-completed"}
-		case r.Method == http.MethodDelete && r.URL.Path == "/v1/acl/redisRules/42" && exists:
+		case r.Method == http.MethodDelete && r.URL.Path == fixtureACLRulePath && exists:
 			exists = false
 			response = map[string]any{"taskId": "delete"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
 			response = map[string]any{fixtureStatusKey: "processing-completed"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/acl/redisRules/42" && !exists:
+		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulePath && !exists:
 			http.NotFound(w, r)
 			return
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/acl/redisRules":
+		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulesPath:
 			rows := []any{}
 			if exists {
 				rows = append(rows, map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, fixtureStatusKey: "active"})
@@ -225,9 +228,37 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	defer mu.Unlock()
 	if exists || unexpected {
+		mu.Unlock()
 		t.Fatal("fake ACL residue or unexpected request")
+	}
+	mu.Unlock()
+	for path, status := range map[string]int{fixtureACLRulePath: http.StatusNotFound, fixtureACLRulesPath: http.StatusOK} {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Api-Key", dummyCredential)
+		req.Header.Set("X-Api-Secret-Key", dummyCredential)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != status {
+			_ = res.Body.Close()
+			t.Fatalf("fake read %s: %d", path, res.StatusCode)
+		}
+		if status == http.StatusOK {
+			var list struct {
+				Rules []any `json:"redisRules"`
+			}
+			err = json.NewDecoder(res.Body).Decode(&list)
+			if err != nil || list.Rules == nil || len(list.Rules) != 0 {
+				_ = res.Body.Close()
+				t.Fatal("fake ACL inventory incomplete or nonempty")
+			}
+		}
+		_ = res.Body.Close()
 	}
 	if _, err := os.Stat(filepath.Join(dir, "fixture-acl-uid")); !os.IsNotExist(err) {
 		t.Fatal("workspace remains")
