@@ -25,7 +25,7 @@ class CrossplanePlanAdapter:
             return self._result(scenario, "blocked")
         try:
             run = subprocess.run(
-                ["go", "test", "./scripts/qa_tfplan", "-run", "^TestEssentials(RefreshAndPlan|ManagedCreateLoopback)$", "-count=1", "-v"],
+                ["go", "test", "./scripts/qa_tfplan", "-run", "^(TestEssentials(RefreshAndPlan|ManagedCreateLoopback)|TestNativeWorkspaceStoreRegenerates)$", "-count=1", "-v"],
                 cwd=ROOT, text=True, capture_output=True, timeout=600, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
@@ -45,7 +45,7 @@ class CrossplanePlanAdapter:
             if position < 0:
                 return self._result(scenario, "fail")
             position += len(marker)
-        if run.returncode != 0 or "--- PASS: TestEssentialsRefreshAndPlan " not in run.stdout:
+        if run.returncode != 0 or "--- PASS: TestEssentialsRefreshAndPlan " not in run.stdout or "--- PASS: TestNativeWorkspaceStoreRegenerates " not in run.stdout:
             return self._result(scenario, "fail")
         # The first receipt remains blocked: a fake empty baseline is not
         # account-wide admission. All other evidence is explicitly simulated.

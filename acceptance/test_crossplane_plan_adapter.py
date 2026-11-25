@@ -25,6 +25,7 @@ class CrossplanePlanAdapterTests(unittest.TestCase):
             "SIMULATED: managed fake parent 404 and fake inventory empty",
             "--- PASS: TestEssentialsManagedCreateLoopback (1.00s)",
             "--- PASS: TestEssentialsRefreshAndPlan (1.00s)",
+            "--- PASS: TestNativeWorkspaceStoreRegenerates (1.00s)",
         )))
         with patch.dict(os.environ, {"QA_TEST_TERRAFORM": "fixture", "QA_TEST_PROVIDER_DIR": "fixture"}):
             result = CrossplanePlanAdapter().execute(self.case)
