@@ -45,3 +45,8 @@ Separately, `TestNativeWorkspaceStoreRegenerates` exercises the production Upjet
 
 
 A work-in-progress ACL rule lifecycle fixture exercises actual Crossplane managed reconciliation and the Terraform provider with loopback fake Cloud. This fixture must pass hosted CI before it can be reported as simulated coverage. It is not live qualification and supplies no real account admission.
+
+
+ACL role and user test prototypes use real managed reconcilers and the pinned Terraform provider with loopback fake Cloud. They inject pre-mutation 403 responses for create, update and delete, check owned state after each rejection, and retain unrelated fake inventory. A separate fixture commits a fake create then returns 503, checking that the controller does not replay it during three reconciles and leaves the fake owned row and unrelated row present. This is simulated uncertainty, not a dropped transport response or proof of durable recovery, safe automatic cleanup, or live Cloud behavior. Hosted CI is the only integration execution.
+
+ACL rule, role and user fixtures also create separate observe-only managed objects with the existing fake external ID and fresh native workspace. Upjet uses Terraform import for observe-only resources; the tests require the imported observation to retain the exact fake ID, count fake GETs, and reject any fake write both during import and repeated unchanged reconciliation of the original object. These are simulated observations and no-op checks, not live import qualification or proof of dropped-response recovery.

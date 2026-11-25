@@ -32,22 +32,33 @@ import (
 )
 
 const (
-	fixtureAPIKey          = "api_key"
-	fixtureSecretKey       = "secret_key"
-	fixtureURLKey          = "url"
-	fixtureProviderSource  = "RedisLabs/rediscloud"
-	fixtureProviderVersion = "2.20.0"
-	fixtureTaskKey         = "taskId"
-	fixtureTaskComplete    = "processing-completed"
-	fixtureParentPath      = "/v1/fixed/subscriptions/1"
-	fixtureProviderKey     = "provider"
-	fixtureProviderName    = "rediscloud"
-	fixtureExternalID      = "1/2"
-	fixtureNameKey         = "name"
-	fixtureStatusKey       = "status"
-	fixtureDatabasePath    = "/v1/fixed/subscriptions/1/databases/2"
-	fixtureActive          = "active"
-	fixtureNoPersistence   = "none"
+	fixtureResponseKey      = "response"
+	fixtureHTTPSProxy       = "HTTPS_PROXY"
+	fixtureHTTPProxy        = "HTTP_PROXY"
+	fixtureHTTPProxyLower   = "http_proxy"
+	fixtureHTTPSProxyLower  = "https_proxy"
+	fixtureAllProxyLower    = "all_proxy"
+	fixtureAllProxy         = "ALL_PROXY"
+	fixtureTerraformVersion = "1.5.7"
+	fixtureNextRole         = "fixture-rule-b"
+	fixtureTaskResourceKey  = "resourceId"
+	fixtureDatabaseIDKey    = "databaseId"
+	fixtureAPIKey           = "api_key"
+	fixtureSecretKey        = "secret_key"
+	fixtureURLKey           = "url"
+	fixtureProviderSource   = "RedisLabs/rediscloud"
+	fixtureProviderVersion  = "2.20.0"
+	fixtureTaskKey          = "taskId"
+	fixtureTaskComplete     = "processing-completed"
+	fixtureParentPath       = "/v1/fixed/subscriptions/1"
+	fixtureProviderKey      = "provider"
+	fixtureProviderName     = "rediscloud"
+	fixtureExternalID       = "1/2"
+	fixtureNameKey          = "name"
+	fixtureStatusKey        = "status"
+	fixtureDatabasePath     = "/v1/fixed/subscriptions/1/databases/2"
+	fixtureActive           = "active"
+	fixtureNoPersistence    = "none"
 )
 
 // The parent is pre-existing in this incremental fake: only managed DB create
@@ -87,7 +98,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			parentCreated = true
 			response = map[string]any{fixtureTaskKey: "parent-create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-create":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 1}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 1}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureParentPath && parentCreated:
 			response = map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive, "planId": 1, "paymentMethodType": "credit-card", "creationDate": "2025-01-01T00:00:00Z"}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureParentPath && parentCreated && !created:
@@ -108,7 +119,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			created = true
 			response = map[string]any{fixtureTaskKey: "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 2}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 2}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && created:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || (body["dataEvictionPolicy"] != desiredEviction && body["dataEvictionPolicy"] != "volatile-lru") {
@@ -129,7 +140,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && created:
-			response = map[string]any{"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath+"/tags" && created:
 			response = map[string]any{"tags": []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && created:
@@ -149,7 +160,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
-	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(key, "http://127.0.0.1:1")
 	}
 	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -184,7 +195,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_database"], ujcontroller.WithCallbackProvider(callback))
@@ -307,7 +318,7 @@ func assertManagedFakeCreate(t *testing.T, base string, mu *sync.Mutex, created,
 		id  float64
 	}{
 		fixtureParentPath:   {"id", 1},
-		fixtureDatabasePath: {"databaseId", 2},
+		fixtureDatabasePath: {fixtureDatabaseIDKey, 2},
 	} {
 		req, err := http.NewRequest(http.MethodGet, base+path, nil)
 		if err != nil {
@@ -349,7 +360,7 @@ func assertManagedFakeUpdate(t *testing.T, base, eviction string) {
 	var body map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	_ = res.Body.Close()
-	if err != nil || res.StatusCode != http.StatusOK || body["databaseId"] != float64(2) || body["dataEvictionPolicy"] != eviction {
+	if err != nil || res.StatusCode != http.StatusOK || body[fixtureDatabaseIDKey] != float64(2) || body["dataEvictionPolicy"] != eviction {
 		t.Fatal("fake update readback or identity mismatch")
 	}
 }
@@ -432,7 +443,7 @@ func createManagedParent(t *testing.T, url string, scheme *runtime.Scheme) *mana
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_essentials_subscription"], ujcontroller.WithCallbackProvider(callback))

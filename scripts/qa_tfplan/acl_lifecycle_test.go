@@ -42,11 +42,17 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
+	reads, writes := 0, 0
 	exists, unexpected := false, false
 	rule := "+@read ~*"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
+		if r.Method == http.MethodGet {
+			reads++
+		} else {
+			writes++
+		}
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
 			unexpected = true
 			http.Error(w, "fixture credentials required", http.StatusForbidden)
@@ -57,17 +63,17 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == fixtureACLRulesPath && !exists:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["name"] != "fixture-acl" || body["redisRule"] != rule {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != "fixture-acl" || body["redisRule"] != rule {
 				unexpected = true
 				http.Error(w, "bad create", http.StatusBadRequest)
 				return
 			}
 			exists = true
-			response = map[string]any{"taskId": "create"}
+			response = map[string]any{fixtureTaskKey: "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 42}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulePath && exists:
-			response = map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, fixtureStatusKey: "active"}
+			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl", "acl": rule, fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureACLRulePath && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["redisRule"] != "+@all ~*" {
@@ -76,21 +82,21 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 				return
 			}
 			rule = "+@all ~*"
-			response = map[string]any{"taskId": "update"}
+			response = map[string]any{fixtureTaskKey: "update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureACLRulePath && exists:
 			exists = false
-			response = map[string]any{"taskId": "delete"}
+			response = map[string]any{fixtureTaskKey: "delete"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulePath && !exists:
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRulesPath:
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{"id": 42, "name": "fixture-acl", "redisRule": rule, fixtureStatusKey: "active"})
+				rows = append(rows, map[string]any{"id": 42, fixtureNameKey: "fixture-acl", "acl": rule, fixtureStatusKey: fixtureActive})
 			}
 			response = map[string]any{"redisRules": rows}
 		default:
@@ -108,7 +114,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
-	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(key, "http://127.0.0.1:1")
 	}
 	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -135,7 +141,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 	store := newTrackingNativeStore()
 	spy := &spyExecutor{Interface: kexec.New(), tracked: store}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_acl_rule"], ujcontroller.WithCallbackProvider(callback))
@@ -205,6 +211,34 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 	}
 	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != "42" {
 		t.Fatal("ACL ID changed")
+	}
+	mu.Lock()
+	readsBefore, writesBefore := reads, writes
+	mu.Unlock()
+	observed := &acl.Rule{ObjectMeta: metav1.ObjectMeta{Name: "observe-rule", UID: types.UID("observe-rule-uid")}, Spec: current.Spec}
+	verifyACLObserveOnly(t, observed, scheme, "rediscloud_acl_rule", server.URL)
+	mu.Lock()
+	if reads <= readsBefore || writes != writesBefore {
+		mu.Unlock()
+		t.Fatal("observe-only import was not GET-only")
+	}
+	readsBefore = reads
+	mu.Unlock()
+	for i := 0; i < 3; i++ {
+		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second)
+	}
+	mu.Lock()
+	if reads <= readsBefore || writes != writesBefore {
+		afterReads, afterWrites := reads, writes
+		mu.Unlock()
+		t.Fatalf("unchanged reconcile: GETs %d->%d, non-GET requests %d->%d", readsBefore, afterReads, writesBefore, afterWrites)
+	}
+	mu.Unlock()
+	if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
+		t.Fatal(err)
 	}
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)

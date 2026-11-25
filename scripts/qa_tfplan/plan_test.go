@@ -88,7 +88,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			_ = json.NewEncoder(w).Encode(map[string]any{"tags": []any{}})
 		case fixtureDatabasePath:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
 			})
 		default:
 			http.NotFound(w, r)
