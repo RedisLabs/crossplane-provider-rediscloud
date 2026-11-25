@@ -61,7 +61,7 @@ for family in 4 6; do
   docker exec "$node" "$tool" -N CODEX-EGRESS
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -d "$node_ip" -p tcp --dport 5556 -j ACCEPT
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -d "$node_ip" -p tcp --dport 6443 -j ACCEPT
-  docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -j REJECT
+  docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
   docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
   docker exec "$node" "$tool" -I INPUT 1 -j CODEX-EGRESS
   docker exec "$node" "$tool" -I FORWARD 1 -j CODEX-EGRESS
@@ -87,14 +87,19 @@ if len(values) != 1 or values[0] not in ipaddress.ip_network(sys.argv[3]):
 print(values[0])
 PYTHON
     )
-    docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5555 -m comment --comment "codex-probe-$family-$expected_uid" -j REJECT
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"
-    mapfile -t before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-probe-$family-$expected_uid" 'index($0, marker) {print $1}')
+    mapfile -t before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     test "${#before[@]}" -eq 1 && [[ "${before[0]}" =~ ^[0-9]+$ ]]
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5555/v2/"; then exit 42; else exit 0; fi' -- "$host"
-    mapfile -t after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-probe-$family-$expected_uid" 'index($0, marker) {print $1}')
+    mapfile -t after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     test "${#after[@]}" -eq 1 && [[ "${after[0]}" =~ ^[0-9]+$ ]] && (( after[0] > before[0] ))
+    # A negative control must fail the overall test if another rule, an
+    # unavailable listener, or a broken probe explains the observed denial.
+    docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5555/v2/"
+    docker exec "$node" "$tool" -I CODEX-EGRESS 3 -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
+    docker exec "$node" "$tool" -C CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
   done
   test "$("$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.metadata.uid}')" = "$expected_uid"
 }
