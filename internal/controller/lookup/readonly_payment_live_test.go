@@ -35,12 +35,12 @@ func TestReadonlyPaymentTransportRejectsUnsafeRequests(t *testing.T) { //nolint:
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
 	for _, raw := range []string{"https://qa.example.test/v1/regions", "https://qa.example.test/v1/subscriptions", "https://other.example.test/v1/payment-methods", "https://qa.example.test/v1/payment-methods?limit=1"} {
-		req, _ := http.NewRequest("GET", raw, nil)
+		req, _ := http.NewRequest(http.MethodGet, raw, nil)
 		if _, err := guard.RoundTrip(req); err == nil {
 			t.Fatal("unexpected route was accepted")
 		}
 	}
-	for _, method := range []string{"POST", "PUT", "PATCH", "DELETE"} {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		req, _ := http.NewRequest(method, paymentURL, nil)
 		if _, err := guard.RoundTrip(req); err == nil {
 			t.Fatal("mutation method was accepted")

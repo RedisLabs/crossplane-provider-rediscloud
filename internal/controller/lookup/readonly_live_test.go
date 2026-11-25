@@ -69,11 +69,11 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:g
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
 	for _, item := range []struct{ method, raw string }{
-		{"POST", fixtureURL}, {"DELETE", fixtureURL},
-		{"PUT", fixtureURL}, {"PATCH", fixtureURL},
-		{"GET", "https://elsewhere.example.test/v1/regions"}, {"GET", "http://qa.example.test/v1/regions"},
-		{"GET", "https://qa.example.test/v1/subscriptions"}, {"GET", "https://qa.example.test/v1/regions?x=1"},
-		{"GET", "https://qa.example.test/v1/payment-methods"},
+		{http.MethodPost, fixtureURL}, {http.MethodDelete, fixtureURL},
+		{http.MethodPut, fixtureURL}, {http.MethodPatch, fixtureURL},
+		{http.MethodGet, "https://elsewhere.example.test/v1/regions"}, {http.MethodGet, "http://qa.example.test/v1/regions"},
+		{http.MethodGet, "https://qa.example.test/v1/subscriptions"}, {http.MethodGet, "https://qa.example.test/v1/regions?x=1"},
+		{http.MethodGet, "https://qa.example.test/v1/payment-methods"},
 	} {
 		req, err := http.NewRequest(item.method, item.raw, nil)
 		if err != nil {
@@ -86,11 +86,11 @@ func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:g
 	if forwarded.Load() != 0 || guard.denied.Load() != 9 {
 		t.Fatal("unsafe fixture request reached transport")
 	}
-	withBody, _ := http.NewRequest("GET", fixtureURL, strings.NewReader("data"))
+	withBody, _ := http.NewRequest(http.MethodGet, fixtureURL, strings.NewReader("data"))
 	if _, err := guard.RoundTrip(withBody); err == nil || forwarded.Load() != 0 {
 		t.Fatal("GET request with body reached transport")
 	}
-	req, _ := http.NewRequest("GET", fixtureURL, nil)
+	req, _ := http.NewRequest(http.MethodGet, fixtureURL, nil)
 	response, err := guard.RoundTrip(req)
 	if err != nil || response.StatusCode != http.StatusOK || forwarded.Load() != 1 {
 		t.Fatal("allowed fixture request failed")
@@ -180,5 +180,5 @@ func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at 
 	if guard.allowed.Load() != 2 || guard.ok.Load() != 2 || guard.denied.Load() != 0 {
 		t.Fatal("unexpected request trace or Cloud response")
 	}
-	t.Log("Cloud request trace: 2 guarded GET /v1/regions; HTTP 200; no other HTTP requests")
+	t.Log("Cloud request trace: 2 guarded GET /v1/regions; HTTP 200; no denied requests")
 }
