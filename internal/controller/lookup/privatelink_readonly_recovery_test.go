@@ -24,7 +24,7 @@ import (
 // Exercise the actual lookup reconciler and SDK against an authenticated
 // loopback API. Failed refresh must clear stale observation, recover on the
 // next read, and never issue a Cloud mutation.
-func TestPrivateLinkReadOnlyFailureAndRecovery(t *testing.T) {
+func TestPrivateLinkReadOnlyFailureAndRecovery(t *testing.T) { //nolint:gocyclo // Keep the full failure-and-recovery sequence together.
 	for _, failure := range []string{"forbidden", "unavailable", "task-error"} {
 		t.Run(failure, func(t *testing.T) {
 			var mu sync.Mutex
