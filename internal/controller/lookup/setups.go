@@ -27,6 +27,7 @@ func Setups() []SetupFunc {
 		{Kind: "DataPersistence", Fn: SetupDataPersistence},
 		{Kind: "DatabaseModules", Fn: SetupDatabaseModules},
 		{Kind: "EssentialsSubscription", Fn: SetupEssentialsSubscription},
+		{Kind: "ProSubscription", Fn: SetupProSubscription},
 		{Kind: "PrivateLink", Fn: SetupPrivateLink},
 		{Kind: "ActiveActivePrivateLink", Fn: SetupActiveActivePrivateLink},
 		{Kind: "PrivateLinkEndpointScript", Fn: SetupPrivateLinkEndpointScript},
