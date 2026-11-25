@@ -31,7 +31,15 @@ import (
 
 // This fixture starts with an existing fake Pro parent. All writes target the
 // local fake PrivateLink; no AWS, Cloud account or live lock is exercised.
-func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
+func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) {
+	runPrivateLinkManaged(t, false)
+}
+
+func TestPrivateLinkManagedAcceptedThen503Loopback(t *testing.T) {
+	runPrivateLinkManaged(t, true)
+}
+
+func runPrivateLinkManaged(t *testing.T, acceptedUnknown bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" && plugins == "" {
@@ -44,9 +52,16 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 	const principal = "arn:aws:iam::123456789012:root"
 	var mu sync.Mutex
 	exists, created, deleted, unexpected := false, false, false, false
+	createRequests, deleteRequests := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
+		if r.Method == http.MethodPost && r.URL.Path == path {
+			createRequests++
+		}
+		if r.Method == http.MethodDelete {
+			deleteRequests++
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
 			unexpected = true
@@ -72,6 +87,10 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 				return
 			}
 			exists, created = true, true
+			if acceptedUnknown {
+				http.Error(w, "accepted fixture response lost", http.StatusServiceUnavailable)
+				return
+			}
 			response = map[string]any{"taskId": "create-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-link" && created:
 			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 1}}
@@ -127,7 +146,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_private_link"], ujcontroller.WithCallbackProvider(callback))
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(api.Link_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: item.Name}}
-	await := func(label string) {
+	await := func(label string, wantError bool) {
 		t.Helper()
 		for i := 0; i < 8; i++ {
 			if _, err := rec.Reconcile(context.Background(), req); err != nil {
@@ -135,7 +154,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 			}
 			select {
 			case err := <-callback.done:
-				if err != nil {
+				if (err != nil) != wantError {
 					t.Fatalf("%s failed: %v", label, err)
 				}
 				return
@@ -144,7 +163,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 			if store.current != nil && store.current.LastOperation != nil && store.current.LastOperation.IsRunning() {
 				select {
 				case err := <-callback.done:
-					if err != nil {
+					if (err != nil) != wantError {
 						t.Fatalf("%s failed: %v", label, err)
 					}
 					return
@@ -155,7 +174,17 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		}
 		t.Fatalf("%s callback not observed", label)
 	}
-	await("create")
+	if acceptedUnknown {
+		await("accepted create with unknown response", true)
+		verifyNoACLCreateReplay(t, rec, store, callback, item.Name)
+		mu.Lock()
+		defer mu.Unlock()
+		if !exists || !created || deleted || unexpected || createRequests != 1 || deleteRequests != 0 {
+			t.Fatalf("accepted unknown create: exists=%v created=%v deleted=%v unexpected=%v creates=%d deletes=%d", exists, created, deleted, unexpected, createRequests, deleteRequests)
+		}
+		return
+	}
+	await("create", false)
 	for i := 0; i < 6; i++ {
 		if _, err := rec.Reconcile(context.Background(), req); err != nil {
 			t.Fatal(err)
@@ -180,7 +209,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 	if err := kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
-	await("delete")
+	await("delete", false)
 	mu.Lock()
 	if exists || !deleted || unexpected {
 		mu.Unlock()
