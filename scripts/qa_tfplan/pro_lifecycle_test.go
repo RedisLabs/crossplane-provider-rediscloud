@@ -36,6 +36,7 @@ import (
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")
@@ -64,12 +65,12 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				return
 			}
 			exists = true
-			response = map[string]any{fixtureTaskKey: "create"}
+			response = map[string]any{fixtureTaskKey: fixtureCreateTask}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 			response = map[string]any{fixtureTagsKey: []any{}}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
+		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && exists:
 			response = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
@@ -88,13 +89,13 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				}
 				rule = policy.(string)
 			}
-			response = map[string]any{fixtureTaskKey: "update"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
+			response = map[string]any{fixtureTaskKey: fixtureUpdateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath && exists:
 			exists = false
-			response = map[string]any{fixtureTaskKey: "delete"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
+			response = map[string]any{fixtureTaskKey: fixtureDeleteTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && !exists:
 			http.NotFound(w, r)
@@ -104,7 +105,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			if exists {
 				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}})
 			}
-			response = map[string]any{"databases": rows}
+			response = map[string]any{fixtureDatabasesKey: rows}
 		default:
 			unexpected = true
 			http.Error(w, "unexpected request", http.StatusForbidden)
@@ -117,7 +118,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, key := range []string{fixtureTFCLIArgs, fixtureTFCLIArgsInit, fixtureTFCLIArgsApply, fixtureTFCLIArgsPlan, fixtureTFCLIArgsDestroy} {
 		t.Setenv(key, "")
 	}
 	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
@@ -129,7 +130,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
 	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	scheme := runtime.NewScheme()

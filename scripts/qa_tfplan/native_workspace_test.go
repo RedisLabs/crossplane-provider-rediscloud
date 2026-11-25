@@ -28,7 +28,7 @@ func TestNativeWorkspaceStoreRegenerates(t *testing.T) {
 	t.Setenv("HOME", root)
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TF_CLI_ARGS", "")
-	t.Setenv("TF_CLI_ARGS_init", "")
+	t.Setenv(fixtureTFCLIArgsInit, "")
 	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(key, "http://127.0.0.1:1")
 	}
