@@ -33,9 +33,11 @@ import (
 
 // TestACLRoleManagedLifecycleLoopback runs actual managed reconciliation and
 // Terraform against a closed, credential-free loopback fixture, never Cloud.
-const fixtureUncertainMode = "uncertain"
-const fixtureACLRolePath = "/v1/acl/roles/42"
-const fixtureACLRolesPath = "/v1/acl/roles"
+const (
+	fixtureUncertainMode = "uncertain"
+	fixtureACLRolePath   = "/v1/acl/roles/42"
+	fixtureACLRolesPath  = "/v1/acl/roles"
+)
 
 func TestACLRoleManagedLifecycleLoopback(t *testing.T) {
 	t.Run("create_rejected", func(t *testing.T) { runACLRoleFixture(t, "rejected") })
@@ -89,11 +91,11 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 				return
 			}
 			exists = true
-			response = map[string]any{fixtureTaskKey: "create"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
+			response = map[string]any{fixtureTaskKey: fixtureCreateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRolePath && exists:
-			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl-role", "redisRules": []any{map[string]any{"ruleName": rule, "databases": []any{map[string]any{"subscriptionId": 1, fixtureDatabaseIDKey: 2, "regions": []any{}}}}}, fixtureStatusKey: fixtureActive}
+			response = map[string]any{"id": 42, fixtureNameKey: "fixture-acl-role", "redisRules": []any{map[string]any{"ruleName": rule, fixtureDatabasesKey: []any{map[string]any{"subscriptionId": 1, fixtureDatabaseIDKey: 2, "regions": []any{}}}}}, fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureACLRolePath && exists:
 			if rejectUpdate {
 				rejectUpdate = false
@@ -107,8 +109,8 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 				return
 			}
 			rule = fixtureNextRole
-			response = map[string]any{fixtureTaskKey: "update"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
+			response = map[string]any{fixtureTaskKey: fixtureUpdateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureACLRolePath && exists:
 			deleteRequests++
@@ -118,8 +120,8 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 				return
 			}
 			exists = false
-			response = map[string]any{fixtureTaskKey: "delete"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
+			response = map[string]any{fixtureTaskKey: fixtureDeleteTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureACLRolePath && !exists:
 			http.NotFound(w, r)
@@ -142,7 +144,7 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, key := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
 	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
@@ -154,7 +156,7 @@ func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
 	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	scheme := runtime.NewScheme()

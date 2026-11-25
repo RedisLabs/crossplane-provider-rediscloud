@@ -32,6 +32,14 @@ import (
 )
 
 const (
+	fixtureCreateTask       = "create"
+	fixtureUpdateTask       = "update"
+	fixtureDeleteTask       = "delete"
+	fixtureCreateTaskPath   = "/v1/tasks/create"
+	fixtureUpdateTaskPath   = "/v1/tasks/update"
+	fixtureDeleteTaskPath   = "/v1/tasks/delete"
+	fixtureDatabasesKey     = "databases"
+	fixtureTFCLIArgs        = "TF_CLI_ARGS"
 	fixtureNextRole         = "fixture-rule-b"
 	fixtureSourceIPsKey     = "sourceIps"
 	fixtureProtocolKey      = "protocol"
@@ -136,8 +144,8 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 				return
 			}
 			created = true
-			response = map[string]any{fixtureTaskKey: "create"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
+			response = map[string]any{fixtureTaskKey: fixtureCreateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 2}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && created:
 			var body map[string]any
@@ -147,13 +155,13 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 				return
 			}
 			fixtureEviction = body[fixtureEvictionKey].(string)
-			response = map[string]any{fixtureTaskKey: "update"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
+			response = map[string]any{fixtureTaskKey: fixtureUpdateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureDatabasePath && created:
 			created, deleted = false, true
-			response = map[string]any{fixtureTaskKey: "delete"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete" && deleted:
+			response = map[string]any{fixtureTaskKey: fixtureDeleteTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath && deleted:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && deleted:
 			http.NotFound(w, r)
@@ -176,7 +184,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, key := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
 	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {

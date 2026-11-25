@@ -93,12 +93,12 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				return
 			}
 			child = true
-			response = map[string]any{fixtureTaskKey: "create"}
+			response = map[string]any{fixtureTaskKey: fixtureCreateTask}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 			response = map[string]any{fixtureTagsKey: []any{}}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
+		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && child:
 			response = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: childEviction, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
@@ -117,13 +117,13 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				}
 				childEviction = policy.(string)
 			}
-			response = map[string]any{fixtureTaskKey: "update"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
+			response = map[string]any{fixtureTaskKey: fixtureUpdateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath && child:
 			child = false
-			response = map[string]any{fixtureTaskKey: "delete"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete":
+			response = map[string]any{fixtureTaskKey: fixtureDeleteTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && !child:
 			http.NotFound(w, r)
@@ -136,7 +136,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			if child {
 				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureStatusKey: fixtureActive})
 			}
-			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, "databases": dbs}}}
+			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, fixtureDatabasesKey: dbs}}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && bootstrap:
 			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && !bootstrap:
@@ -172,7 +172,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, k := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, k := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(k, "")
 	}
 	for _, k := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
@@ -184,7 +184,7 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
 	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	scheme := runtime.NewScheme()

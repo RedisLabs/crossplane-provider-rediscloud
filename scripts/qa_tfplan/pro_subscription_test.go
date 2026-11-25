@@ -33,9 +33,11 @@ import (
 
 // This fixture uses no Cloud account: it models a newly created Pro parent and
 // one bootstrap database on loopback, and checks that both are removed.
-const fixtureProParentName = "fixture-pro-parent"
-const fixtureBootstrapPath = "/v1/subscriptions/1/databases/2"
-const fixtureSubscriptionsPath = "/v1/subscriptions"
+const (
+	fixtureProParentName     = "fixture-pro-parent"
+	fixtureBootstrapPath     = "/v1/subscriptions/1/databases/2"
+	fixtureSubscriptionsPath = "/v1/subscriptions"
+)
 
 func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
@@ -91,7 +93,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			if bootstrap {
 				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive})
 			}
-			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, "databases": dbs}}}
+			response = map[string]any{"subscription": []any{map[string]any{"subscriptionId": 1, fixtureDatabasesKey: dbs}}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && bootstrap:
 			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureBootstrapPath && !bootstrap:
@@ -127,7 +129,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
 	t.Setenv("TF_CLI_CONFIG_FILE", filepath.Join(dir, "offline.tfrc"))
-	for _, k := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
+	for _, k := range []string{fixtureTFCLIArgs, "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(k, "")
 	}
 	for _, k := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
@@ -139,7 +141,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	t.Setenv("REDISCLOUD_ACCESS_KEY", dummyCredential)
 	t.Setenv("REDISCLOUD_SECRET_KEY", dummyCredential)
 	t.Setenv("PATH", filepath.Dir(tf)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "offline.tfrc"), []byte(fmt.Sprintf("provider_installation {\n filesystem_mirror { path = %q }\n}\n", plugins)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	scheme := runtime.NewScheme()
