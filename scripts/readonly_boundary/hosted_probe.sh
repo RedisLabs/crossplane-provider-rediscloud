@@ -56,7 +56,7 @@ cleanup() {
       docker exec "$node" "$tool" -X CODEX-EGRESS 2>/dev/null || true
     done
   done
-  docker rm -f boundary-proxy4 boundary-proxy6 boundary-denied4 boundary-denied6 boundary-registry >/dev/null 2>&1 || true
+  docker rm -f boundary-proxy boundary-denied4 boundary-denied6 boundary-registry >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 # Mirror the already-built package onto the node. The existing registry is a
@@ -94,9 +94,9 @@ curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.o
 echo "${digest#sha256:}  $RUNNER_TEMP/boundary-registry-manifest.json" | sha256sum -c -
 docker exec "$node" sh -c 'printf "[host.\"http://127.0.0.1:5000\"]\n" > /etc/containerd/certs.d/registry.localhost:5000/hosts.toml'
 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/boundary-proxy" ./proof-source/scripts/readonly_boundary/fake_proxy.go
+docker run -d --name boundary-proxy --network "container:$node" -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e LISTEN_ADDRESS=:5556 --entrypoint /fixture "$image" >/dev/null
 for family in 4 6; do
-  if [ "$family" = 4 ]; then proxy_addr=0.0.0.0:5556; denied_addr=0.0.0.0:5555; else proxy_addr='[::]:5556'; denied_addr='[::]:5555'; fi
-  docker run -d --name "boundary-proxy$family" --network "container:$node" -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e "LISTEN_ADDRESS=$proxy_addr" --entrypoint /fixture "$image" >/dev/null
+  if [ "$family" = 4 ]; then denied_addr=0.0.0.0:5555; else denied_addr='[::]:5555'; fi
   docker run -d --rm --name "boundary-denied$family" --network "container:$node" -e "REGISTRY_HTTP_ADDR=$denied_addr" "$image" >/dev/null
 done
 # Confirm all positive and negative targets are independently reachable first.
@@ -153,19 +153,26 @@ PYTHON
     # rule below remains the only rejecting rule under test.
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5555 -m comment --comment "codex-account-$family-$expected_uid"
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5556 -m comment --comment "codex-proxy-$family-$expected_uid"
+    if [ "$family" = 6 ]; then
+      # Nonterminating per-pod accounting distinguishes this replacement's NS
+      # from other pods' use of the shared gateway exception.
+      docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$gateway_multicast/128" -p ipv6-icmp --icmpv6-type 135 -m hl --hl-eq 255 -m comment --comment "codex-ns-flow-$expected_uid"
+    fi
     echo "$phase IPv$family allowed GET"
     if [ "$family" = 4 ]; then loopback=127.0.0.1; else loopback='[::1]'; fi
     if ! docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$loopback:5556/regions"; then
       echo "$phase IPv$family fake proxy listener is unavailable" >&2
-      docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' "boundary-proxy$family" || true
-      docker logs "boundary-proxy$family" 2>&1 || true
+      docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' boundary-proxy || true
+      docker logs boundary-proxy 2>&1 || true
       exit 1
     fi
     if [ "$family" = 6 ]; then
       echo "$phase IPv6 neighbor counters before allowed GET"
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-icmpv6-/ {print "packets=" $1, $(NF-1)}'
       mapfile -t ns_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-gateway-ns/ {print $1}')
+      mapfile -t ns_flow_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-ns-flow-$expected_uid" 'index($0, marker) {print $1}')
       test "${#ns_before[@]}" -eq 1 && [[ "${ns_before[0]}" =~ ^[0-9]+$ ]]
+      test "${#ns_flow_before[@]}" -eq 1 && [[ "${ns_flow_before[0]}" =~ ^[0-9]+$ ]]
     fi
     for attempt in $(seq 1 10); do
       if "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
@@ -174,8 +181,8 @@ PYTHON
     if ! "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then
       echo "$phase IPv$family allowed path remained unavailable; fake-only diagnostics follow" >&2
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS || true
-      docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' "boundary-proxy$family" || true
-      docker logs "boundary-proxy$family" 2>&1 || true
+      docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' boundary-proxy || true
+      docker logs boundary-proxy 2>&1 || true
       "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ip -"$family" route || true
       if [ "$family" = 6 ]; then
         echo "$phase IPv6 neighbor counters after allowed GET"
@@ -187,7 +194,9 @@ PYTHON
     fi
     if [ "$family" = 6 ] && [ "$phase" = replacement ]; then
       mapfile -t ns_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-gateway-ns/ {print $1}')
+      mapfile -t ns_flow_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-ns-flow-$expected_uid" 'index($0, marker) {print $1}')
       test "${#ns_after[@]}" -eq 1 && [[ "${ns_after[0]}" =~ ^[0-9]+$ ]] && (( ns_after[0] > ns_before[0] ))
+      test "${#ns_flow_after[@]}" -eq 1 && [[ "${ns_flow_after[0]}" =~ ^[0-9]+$ ]] && (( ns_flow_after[0] > ns_flow_before[0] ))
     fi
     echo "$phase IPv$family forbidden POST"
     "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"

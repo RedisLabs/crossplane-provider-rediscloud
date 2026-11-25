@@ -11,7 +11,7 @@ import (
 
 func main() {
 	address := os.Getenv("LISTEN_ADDRESS")
-	if address != "0.0.0.0:5556" && address != "[::]:5556" {
+	if address != ":5556" {
 		panic("unexpected fixture listener")
 	}
 	server := &http.Server{Addr: address, ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
