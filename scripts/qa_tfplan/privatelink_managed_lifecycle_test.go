@@ -62,7 +62,7 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 		case r.Method == http.MethodGet && r.URL.Path == path && exists:
 			response = map[string]any{"taskId": "get-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-link" && exists:
-			response = map[string]any{"status": "processing-completed", "response": map[string]any{"resource": map[string]any{"status": "active", "subscriptionId": 1, "shareName": "fixture-share", "resourceConfigurationId": "fixture-config", "principals": []any{map[string]any{"principal": principal, "type": "aws_account", "alias": "fixture", "status": "associated"}}, "connections": []any{}, "databases": []any{}}}}
+			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{fixtureStatusKey: "active", "subscriptionId": 1, "shareName": "fixture-share", "resourceConfigurationId": "fixture-config", "principals": []any{map[string]any{"principal": principal, "type": "aws_account", "alias": "fixture", fixtureStatusKey: "associated"}}, "connections": []any{}, "databases": []any{}}}}
 		case r.Method == http.MethodPost && r.URL.Path == path && !exists && !created:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["shareName"] != "fixture-share" || body["principal"] != principal || body["type"] != "aws_account" || body["alias"] != "fixture" {
@@ -73,12 +73,12 @@ func TestPrivateLinkManagedCreateDeleteLoopback(t *testing.T) { //nolint:gocyclo
 			exists, created = true, true
 			response = map[string]any{"taskId": "create-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-link" && created:
-			response = map[string]any{"status": "processing-completed", "response": map[string]any{"resourceId": 1}}
+			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 1}}
 		case r.Method == http.MethodDelete && r.URL.Path == path && exists && !deleted:
 			exists, deleted = false, true
 			response = map[string]any{"taskId": "delete-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete-link" && deleted:
-			response = map[string]any{"status": "processing-completed"}
+			response = map[string]any{fixtureStatusKey: "processing-completed"}
 		default:
 			unexpected = true
 			http.Error(w, "unexpected fixture request", http.StatusForbidden)
