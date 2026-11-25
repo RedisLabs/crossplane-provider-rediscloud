@@ -38,18 +38,19 @@ const fixtureACLUserPath = "/v1/acl/users/42"
 const fixtureACLUsersPath = "/v1/acl/users"
 
 func TestACLUserManagedLifecycleLoopback(t *testing.T) {
-	t.Run("create_rejected", func(t *testing.T) { runACLUserFixture(t, true) })
-	t.Run("lifecycle", func(t *testing.T) { runACLUserFixture(t, false) })
+	t.Run("create_rejected", func(t *testing.T) { runACLUserFixture(t, "rejected") })
+	t.Run("accepted_then_503", func(t *testing.T) { runACLUserFixture(t, fixtureUncertainMode) })
+	t.Run("lifecycle", func(t *testing.T) { runACLUserFixture(t, "success") })
 }
 
-func runACLUserFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	rejectCreate, rejectUpdate, rejectDelete := failCreate, true, true
+	rejectCreate, rejectUpdate, rejectDelete := mode != "success", true, true
 	createRequests := 0
 	rule := "fixture-rule-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,15 +66,20 @@ func runACLUserFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The 
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == fixtureACLUsersPath && !exists:
 			createRequests++
-			if rejectCreate {
-				rejectCreate = false
-				http.Error(w, "injected create rejection", http.StatusForbidden)
-				return
-			}
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != "fixture-acl-user" || body["role"] != rule || body["password"] != "FixtureOnly1!" {
 				unexpected = true
 				http.Error(w, "bad create", http.StatusBadRequest)
+				return
+			}
+			if rejectCreate {
+				rejectCreate = false
+				if mode == fixtureUncertainMode {
+					exists = true
+					http.Error(w, "injected accepted create with unavailable response", http.StatusServiceUnavailable)
+					return
+				}
+				http.Error(w, "injected create rejection", http.StatusForbidden)
 				return
 			}
 			exists = true
@@ -200,7 +206,7 @@ func runACLUserFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The 
 		}
 		t.Fatal("callback missing")
 	}
-	if failCreate {
+	if mode != "success" {
 		await("terraform apply ", true)
 		for i := 0; i < 3; i++ {
 			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
@@ -208,12 +214,12 @@ func runACLUserFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The 
 			}
 		}
 		mu.Lock()
-		if exists || unexpected || createRequests != 1 {
+		if exists != (mode == fixtureUncertainMode) || unexpected || createRequests != 1 {
 			mu.Unlock()
-			t.Fatal("rejected create was replayed or changed fake inventory")
+			t.Fatal("failed create was replayed or fake outcome changed")
 		}
 		mu.Unlock()
-		verifyForeignACLInventory(t, server.URL+fixtureACLUsersPath, "users", "foreign-user")
+		verifyForeignACLInventory(t, server.URL+fixtureACLUsersPath, "users", "foreign-user", "fixture-acl-user", mode == fixtureUncertainMode)
 		return
 	}
 	await("terraform apply ", false)

@@ -33,22 +33,24 @@ import (
 
 // TestACLRoleManagedLifecycleLoopback runs actual managed reconciliation and
 // Terraform against a closed, credential-free loopback fixture, never Cloud.
+const fixtureUncertainMode = "uncertain"
 const fixtureACLRolePath = "/v1/acl/roles/42"
 const fixtureACLRolesPath = "/v1/acl/roles"
 
 func TestACLRoleManagedLifecycleLoopback(t *testing.T) {
-	t.Run("create_rejected", func(t *testing.T) { runACLRoleFixture(t, true) })
-	t.Run("lifecycle", func(t *testing.T) { runACLRoleFixture(t, false) })
+	t.Run("create_rejected", func(t *testing.T) { runACLRoleFixture(t, "rejected") })
+	t.Run("accepted_then_503", func(t *testing.T) { runACLRoleFixture(t, fixtureUncertainMode) })
+	t.Run("lifecycle", func(t *testing.T) { runACLRoleFixture(t, "success") })
 }
 
-func runACLRoleFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+func runACLRoleFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	rejectCreate, rejectUpdate, rejectDelete := failCreate, true, true
+	rejectCreate, rejectUpdate, rejectDelete := mode != "success", true, true
 	createRequests := 0
 	rule := "fixture-rule-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,15 +66,20 @@ func runACLRoleFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The 
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == fixtureACLRolesPath && !exists:
 			createRequests++
-			if rejectCreate {
-				rejectCreate = false
-				http.Error(w, "injected create rejection", http.StatusForbidden)
-				return
-			}
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != "fixture-acl-role" || !validFakeRoleAssociation(body, rule) {
 				unexpected = true
 				http.Error(w, "bad create", http.StatusBadRequest)
+				return
+			}
+			if rejectCreate {
+				rejectCreate = false
+				if mode == fixtureUncertainMode {
+					exists = true
+					http.Error(w, "injected accepted create with unavailable response", http.StatusServiceUnavailable)
+					return
+				}
+				http.Error(w, "injected create rejection", http.StatusForbidden)
 				return
 			}
 			exists = true
@@ -195,7 +202,7 @@ func runACLRoleFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The 
 		}
 		t.Fatal("callback missing")
 	}
-	if failCreate {
+	if mode != "success" {
 		await("terraform apply ", true)
 		for i := 0; i < 3; i++ {
 			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
@@ -203,12 +210,12 @@ func runACLRoleFixture(t *testing.T, failCreate bool) { //nolint:gocyclo // The 
 			}
 		}
 		mu.Lock()
-		if exists || unexpected || createRequests != 1 {
+		if exists != (mode == fixtureUncertainMode) || unexpected || createRequests != 1 {
 			mu.Unlock()
-			t.Fatal("rejected create was replayed or changed fake inventory")
+			t.Fatal("failed create was replayed or fake outcome changed")
 		}
 		mu.Unlock()
-		verifyForeignACLInventory(t, server.URL+fixtureACLRolesPath, "roles", "foreign-role")
+		verifyForeignACLInventory(t, server.URL+fixtureACLRolesPath, "roles", "foreign-role", "fixture-acl-role", mode == fixtureUncertainMode)
 		return
 	}
 	await("terraform apply ", false)
@@ -340,7 +347,7 @@ func validFakeRoleAssociation(body map[string]any, expected string) bool {
 	return ok && database["subscriptionId"] == float64(1) && database[fixtureDatabaseIDKey] == float64(2)
 }
 
-func verifyForeignACLInventory(t *testing.T, url, key, name string) {
+func verifyForeignACLInventory(t *testing.T, url, key, foreignName, ownedName string, expectOwned bool) { //nolint:gocyclo // Reject incomplete or changed fake inventory.
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -355,7 +362,14 @@ func verifyForeignACLInventory(t *testing.T, url, key, name string) {
 	var body map[string][]map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	_ = res.Body.Close()
-	if err != nil || res.StatusCode != http.StatusOK || len(body[key]) != 1 || body[key][0]["id"] != float64(99) || body[key][0][fixtureNameKey] != name {
+	expectedCount := 1
+	if expectOwned {
+		expectedCount++
+	}
+	if err != nil || res.StatusCode != http.StatusOK || len(body[key]) != expectedCount || body[key][0]["id"] != float64(99) || body[key][0][fixtureNameKey] != foreignName {
 		t.Fatal("foreign fake ACL inventory was not preserved")
+	}
+	if expectOwned && (body[key][1]["id"] != float64(42) || body[key][1][fixtureNameKey] != ownedName) {
+		t.Fatal("uncertain fake create identity was not preserved")
 	}
 }
