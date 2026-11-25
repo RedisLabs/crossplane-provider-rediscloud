@@ -165,12 +165,16 @@ for family in 4 6; do
 done
 docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
 probe() {
-  local candidate=$1 expected_uid=$2 phase=$3
-  "$kubectl" -n upbound-system debug "pod/$candidate" --container=boundary-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
-  for attempt in $(seq 1 60); do
-    if "$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="boundary-probe")].state.running.startedAt}' | grep -q .; then break; fi
-    sleep 1
-  done
+  local candidate=$1 expected_uid=$2 phase=$3 container=$4
+  if [ "$container" = boundary-probe ]; then
+    "$kubectl" -n upbound-system debug "pod/$candidate" --container=boundary-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
+    for attempt in $(seq 1 60); do
+      if "$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="boundary-probe")].state.running.startedAt}' | grep -q .; then break; fi
+      sleep 1
+    done
+  elif [ "$container" != startup-gate ]; then
+    echo 'unexpected probe container' >&2; exit 1
+  fi
   "$kubectl" -n upbound-system get pod "$candidate" -o json > "$RUNNER_TEMP/current-boundary-pod.json"
   for family in 4 6; do
     if [ "$family" = 4 ]; then host=$ip4; target=$ip4; cidr=$cidr4; tool=iptables; else host="[$ip6]"; target=$ip6; cidr=$cidr6; tool=ip6tables; fi
@@ -210,15 +214,15 @@ PYTHON
       test "${#ns_flow_before[@]}" -eq 1 && [[ "${ns_flow_before[0]}" =~ ^[0-9]+$ ]]
     fi
     for attempt in $(seq 1 10); do
-      if "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
+      if "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
       sleep 2
     done
-    if ! "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then
+    if ! "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then
       echo "$phase IPv$family allowed path remained unavailable; fake-only diagnostics follow" >&2
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS || true
       docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' boundary-proxy || true
       docker logs boundary-proxy 2>&1 || true
-      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ip -"$family" route || true
+      "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- ip -"$family" route || true
       if [ "$family" = 6 ]; then
         echo "$phase IPv6 neighbor counters after allowed GET"
         docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-icmpv6-/ {print "packets=" $1, $(NF-1)}' || true
@@ -234,13 +238,13 @@ PYTHON
       test "${#ns_flow_after[@]}" -eq 1 && [[ "${ns_flow_after[0]}" =~ ^[0-9]+$ ]] && (( ns_flow_after[0] > ns_flow_before[0] ))
     fi
     echo "$phase IPv$family forbidden POST"
-    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"
+    "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- /bin/sh -c 'result=$(wget -S -O /dev/null --post-data=x --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions" 2>&1); case "$result" in *"403 Forbidden"*) exit 0;; *) exit 1;; esac' -- "$host"
     mapfile -t before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     mapfile -t account_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-account-$family-$expected_uid" 'index($0, marker) {print $1}')
     test "${#before[@]}" -eq 1 && [[ "${before[0]}" =~ ^[0-9]+$ ]]
     test "${#account_before[@]}" -eq 1 && [[ "${account_before[0]}" =~ ^[0-9]+$ ]]
     echo "$phase IPv$family CIDR node denial"
-    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5555/v2/"; then exit 42; else exit 0; fi' -- "$host"
+    "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5555/v2/"; then exit 42; else exit 0; fi' -- "$host"
     mapfile -t after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     mapfile -t account_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-account-$family-$expected_uid" 'index($0, marker) {print $1}')
     test "${#after[@]}" -eq 1 && [[ "${after[0]}" =~ ^[0-9]+$ ]] && (( after[0] > before[0] ))
@@ -249,7 +253,7 @@ PYTHON
     # unavailable listener, or a broken probe explains the observed denial.
     echo "$phase IPv$family denial removal control"
     docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
-    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5555/v2/"
+    "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- wget -q -T 3 -O /dev/null "http://$host:5555/v2/"
     docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
     docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
@@ -263,7 +267,7 @@ PYTHON
     test "${#ext_before[@]}" -eq 1 && [[ "${ext_before[0]}" =~ ^[0-9]+$ ]]
     test "${#ext_deny_before[@]}" -eq 1 && [[ "${ext_deny_before[0]}" =~ ^[0-9]+$ ]]
     test "${#forward_before[@]}" -eq 1 && [[ "${forward_before[0]}" =~ ^[0-9]+$ ]]
-    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions"; then exit 42; else exit 0; fi' -- "$external_host"
+    "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- /bin/sh -c 'if wget -q -T 3 -O /dev/null --header="X-Api-Key: fixture-key" --header="X-Api-Secret-Key: fixture-secret" "http://$1:5556/regions"; then exit 42; else exit 0; fi' -- "$external_host"
     mapfile -t ext_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-external-$family-$expected_uid" 'index($0, marker) {print $1}')
     mapfile -t ext_deny_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
     mapfile -t forward_after < <(docker exec "$node" "$tool" -nvx -L CODEX-FORWARD-COUNT | awk -v marker="codex-forward-$family-$expected_uid" 'index($0, marker) {print $1}')
@@ -272,7 +276,7 @@ PYTHON
     test "${#forward_after[@]}" -eq 1 && [[ "${forward_after[0]}" =~ ^[0-9]+$ ]] && (( forward_after[0] > forward_before[0] ))
     docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
     docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
-    "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
+    "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$external_host:5556/regions"
     docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
     docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
     docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
@@ -284,13 +288,13 @@ PYTHON
       mapfile -t deny_before6 < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
       test "${#echo_before[@]}" -eq 1 && [[ "${echo_before[0]}" =~ ^[0-9]+$ ]]
       test "${#deny_before6[@]}" -eq 1 && [[ "${deny_before6[0]}" =~ ^[0-9]+$ ]]
-      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if ping -6 -c 1 -W 3 "$1" >/dev/null 2>&1; then exit 42; else exit 0; fi' -- "$target"
+      "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- /bin/sh -c 'if ping -6 -c 1 -W 3 "$1" >/dev/null 2>&1; then exit 42; else exit 0; fi' -- "$target"
       mapfile -t echo_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-echo-$expected_uid" 'index($0, marker) {print $1}')
       mapfile -t deny_after6 < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
       test "${#echo_after[@]}" -eq 1 && [[ "${echo_after[0]}" =~ ^[0-9]+$ ]] && (( echo_after[0] > echo_before[0] ))
       test "${#deny_after6[@]}" -eq 1 && [[ "${deny_after6[0]}" =~ ^[0-9]+$ ]] && (( deny_after6[0] > deny_before6[0] ))
       docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
-      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ping -6 -c 1 -W 3 "$target" >/dev/null
+      "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- ping -6 -c 1 -W 3 "$target" >/dev/null
       docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
       docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
       docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
@@ -304,7 +308,7 @@ PYTHON
       mapfile -t deny_before < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
       test "${#registry_before[@]}" -eq 1 && [[ "${registry_before[0]}" =~ ^[0-9]+$ ]]
       test "${#deny_before[@]}" -eq 1 && [[ "${deny_before[0]}" =~ ^[0-9]+$ ]]
-      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5000/v2/"; then exit 42; else exit 0; fi' -- "$host"
+      "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5000/v2/"; then exit 42; else exit 0; fi' -- "$host"
       mapfile -t registry_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-registry-$expected_uid" 'index($0, marker) {print $1}')
       mapfile -t deny_after < <(docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk -v marker="codex-cidr-deny-$family" 'index($0, marker) {print $1}')
       test "${#registry_after[@]}" -eq 1 && [[ "${registry_after[0]}" =~ ^[0-9]+$ ]] && (( registry_after[0] > registry_before[0] ))
@@ -312,7 +316,7 @@ PYTHON
       docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
       echo "$phase IPv4 registry removal control"
       docker exec "$node" "$tool" -D CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
-      "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null "http://$host:5000/v2/"
+      "$kubectl" -n upbound-system exec "$candidate" -c "$container" -- wget -q -T 3 -O /dev/null "http://$host:5000/v2/"
       docker exec "$node" "$tool" -D CODEX-EGRESS -j RETURN
       docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
       docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
@@ -345,7 +349,7 @@ sys.exit(0 if ready and regions == [{"regionId": "22", "name": "us-central1", "p
   return 1
 }
 uid=$("$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.metadata.uid}')
-probe "$pod" "$uid" original
+probe "$pod" "$uid" original boundary-probe
 before=$(fixture_count)
 # The only credentials in this disposable Kind cluster are fixed fake values.
 python3 - "$ip4" <<'PY' | "$kubectl" apply -f -
@@ -359,13 +363,14 @@ objects = [
 json.dump({'apiVersion': 'v1', 'kind': 'List', 'items': objects}, sys.stdout)
 PY
 wait_controller_lookup "$before" original
+"$kubectl" -n upbound-system patch configmap provider-startup-gate --type=merge -p '{"data":{"state":"closed"}}' >/dev/null
 "$kubectl" -n upbound-system delete pod "$pod" --wait=true
 for attempt in $(seq 1 120); do
   "$kubectl" -n upbound-system get pods -o json > "$RUNNER_TEMP/boundary-pods.json"
   if python3 - "$RUNNER_TEMP/boundary-pods.json" "$uid" "$cidr4" "$cidr6" "$RUNNER_TEMP/replacement-name" <<'PY'
 import ipaddress, json, pathlib, sys
 pods = json.loads(pathlib.Path(sys.argv[1]).read_text())['items']
-matching = [p for p in pods if p['metadata']['name'].startswith('provider-rediscloud-') and not p['metadata'].get('deletionTimestamp') and p['metadata']['uid'] != sys.argv[2] and p['spec'].get('nodeName') == 'local-dev-control-plane' and not p['spec'].get('hostNetwork') and any(c['name'] == 'package-runtime' and c.get('ready') for c in p.get('status', {}).get('containerStatuses', []))]
+matching = [p for p in pods if p['metadata']['name'].startswith('provider-rediscloud-') and not p['metadata'].get('deletionTimestamp') and p['metadata']['uid'] != sys.argv[2] and p['spec'].get('nodeName') == 'local-dev-control-plane' and not p['spec'].get('hostNetwork') and any(c['name'] == 'startup-gate' and c.get('state', {}).get('running') for c in p.get('status', {}).get('initContainerStatuses', [])) and not any(c['name'] == 'package-runtime' and (c.get('started') or c.get('restartCount', 0) or c.get('state', {}).get('running') or c.get('state', {}).get('terminated') or c.get('lastState', {}).get('terminated')) for c in p.get('status', {}).get('containerStatuses', []))]
 if len(matching) != 1:
     raise SystemExit(1)
 p = matching[0]
@@ -387,19 +392,29 @@ for pod in pods:
     statuses = pod.get("status", {}).get("containerStatuses", [])
     print({"phase": pod.get("status", {}).get("phase"), "node": pod.get("spec", {}).get("nodeName"), "podIPCount": len(pod.get("status", {}).get("podIPs", [])), "containers": [{"name": c["name"], "ready": c.get("ready"), "waitingReason": c.get("state", {}).get("waiting", {}).get("reason"), "terminatedReason": c.get("state", {}).get("terminated", {}).get("reason")} for c in statuses]})
 '
-  echo "replacement provider did not become ready with guarded dual-stack identity" >&2
+  echo "replacement provider did not reach closed startup gate with guarded dual-stack identity" >&2
   exit 1
 fi
 replacement=$(cat "$RUNNER_TEMP/replacement-name")
 new_uid=$("$kubectl" -n upbound-system get pod "$replacement" -o jsonpath='{.metadata.uid}')
 test "$new_uid" != "$uid"
+probe "$replacement" "$new_uid" replacement startup-gate
+"$kubectl" -n upbound-system get pod "$replacement" -o json | python3 -c '
+import json, sys
+pod = json.load(sys.stdin)
+assert any(c["name"] == "startup-gate" and c.get("state", {}).get("running") for c in pod.get("status", {}).get("initContainerStatuses", []))
+assert not any(c["name"] == "package-runtime" and (c.get("started") or c.get("restartCount", 0) or c.get("state", {}).get("running") or c.get("state", {}).get("terminated") or c.get("lastState", {}).get("terminated")) for c in pod.get("status", {}).get("containerStatuses", []))
+'
+echo 'Replacement provider runtime remained stopped while its guarded network was probed.'
+"$kubectl" -n upbound-system patch configmap provider-startup-gate --type=merge -p '{"data":{"state":"open"}}' >/dev/null
+"$kubectl" -n upbound-system wait "pod/$replacement" --for=condition=Ready --timeout=4m
+test "$("$kubectl" -n upbound-system get pod "$replacement" -o jsonpath='{.metadata.uid}')" = "$new_uid"
 "$kubectl" -n upbound-system get pod "$replacement" -o json | python3 -c '
 import json, os, sys
 pod = json.load(sys.stdin)
 ids = [c.get("imageID", "").rsplit("@", 1)[-1] for c in pod.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime" and c.get("ready")]
 sys.exit(0 if ids == [os.environ["EXPECTED_RUNTIME_DIGEST"]] else 1)
 '
-probe "$replacement" "$new_uid" replacement
 "$kubectl" patch regions.lookup.redis.io boundary-gcp --subresource=status --type=merge -p '{"status":{"atProvider":{"regions":[]},"conditions":[]}}' >/dev/null
 before=$(fixture_count)
 "$kubectl" annotate regions.lookup.redis.io boundary-gcp fixture-phase=after-replacement --overwrite >/dev/null
