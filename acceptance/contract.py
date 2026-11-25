@@ -11,12 +11,20 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
 class Scenario:
     id: str
     steps: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class StepReceipt:
+    step: str
+    outcome: str  # passed, failed, blocked, unsupported
+    evidence_url: str
 
 
 @dataclass(frozen=True)
@@ -28,7 +36,7 @@ class Evidence:
     artifact_digest: str
     run_url: str
     evidence_url: str
-    steps: tuple[str, ...]
+    steps: tuple[StepReceipt, ...]
     outcome: str  # pass, fail, blocked, unsupported
     cleanup: str  # clean, residual, unknown, not_started
     direct_cloud_recovery: bool
@@ -83,10 +91,29 @@ def classify_claim(scenario: Scenario, evidence: Evidence) -> str:
         return "invalid"
     if evidence.outcome != "pass":
         return evidence.outcome
-    if evidence.direct_cloud_recovery or evidence.cleanup != "clean" or evidence.steps != scenario.steps:
+    if evidence.direct_cloud_recovery or evidence.cleanup != "clean":
         return "invalid"
-    if not all(isinstance(x, str) and x.strip() for x in (evidence.run_url, evidence.evidence_url)):
+    if not isinstance(evidence.steps, tuple) or len(evidence.steps) != len(scenario.steps):
         return "invalid"
-    if not any(isinstance(x, str) and x.strip() for x in (evidence.source_revision, evidence.artifact_digest)):
+    for expected, receipt in zip(scenario.steps, evidence.steps):
+        if not isinstance(receipt, StepReceipt) or receipt.step != expected or receipt.outcome != "passed" or not _https_url(receipt.evidence_url):
+            return "invalid"
+    if not _https_url(evidence.run_url) or not _https_url(evidence.evidence_url):
+        return "invalid"
+    revision = isinstance(evidence.source_revision, str) and re.fullmatch(r"[0-9a-f]{40}", evidence.source_revision)
+    digest = isinstance(evidence.artifact_digest, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence.artifact_digest)
+    if not revision and not digest:
+        return "invalid"
+    if evidence.source_revision and not revision or evidence.artifact_digest and not digest:
         return "invalid"
     return f"{evidence.mode}_claim_requires_verification"
+
+
+def _https_url(value: object) -> bool:
+    if not isinstance(value, str) or not value or any(c.isspace() for c in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        return parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and parsed.port in (None, 443)
+    except ValueError:
+        return False

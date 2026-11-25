@@ -4,7 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from contract import Adapter, Evidence, classify_claim, load_scenarios
+from contract import Adapter, Evidence, StepReceipt, classify_claim, load_scenarios
 
 
 SCENARIOS = Path(__file__).with_name("scenarios.json")
@@ -17,7 +17,8 @@ class FixtureAdapter:
         self.provider = provider
 
     def execute(self, scenario):
-        return Evidence(self.provider, scenario.id, "simulated", "fixture-revision", "", "fixture-run", "fixture-log", scenario.steps, "pass", "clean", False)
+        receipts = tuple(StepReceipt(step, "passed", "https://example.test/fixture-log") for step in scenario.steps)
+        return Evidence(self.provider, scenario.id, "simulated", "a" * 40, "", "https://example.test/fixture-run", "https://example.test/fixture-log", receipts, "pass", "clean", False)
 
 
 class ScenarioContractTests(unittest.TestCase):
@@ -37,6 +38,8 @@ class ScenarioContractTests(unittest.TestCase):
         for evidence in (
             replace(self.evidence, steps=self.evidence.steps[:-1]),
             replace(self.evidence, steps=tuple(reversed(self.evidence.steps))),
+            replace(self.evidence, steps=(replace(self.evidence.steps[0], outcome="failed"), *self.evidence.steps[1:])),
+            replace(self.evidence, steps=(replace(self.evidence.steps[0], evidence_url="http://example.test/"), *self.evidence.steps[1:])),
             replace(self.evidence, cleanup="unknown"),
             replace(self.evidence, cleanup="residual"),
             replace(self.evidence, direct_cloud_recovery=True),
@@ -47,8 +50,11 @@ class ScenarioContractTests(unittest.TestCase):
     def test_provenance_cannot_be_missing_or_misattributed(self):
         for evidence in (
             replace(self.evidence, source_revision="", artifact_digest=""),
+            replace(self.evidence, source_revision="abc123"),
+            replace(self.evidence, artifact_digest="sha256:invalid"),
             replace(self.evidence, run_url=""),
             replace(self.evidence, evidence_url=""),
+            replace(self.evidence, run_url="https://user:password@example.test/run"),
             replace(self.evidence, provider="other"),
             replace(self.evidence, scenario_id="essentials-database-eviction-update"),
             replace(self.evidence, mode="unknown"),
@@ -57,7 +63,7 @@ class ScenarioContractTests(unittest.TestCase):
                 self.assertEqual(classify_claim(self.scenario, evidence), "invalid")
 
     def test_live_is_only_an_unverified_claim_and_never_simulated(self):
-        live = replace(self.evidence, mode="live", source_revision="", artifact_digest="sha256:fixture")
+        live = replace(self.evidence, mode="live", source_revision="", artifact_digest="sha256:" + "a" * 64)
         self.assertEqual(classify_claim(self.scenario, live), "live_claim_requires_verification")
         self.assertNotEqual(classify_claim(self.scenario, self.evidence), classify_claim(self.scenario, live))
 
