@@ -47,6 +47,10 @@ const (
 	fixtureStatusKey       = "status"
 	fixtureDatabasePath    = "/v1/fixed/subscriptions/1/databases/2"
 	fixtureActive          = "active"
+	fixtureVolatileLRU     = "volatile-lru"
+	fixtureDatabaseIDKey   = "databaseId"
+	fixtureTagsKey         = "tags"
+	fixtureReplicationKey  = "replication"
 	fixtureNoPersistence   = "none"
 )
 
@@ -100,7 +104,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			return
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/fixed/subscriptions/1/databases" && parentCreated && !created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["dataEvictionPolicy"] != desiredEviction || body["dataPersistence"] != fixtureNoPersistence || body["replication"] != false {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["dataEvictionPolicy"] != desiredEviction || body["dataPersistence"] != fixtureNoPersistence || body[fixtureReplicationKey] != false {
 				unexpected = true
 				http.Error(w, "wrong fixture body", http.StatusBadRequest)
 				return
@@ -111,7 +115,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 2}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || (body["dataEvictionPolicy"] != desiredEviction && body["dataEvictionPolicy"] != "volatile-lru") {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || (body["dataEvictionPolicy"] != desiredEviction && body["dataEvictionPolicy"] != fixtureVolatileLRU) {
 				unexpected = true
 				http.Error(w, "wrong fixture update", http.StatusBadRequest)
 				return
@@ -129,11 +133,11 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && created:
-			response = map[string]any{"databaseId": 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, "replication": false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath+"/tags" && created:
-			response = map[string]any{"tags": []any{}}
+			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && created:
-			response = map[string]any{"tags": []any{}}
+			response = map[string]any{fixtureTagsKey: []any{}}
 		default:
 			unexpected = true
 			http.Error(w, "unexpected fixture request", http.StatusForbidden)
@@ -240,7 +244,7 @@ createLoop:
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != fixtureExternalID || len(item.Finalizers) == 0 {
 		t.Fatal("managed database identity/finalizer not observed")
 	}
-	updated := "volatile-lru"
+	updated := fixtureVolatileLRU
 	item.Spec.ForProvider.DataEviction = &updated
 	if err = kube.Update(context.Background(), item); err != nil {
 		t.Fatal(err)
@@ -307,7 +311,7 @@ func assertManagedFakeCreate(t *testing.T, base string, mu *sync.Mutex, created,
 		id  float64
 	}{
 		fixtureParentPath:   {"id", 1},
-		fixtureDatabasePath: {"databaseId", 2},
+		fixtureDatabasePath: {fixtureDatabaseIDKey, 2},
 	} {
 		req, err := http.NewRequest(http.MethodGet, base+path, nil)
 		if err != nil {
@@ -349,7 +353,7 @@ func assertManagedFakeUpdate(t *testing.T, base, eviction string) {
 	var body map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	_ = res.Body.Close()
-	if err != nil || res.StatusCode != http.StatusOK || body["databaseId"] != float64(2) || body["dataEvictionPolicy"] != eviction {
+	if err != nil || res.StatusCode != http.StatusOK || body[fixtureDatabaseIDKey] != float64(2) || body["dataEvictionPolicy"] != eviction {
 		t.Fatal("fake update readback or identity mismatch")
 	}
 }
