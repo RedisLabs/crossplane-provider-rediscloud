@@ -33,7 +33,7 @@ For a pass claim require provider, case, explicit live/simulated mode, a full 40
 
 ## Validation and rollout
 
-The proposed hosted Pro combined fixture wraps its existing fake Cloud handler with an in-process mutation gate. The actual Upjet/Terraform reconciler continues its simulated parent and database lifecycle; negative calls with a stale dummy credential and duplicate deletion paths must be rejected without reaching the fake handler. These dummy keys are not authenticated generations, the reservations are not durable, and the fixture does not integrate the separate Python coordinator model, ACL lifecycle or any real Cloud credential boundary. Hosted execution is required before claiming even simulated coverage.
+The proposed hosted Pro combined and ACL rule fixtures wrap their existing fake Cloud handlers with an in-process mutation gate. The actual Upjet/Terraform reconciler continues each simulated lifecycle; negative calls with a stale dummy credential and duplicate deletion paths must be rejected without reaching the fake handlers. These dummy keys are not authenticated generations, the reservations are not durable, and the fixtures do not integrate the separate Python coordinator model or any real Cloud credential boundary. ACL role and user gate integration remain open. Hosted execution is required before claiming even simulated coverage.
 
 CI runs `python3 -m unittest discover -s acceptance -p 'test_*.py'` without credentials or Cloud. Tests use fake result producers and check ordering, provenance, invalid cleanup, simulated versus live labeling and explicit unsupported outcomes. These tests verify the contract consumer only, not any provider lifecycle or durable lock.
 
