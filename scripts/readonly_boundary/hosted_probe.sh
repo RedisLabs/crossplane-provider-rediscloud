@@ -97,8 +97,8 @@ for family in 4 6; do
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -d "$node_ip" -p tcp --dport 6443 -j ACCEPT
   if [ "$family" = 6 ]; then
     # Nonterminating accounting only: do not relax IPv6 Neighbor Discovery.
-    docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -p ipv6-icmp --icmpv6-type 135 -m comment --comment codex-icmpv6-ns
-    docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -p ipv6-icmp --icmpv6-type 136 -m comment --comment codex-icmpv6-na
+    docker exec "$node" "$tool" -A CODEX-EGRESS -p ipv6-icmp --icmpv6-type 135 -m comment --comment codex-icmpv6-ns
+    docker exec "$node" "$tool" -A CODEX-EGRESS -p ipv6-icmp --icmpv6-type 136 -m comment --comment codex-icmpv6-na
   fi
   docker exec "$node" "$tool" -A CODEX-EGRESS -s "$cidr" -m comment --comment "codex-cidr-deny-$family" -j REJECT
   docker exec "$node" "$tool" -A CODEX-EGRESS -j RETURN
@@ -132,6 +132,10 @@ PYTHON
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5555 -m comment --comment "codex-account-$family-$expected_uid"
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5556 -m comment --comment "codex-proxy-$family-$expected_uid"
     echo "$phase IPv$family allowed GET"
+    if [ "$family" = 6 ]; then
+      echo "$phase IPv6 neighbor counters before allowed GET"
+      docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-icmpv6-/ {print "packets=" $1, $(NF-1)}'
+    fi
     for attempt in $(seq 1 10); do
       if "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then break; fi
       sleep 2
@@ -142,6 +146,8 @@ PYTHON
       docker logs "boundary-proxy$family" 2>&1 || true
       "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ip -"$family" route || true
       if [ "$family" = 6 ]; then
+        echo "$phase IPv6 neighbor counters after allowed GET"
+        docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-icmpv6-/ {print "packets=" $1, $(NF-1)}' || true
         docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 2 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' 'http://[::1]:5556/regions' || echo 'IPv6 proxy loopback control failed' >&2
         docker exec "$node" ip -6 neigh show | awk '{print $NF}' | sort | uniq -c || true
       fi
