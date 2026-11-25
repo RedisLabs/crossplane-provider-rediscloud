@@ -40,7 +40,7 @@ cleanup() {
       docker exec "$node" "$tool" -X CODEX-EGRESS 2>/dev/null || true
     done
   done
-  docker stop boundary-proxy4 boundary-proxy6 boundary-denied4 boundary-denied6 boundary-registry >/dev/null 2>&1 || true
+  docker rm -f boundary-proxy4 boundary-proxy6 boundary-denied4 boundary-denied6 boundary-registry >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 # Mirror the already-built package onto the node. The existing registry is a
@@ -80,7 +80,7 @@ docker exec "$node" sh -c 'printf "[host.\"http://127.0.0.1:5000\"]\n" > /etc/co
 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/boundary-proxy" ./proof-source/scripts/readonly_boundary/fake_proxy.go
 for family in 4 6; do
   if [ "$family" = 4 ]; then proxy_addr=0.0.0.0:5556; denied_addr=0.0.0.0:5555; else proxy_addr='[::]:5556'; denied_addr='[::]:5555'; fi
-  docker run -d --rm --name "boundary-proxy$family" --network "container:$node" -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e "LISTEN_ADDRESS=$proxy_addr" --entrypoint /fixture "$image" >/dev/null
+  docker run -d --name "boundary-proxy$family" --network "container:$node" -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e "LISTEN_ADDRESS=$proxy_addr" --entrypoint /fixture "$image" >/dev/null
   docker run -d --rm --name "boundary-denied$family" --network "container:$node" -e "REGISTRY_HTTP_ADDR=$denied_addr" "$image" >/dev/null
 done
 # Confirm all positive and negative targets are independently reachable first.
@@ -132,6 +132,13 @@ PYTHON
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5555 -m comment --comment "codex-account-$family-$expected_uid"
     docker exec "$node" "$tool" -I CODEX-EGRESS 1 -s "$source_ip" -d "$target" -p tcp --dport 5556 -m comment --comment "codex-proxy-$family-$expected_uid"
     echo "$phase IPv$family allowed GET"
+    if [ "$family" = 4 ]; then loopback=127.0.0.1; else loopback='[::1]'; fi
+    if ! docker run --rm --network "container:$node" --entrypoint wget "$image" -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$loopback:5556/regions"; then
+      echo "$phase IPv$family fake proxy listener is unavailable" >&2
+      docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' "boundary-proxy$family" || true
+      docker logs "boundary-proxy$family" 2>&1 || true
+      exit 1
+    fi
     if [ "$family" = 6 ]; then
       echo "$phase IPv6 neighbor counters before allowed GET"
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS | awk '/codex-icmpv6-/ {print "packets=" $1, $(NF-1)}'
@@ -143,6 +150,7 @@ PYTHON
     if ! "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- wget -q -T 3 -O /dev/null --header='X-Api-Key: fixture-key' --header='X-Api-Secret-Key: fixture-secret' "http://$host:5556/regions"; then
       echo "$phase IPv$family allowed path remained unavailable; fake-only diagnostics follow" >&2
       docker exec "$node" "$tool" -nvx -L CODEX-EGRESS || true
+      docker inspect --format 'proxy status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' "boundary-proxy$family" || true
       docker logs "boundary-proxy$family" 2>&1 || true
       "$kubectl" -n upbound-system exec "$candidate" -c boundary-probe -- ip -"$family" route || true
       if [ "$family" = 6 ]; then
