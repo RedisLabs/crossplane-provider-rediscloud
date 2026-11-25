@@ -73,6 +73,14 @@ jobs:
           # of identity propagation across API servers or nodes.
           for role in control selected; do
             if [ "$role" = selected ]; then label=selected; else label=unselected; fi
+            if [ "$role" = selected ]; then
+              cilium_pod=$("$kubectl" -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+              test -n "$cilium_pod"
+              "$kubectl" -n kube-system exec "$cilium_pod" -c cilium-agent -- cilium-dbg monitor --type drop --json >"$RUNNER_TEMP/drop-events.jsonl" 2>"$RUNNER_TEMP/drop-monitor.err" &
+              monitor_pid=$!
+              sleep 3
+              kill -0 "$monitor_pid"
+            fi
             cat <<YAML | "$kubectl" apply -f -
           apiVersion: v1
           kind: Pod
@@ -102,6 +110,34 @@ jobs:
               printf '%s\n' "$log" >&2
               exit 1
             fi
+            if [ "$role" = selected ]; then
+              kill -0 "$monitor_pid"
+              selected_ip=$("$kubectl" -n cni-fixture get pod first-action-selected -o jsonpath='{.status.podIP}')
+              test -n "$selected_ip"
+              # The selected probe has sent only its first scripted wget so far.
+              # Match its fake exact flow and the Cilium policy-denied reason.
+              python3 - "$RUNNER_TEMP/drop-events.jsonl" "$selected_ip" "$server_ip" <<'PY'
+          import json, pathlib, sys
+          path, source, destination = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+          matches = []
+          for line in path.read_text().splitlines():
+              try:
+                  event = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              summary = event.get('summary') or {}
+              l3, l4 = summary.get('l3') or {}, summary.get('l4') or {}
+              if (event.get('type') == 'drop' and event.get('reason') == 'Policy denied'
+                      and l3.get('src') == source and l3.get('dst') == destination
+                      and l4.get('dst') == '5000' and summary.get('tcp')):
+                  matches.append(event)
+          if not matches:
+              raise SystemExit('missing exact fake initial-flow Cilium policy-denied event')
+          print('Cilium reported policy-denied for the selected fake first-attempt flow.')
+          PY
+              kill "$monitor_pid" || true
+              wait "$monitor_pid" || true
+            fi
           done
           "$kubectl" -n cni-fixture delete networkpolicy selected-egress-deny
           # Same selected pod and endpoint must become reachable after removing
@@ -111,4 +147,4 @@ jobs:
             sleep 1
           done
           "$kubectl" -n cni-fixture exec first-action-selected -- wget -q -T 3 -O /dev/null "http://$server_ip:5000/v2/"
-          echo 'Fake sampled first action failed; unselected and same-pod removal controls reached endpoint. Cause not independently attributed to policy.'
+          echo 'Fake sampled first flow had a policy-denied event; unselected and same-pod removal controls reached endpoint.'
