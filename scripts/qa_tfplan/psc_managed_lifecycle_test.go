@@ -29,9 +29,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	fixtureResponseKey      = "response"
+	fixtureResourceKey      = "resource"
+	fixtureTerraformVersion = "1.5.7"
+)
+
 // This fixture starts with an existing fake Pro parent. All writes target the
 // local fake PSC service; no AWS, Cloud account or live lock is exercised.
-func TestPSCManagedServiceLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
+func TestPSCManagedServiceLifecycleLoopback(t *testing.T) {
+	runPSCManagedService(t, false)
+}
+
+func TestPSCManagedServiceFailureLoopback(t *testing.T) {
+	runPSCManagedService(t, true)
+}
+
+func runPSCManagedService(t *testing.T, injectFailure bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("provider acceptance fixture runs only in GitHub Actions")
 	}
@@ -44,7 +58,7 @@ func TestPSCManagedServiceLifecycleLoopback(t *testing.T) { //nolint:gocyclo // 
 	}
 	const path = "/v1/subscriptions/1/private-service-connect"
 	var mu sync.Mutex
-	exists, created, deleted, unexpected, failCreate := false, false, false, false, true
+	exists, created, deleted, unexpected, failCreate := false, false, false, false, injectFailure
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -62,9 +76,9 @@ func TestPSCManagedServiceLifecycleLoopback(t *testing.T) { //nolint:gocyclo // 
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == path && exists:
-			response = map[string]any{"taskId": "get-link"}
+			response = map[string]any{fixtureTaskKey: "get-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-link" && exists:
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{"id": 7, fixtureStatusKey: "active"}}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: "active"}}}
 		case r.Method == http.MethodPost && r.URL.Path == path && !exists && !created:
 			if failCreate {
 				failCreate = false
@@ -72,14 +86,14 @@ func TestPSCManagedServiceLifecycleLoopback(t *testing.T) { //nolint:gocyclo // 
 				return
 			}
 			exists, created = true, true
-			response = map[string]any{"taskId": "create-link"}
+			response = map[string]any{fixtureTaskKey: "create-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-link" && created:
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 7}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{"resourceId": 7}}
 		case r.Method == http.MethodDelete && r.URL.Path == path && exists && !deleted:
 			exists, deleted = false, true
-			response = map[string]any{"taskId": "delete-link"}
+			response = map[string]any{fixtureTaskKey: "delete-link"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete-link" && deleted:
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		default:
 			unexpected = true
 			http.Error(w, "unexpected fixture request", http.StatusForbidden)
@@ -119,7 +133,7 @@ func TestPSCManagedServiceLifecycleLoopback(t *testing.T) { //nolint:gocyclo // 
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_private_service_connect"], ujcontroller.WithCallbackProvider(callback))
@@ -153,15 +167,28 @@ func TestPSCManagedServiceLifecycleLoopback(t *testing.T) { //nolint:gocyclo // 
 		}
 		t.Fatalf("%s callback not observed", label)
 	}
-	await("injected create failure", true)
-	mu.Lock()
-	if exists || created || unexpected {
+	if injectFailure {
+		await("injected create failure", true)
+		mu.Lock()
+		if exists || created || unexpected {
+			mu.Unlock()
+			t.Fatal("failed create unexpectedly mutated fixture")
+		}
 		mu.Unlock()
-		t.Fatal("failed create unexpectedly mutated fixture")
+		for i := 0; i < 3; i++ {
+			if _, err := rec.Reconcile(context.Background(), req); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if exists || created || unexpected {
+			t.Fatal("uncertain create was automatically replayed")
+		}
+		t.Log("SIMULATED: service create failure remained fenced; recovery requires an independent absence check")
+		return
 	}
-	mu.Unlock()
-	t.Log("SIMULATED: service create failure did not mutate fake API")
-	await("create retry", false)
+	await("create", false)
 	for i := 0; i < 6; i++ {
 		if _, err := rec.Reconcile(context.Background(), req); err != nil {
 			t.Fatal(err)

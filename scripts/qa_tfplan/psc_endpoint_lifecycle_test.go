@@ -60,21 +60,21 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1":
 			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: "active"}
 		case r.Method == http.MethodGet && r.URL.Path == parentPath:
-			response = map[string]any{"taskId": "get-service"}
+			response = map[string]any{fixtureTaskKey: "get-service"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-service":
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{"id": 7, fixtureStatusKey: "active"}}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: "active"}}}
 		case r.Method == http.MethodGet && r.URL.Path == path:
-			response = map[string]any{"taskId": "get-endpoints"}
+			response = map[string]any{fixtureTaskKey: "get-endpoints"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-endpoints":
 			endpoints := []any{}
 			if exists {
 				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: "initialized"})
 			}
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{"pscServiceId": 7, "endpoints": endpoints}}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"pscServiceId": 7, "endpoints": endpoints}}}
 		case r.Method == http.MethodGet && r.URL.Path == path+"/endpoints/8/creationScripts" && exists:
-			response = map[string]any{"taskId": "get-script"}
+			response = map[string]any{fixtureTaskKey: "get-script"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-script" && exists:
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resource": map[string]any{"script": map[string]any{"terraformGcp": map[string]any{"serviceAttachments": []any{}}}}}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"script": map[string]any{"terraformGcp": map[string]any{"serviceAttachments": []any{}}}}}}
 		case r.Method == http.MethodPost && r.URL.Path == path && !exists && !created:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["gcpProjectId"] != "fixture-project" || body["gcpVpcName"] != "fixture-vpc" || body["gcpVpcSubnetName"] != "fixture-subnet" || body["endpointConnectionName"] != "fixture-prefix" {
@@ -83,14 +83,14 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				return
 			}
 			exists, created = true, true
-			response = map[string]any{"taskId": "create-endpoint"}
+			response = map[string]any{fixtureTaskKey: "create-endpoint"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-endpoint" && created:
-			response = map[string]any{fixtureStatusKey: "processing-completed", "response": map[string]any{"resourceId": 8}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{"resourceId": 8}}
 		case r.Method == http.MethodDelete && r.URL.Path == path+"/endpoints/8" && exists && !deleted:
 			exists, deleted = false, true
-			response = map[string]any{"taskId": "delete-endpoint"}
+			response = map[string]any{fixtureTaskKey: "delete-endpoint"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete-endpoint" && deleted:
-			response = map[string]any{fixtureStatusKey: "processing-completed"}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		default:
 			unexpected = true
 			http.Error(w, "unexpected fixture request", http.StatusForbidden)
@@ -135,7 +135,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
-		return terraform.Setup{Version: "1.5.7", Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
+		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_private_service_connect_endpoint"], ujcontroller.WithCallbackProvider(callback))
@@ -219,7 +219,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			t.Fatalf("fake parent/list read %s status=%d", target, response.StatusCode)
 		}
 	}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 15; i++ {
 		if _, err := rec.Reconcile(context.Background(), req); err != nil {
 			t.Fatal(err)
 		}
@@ -234,6 +234,11 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		if err != nil {
 			t.Fatal(err)
 		}
+		time.Sleep(time.Second)
 	}
-	t.Fatal("managed PSC object still exists after delete")
+	current := &api.ServiceConnectEndpoint{}
+	if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("managed PSC object still exists after delete; finalizers=%v conditions=%v", current.Finalizers, current.Status.Conditions)
 }
