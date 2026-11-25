@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           go test -c -o "$RUNNER_TEMP/readonly-regions.test" ./internal/controller/lookup
-          "$RUNNER_TEMP/readonly-regions.test" -test.run '^TestReadonly(Region|Payment|ACL|ACLRole)TransportRejectsUnsafeRequests$' -test.v
+          "$RUNNER_TEMP/readonly-regions.test" -test.run '^TestReadonly(Region|Payment|ACL|ACLRole|ACLUser)TransportRejectsUnsafeRequests$' -test.v
       - name: Record binary digest
         id: digest
         run: echo "sha256=$(sha256sum "$RUNNER_TEMP/readonly-regions.test" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -74,12 +74,12 @@ jobs:
           set -euo pipefail
           test "$(sha256sum "$RUNNER_TEMP/readonly-regions/readonly-regions.test" | cut -d' ' -f1)" = "$EXPECTED_DIGEST"
           chmod 700 "$RUNNER_TEMP/readonly-regions/readonly-regions.test"
-      - name: Read regions, payment method and ACL through Crossplane
+      - name: Read ACL user through Crossplane
         env:
           UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
           QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
           QA_READONLY_REGIONS: '1'
-        run: '"$RUNNER_TEMP/readonly-regions/readonly-regions.test" -test.run "^TestLiveReadonly(Regions|PaymentMethod|ACLRule|ACLRole)$" -test.v'
+        run: '"$RUNNER_TEMP/readonly-regions/readonly-regions.test" -test.run "^TestLiveReadonlyACLUser$" -test.v'
 
   detect-noop:
     runs-on: ubuntu-24.04

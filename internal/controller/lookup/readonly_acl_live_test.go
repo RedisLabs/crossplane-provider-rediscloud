@@ -58,7 +58,7 @@ func TestLiveReadonlyACLRule(t *testing.T) { //nolint:gocyclo // Fail closed on 
 	guard := &regionReadGuard{origin: u.Host, path: "/v1/acl/redisRules", next: old}
 	http.DefaultTransport = guard
 	defer func() { http.DefaultTransport = old }()
-	api, err := newAPI(clients.Credentials{APIKey: creds["api_key"], SecretKey: creds["secret_key"], URL: creds["url"]})
+	api, err := newAPI(clients.Credentials{APIKey: creds[readonlyAPIKeyField], SecretKey: creds[readonlySecretKeyField], URL: creds[readonlyURLField]})
 	if err != nil {
 		t.Fatal("ACL preflight client failed")
 	}

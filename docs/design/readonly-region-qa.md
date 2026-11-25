@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Exercise the real Regions, PaymentMethod, ACLRule and ACLRole reconcilers against the existing QA
+Exercise the real Regions, PaymentMethod, ACLRule, ACLRole and ACLUser reconcilers against the existing QA
 account with an in-memory Kubernetes client. Per-case fail-closed HTTP transports
 permit only the exact GET route at an independently allowlisted HTTPS origin and
 reject redirects.
@@ -34,9 +34,14 @@ The ACL role case applies the same unique-selector and no-match checks to the
 role catalog, including the returned bindings, without logging role names, IDs
 or bindings. It sends three independently guarded GETs; an empty or ambiguous
 catalog blocks the case.
+The targeted ACL user case uses the same approach for `/v1/acl/users`, compares
+the unique user and role in memory, then verifies a nonmatching filter clears
+status. It logs no user names, IDs or role values; missing selectors block it.
+This dispatch targets ACL user only; earlier results for the other cases retain
+their own run links, including the blocked ACL role result.
 
 Each test creates its own guard for exactly one allowed path: `/v1/regions` or
-`/v1/payment-methods`, `/v1/acl/redisRules`, or `/v1/acl/roles`. The guard rejects other methods, hosts, paths, queries, request bodies, plaintext
+`/v1/payment-methods`, `/v1/acl/redisRules`, `/v1/acl/roles`, or `/v1/acl/users`. The guard rejects other methods, hosts, paths, queries, request bodies, plaintext
 and any redirect before following it. The QA URL must match the independently
 configured origin hashes used by the existing QA harness; the binary additionally
 requires an opt-in GitHub Actions run in this repository. The guard is an

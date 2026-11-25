@@ -39,6 +39,12 @@ type regionReadGuard struct {
 	allowed, denied, ok atomic.Int32
 }
 
+const (
+	readonlyAPIKeyField    = "api_key"
+	readonlySecretKeyField = "secret_key"
+	readonlyURLField       = "url"
+)
+
 func (g *regionReadGuard) RoundTrip(r *http.Request) (*http.Response, error) { //nolint:gocyclo // Each condition is a distinct fail-closed request boundary.
 	if r.Method != http.MethodGet || r.URL.Scheme != "https" || r.URL.Host != g.origin || r.URL.Path != g.path || r.URL.RawQuery != "" || r.URL.User != nil || r.Body != nil {
 		g.denied.Add(1)
@@ -111,10 +117,10 @@ func readonlyQACredentials(t *testing.T) (map[string]string, *url.URL, []byte) {
 	}
 	var creds map[string]string
 	raw := os.Getenv("UPTEST_CLOUD_CREDENTIALS")
-	if json.Unmarshal([]byte(raw), &creds) != nil || creds["api_key"] == "" || creds["secret_key"] == "" {
+	if json.Unmarshal([]byte(raw), &creds) != nil || creds[readonlyAPIKeyField] == "" || creds[readonlySecretKeyField] == "" {
 		t.Fatal("QA credentials unavailable")
 	}
-	u, err := url.Parse(creds["url"])
+	u, err := url.Parse(creds[readonlyURLField])
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || strings.TrimRight(u.Path, "/") != "/v1" || u.RawQuery != "" || u.Fragment != "" {
 		t.Fatal("QA endpoint invalid")
 	}
@@ -131,7 +137,7 @@ func readonlyQACredentials(t *testing.T) (map[string]string, *url.URL, []byte) {
 	if !allowed {
 		t.Fatal("QA origin is not independently allowlisted")
 	}
-	creds["url"] = strings.TrimRight(creds["url"], "/")
+	creds[readonlyURLField] = strings.TrimRight(creds[readonlyURLField], "/")
 	encoded, err := json.Marshal(creds)
 	if err != nil {
 		t.Fatal("QA credentials could not be normalized")
