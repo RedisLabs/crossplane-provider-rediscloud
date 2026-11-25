@@ -30,7 +30,7 @@ import (
 
 const exampleProviderConfig = "default"
 
-func TestPaymentMethodReconcileWritesID(t *testing.T) {
+func TestPaymentMethodReconcileWritesID(t *testing.T) { //nolint:gocyclo // Keep the request and reconciler assertions together.
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
