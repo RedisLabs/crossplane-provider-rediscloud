@@ -60,7 +60,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) {
+func TestReadonlyRegionTransportRejectsUnsafeRequests(t *testing.T) { //nolint:gocyclo // Exercise every rejected request and redirect in one isolated guard test.
 	const fixtureURL = "https://qa.example.test/v1/regions"
 	var forwarded atomic.Int32
 	guard := &regionReadGuard{origin: "qa.example.test", next: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -147,8 +147,8 @@ func TestLiveReadonlyRegions(t *testing.T) { //nolint:gocyclo // Fail closed at 
 			t.Fatal("unable to initialize in-memory schema")
 		}
 	}
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "readonly-secret", Namespace: "crossplane-system"}, Data: map[string][]byte{secretDataKey: encoded}}
-	config := &v1beta1.ProviderConfig{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1beta1.ProviderConfigSpec{Credentials: v1beta1.ProviderCredentials{Source: xpv1.CredentialsSourceSecret, CommonCredentialSelectors: xpv1.CommonCredentialSelectors{SecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Name: "readonly-secret", Namespace: "crossplane-system"}, Key: secretDataKey}}}}}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "readonly-secret", Namespace: "qa-readonly"}, Data: map[string][]byte{secretDataKey: encoded}}
+	config := &v1beta1.ProviderConfig{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1beta1.ProviderConfigSpec{Credentials: v1beta1.ProviderCredentials{Source: xpv1.CredentialsSourceSecret, CommonCredentialSelectors: xpv1.CommonCredentialSelectors{SecretRef: &xpv1.SecretKeySelector{SecretReference: xpv1.SecretReference{Name: "readonly-secret", Namespace: "qa-readonly"}, Key: secretDataKey}}}}}
 	for _, provider := range []string{"AWS", "GCP"} {
 		region := &lookupv1alpha1.Regions{ObjectMeta: metav1.ObjectMeta{Name: "qa-regions"}, Spec: lookupv1alpha1.RegionsSpec{ProviderConfigRef: xpv1.Reference{Name: "default"}, ForProvider: lookupv1alpha1.RegionsParameters{ProviderName: &provider}}}
 		kube := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(region).WithObjects(secret.DeepCopy(), config.DeepCopy(), region).Build()
