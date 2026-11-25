@@ -42,12 +42,12 @@ func TestProSubscriptionHTTPSRedirectsAndTransportError(t *testing.T) { //nolint
 			calls := 0
 			transport := proFixtureTransport(func(r *http.Request) (*http.Response, error) {
 				calls++
-				if r.URL.Host != "fixture.invalid" || r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+				if r.URL.Host != "fixture.invalid" || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != "secret" {
 					t.Error("unexpected target or missing fixture credentials")
 				}
 				return &http.Response{StatusCode: tt.code, Header: http.Header{"Location": []string{tt.location}}, Body: io.NopCloser(strings.NewReader("fixture-sensitive-body")), Request: r}, nil
 			})
-			api, err := rediscloud.NewClient(rediscloud.Auth("key", "secret"), rediscloud.BaseURL("https://fixture.invalid"), rediscloud.Transporter(noRedirectTransport{next: transport}))
+			api, err := rediscloud.NewClient(rediscloud.Auth(exampleAPIKey, "secret"), rediscloud.BaseURL("https://fixture.invalid"), rediscloud.Transporter(noRedirectTransport{next: transport}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,7 +62,7 @@ func TestProSubscriptionHTTPSRedirectsAndTransportError(t *testing.T) { //nolint
 		transport := proFixtureTransport(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("fixture-sensitive-transport-error")
 		})
-		api, err := rediscloud.NewClient(rediscloud.Auth("key", "secret"), rediscloud.BaseURL("https://fixture.invalid"), rediscloud.Transporter(noRedirectTransport{next: transport}))
+		api, err := rediscloud.NewClient(rediscloud.Auth(exampleAPIKey, "secret"), rediscloud.BaseURL("https://fixture.invalid"), rediscloud.Transporter(noRedirectTransport{next: transport}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) { //nolint:gocycl
 			calls := 0
 			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
-				if r.Method != http.MethodGet || r.URL.Path != "/subscriptions/123" || r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+				if r.Method != http.MethodGet || r.URL.Path != "/subscriptions/123" || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != "secret" {
 					t.Errorf("unexpected or unauthenticated request %s %s", r.Method, r.URL.Path)
 					http.Error(w, "denied", http.StatusForbidden)
 					return
@@ -137,7 +137,7 @@ func TestProSubscriptionRejectsRedirectWithoutLeakingCredentials(t *testing.T) {
 	t.Cleanup(target.Close)
 	obj := &lookupv1alpha1.ProSubscription{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.ProSubscriptionSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}, Status: lookupv1alpha1.ProSubscriptionStatus{AtProvider: lookupv1alpha1.ProSubscriptionObservation{ID: "stale"}}}
 	kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+		if r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != "secret" {
 			t.Error("origin did not receive fixture credentials")
 		}
 		http.Redirect(w, r, target.URL+"/unexpected", http.StatusFound)
