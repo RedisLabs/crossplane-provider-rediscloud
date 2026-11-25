@@ -20,6 +20,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintln(os.Stderr, "fixture-region-get")
 		_, _ = fmt.Fprint(w, `{"regions":[{"id":22,"name":"us-central1","provider":"GCP"}]}`)
 	})}
 	if err := server.ListenAndServe(); err != nil {

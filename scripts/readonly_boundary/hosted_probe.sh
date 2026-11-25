@@ -95,6 +95,7 @@ PY
 )
 curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' "http://$ip4:5000/v2/provider-rediscloud/manifests/$digest" -o "$RUNNER_TEMP/boundary-registry-manifest.json"
 echo "${digest#sha256:}  $RUNNER_TEMP/boundary-registry-manifest.json" | sha256sum -c -
+export EXPECTED_RUNTIME_DIGEST="$digest"
 docker exec "$node" sh -c 'printf "[host.\"http://127.0.0.1:5000\"]\n" > /etc/containerd/certs.d/registry.localhost:5000/hosts.toml'
 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/boundary-proxy" ./proof-source/scripts/readonly_boundary/fake_proxy.go
 docker run -d --name boundary-proxy --network "container:$node" -v "$RUNNER_TEMP/boundary-proxy:/fixture:ro" -e LISTEN_ADDRESS=:5556 --entrypoint /fixture "$image" >/dev/null
@@ -320,8 +321,44 @@ PYTHON
   done
   test "$("$kubectl" -n upbound-system get pod "$candidate" -o jsonpath='{.metadata.uid}')" = "$expected_uid"
 }
+fixture_count() {
+  docker logs boundary-proxy 2>&1 | python3 -c 'import sys; print(sum(line.strip() == "fixture-region-get" for line in sys.stdin))'
+}
+wait_controller_lookup() {
+  local before=$1 phase=$2 current
+  for attempt in $(seq 1 90); do
+    current=$(fixture_count)
+    if [ "$current" -gt "$before" ] && "$kubectl" get regions.lookup.redis.io boundary-gcp -o json | python3 -c '
+import json, sys
+obj = json.load(sys.stdin)
+status = obj.get("status", {})
+regions = status.get("atProvider", {}).get("regions", [])
+ready = any(c.get("type") == "Ready" and c.get("status") == "True" for c in status.get("conditions", []))
+sys.exit(0 if ready and regions == [{"regionId": "22", "name": "us-central1", "providerName": "GCP"}] else 1)
+'; then
+      echo "$phase actual controller returned the expected fake region through the allowed proxy"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "$phase actual controller lookup did not reconcile through the fake proxy" >&2
+  return 1
+}
 uid=$("$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.metadata.uid}')
 probe "$pod" "$uid" original
+before=$(fixture_count)
+# The only credentials in this disposable Kind cluster are fixed fake values.
+python3 - "$ip4" <<'PY' | "$kubectl" apply -f -
+import json, sys
+credentials = json.dumps({'api_key': 'fixture-key', 'secret_key': 'fixture-secret', 'url': f'http://{sys.argv[1]}:5556'})
+objects = [
+    {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'boundary-fixture', 'namespace': 'upbound-system'}, 'stringData': {'credentials': credentials}},
+    {'apiVersion': 'rediscloud.redis.io/v1beta1', 'kind': 'ProviderConfig', 'metadata': {'name': 'boundary-fixture'}, 'spec': {'credentials': {'source': 'Secret', 'secretRef': {'name': 'boundary-fixture', 'namespace': 'upbound-system', 'key': 'credentials'}}}},
+    {'apiVersion': 'lookup.redis.io/v1alpha1', 'kind': 'Regions', 'metadata': {'name': 'boundary-gcp'}, 'spec': {'providerConfigRef': {'name': 'boundary-fixture'}, 'forProvider': {'providerName': 'GCP', 'name': 'us-central1'}}},
+]
+json.dump({'apiVersion': 'v1', 'kind': 'List', 'items': objects}, sys.stdout)
+PY
+wait_controller_lookup "$before" original
 "$kubectl" -n upbound-system delete pod "$pod" --wait=true
 for attempt in $(seq 1 120); do
   "$kubectl" -n upbound-system get pods -o json > "$RUNNER_TEMP/boundary-pods.json"
@@ -356,5 +393,15 @@ fi
 replacement=$(cat "$RUNNER_TEMP/replacement-name")
 new_uid=$("$kubectl" -n upbound-system get pod "$replacement" -o jsonpath='{.metadata.uid}')
 test "$new_uid" != "$uid"
+"$kubectl" -n upbound-system get pod "$replacement" -o json | python3 -c '
+import json, os, sys
+pod = json.load(sys.stdin)
+ids = [c.get("imageID", "").rsplit("@", 1)[-1] for c in pod.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime" and c.get("ready")]
+sys.exit(0 if ids == [os.environ["EXPECTED_RUNTIME_DIGEST"]] else 1)
+'
 probe "$replacement" "$new_uid" replacement
+"$kubectl" patch regions.lookup.redis.io boundary-gcp --subresource=status --type=merge -p '{"status":{"atProvider":{"regions":[]},"conditions":[]}}' >/dev/null
+before=$(fixture_count)
+"$kubectl" annotate regions.lookup.redis.io boundary-gcp fixture-phase=after-replacement --overwrite >/dev/null
+wait_controller_lookup "$before" replacement
 echo 'Credential-free IPv4/IPv6 node proxy and node-denial probes passed for the original and replacement provider pods. This does not establish full API/RBAC or live QA safety.'
