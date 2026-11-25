@@ -95,3 +95,32 @@ These five are not one list or one get plus a client-side filter. A lookup of th
 ## Rollout
 
 The CRDs install with the provider package. The package manager grants the provider access to those CRDs. Existing managed resources are unchanged. Rollback is reverting the pull request. Already-applied lookup objects become unknown kinds after the CRDs are removed.
+
+## Pro subscription identity lookup
+
+Date: 25 November 2026. Status: Proposed.
+
+`ProSubscription` accepts a required numeric `subscriptionId` and performs one
+`GET /subscriptions/{id}` using the existing ProviderConfig. It publishes only
+id, name, status and deployment type. The controller rejects a missing or
+mismatched response id and any deployment type other than `single-region`;
+errors clear stale status, and deletion issues no Cloud request. This is an
+identity/status lookup, not a replacement for Terraform's full
+`rediscloud_subscription` data source: maintenance and pricing are deliberately
+not read or represented.
+
+The shared lookup HTTP transport denies redirects before the SDK can issue a
+second authenticated request. This applies to all lookup controllers, not the
+managed-resource clients. Pro subscription API failures use a fixed condition
+message so response bodies and transport errors cannot leak into CR status.
+
+Credential-free controller tests should verify the authenticated GET, rejected
+identities and types, API errors, stale status clearing, and no request on
+resource deletion. Live behavior requires a separately authorized GET-only
+qualification. No Redis Cloud resource is created, modified or deleted.
+
+The lookup adds a CRD and controller registration; rollback removes both. There
+is no new ADR or BDR: this extends the existing read-only lookup pattern and
+uses the already supported subscription endpoint. An open question is whether
+future consumers need maintenance or pricing; those fields require their own
+explicit contract and tests rather than being inferred here.
