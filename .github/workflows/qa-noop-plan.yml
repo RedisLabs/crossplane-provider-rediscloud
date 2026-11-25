@@ -29,4 +29,4 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          go test ./scripts/qa_tfplan -count=1 -v
+          python3 acceptance/crossplane_plan_adapter.py
