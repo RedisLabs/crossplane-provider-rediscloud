@@ -34,7 +34,7 @@ func TestPrivateLinkReadOnlyFailureAndRecovery(t *testing.T) { //nolint:gocyclo 
 				mu.Lock()
 				defer mu.Unlock()
 				calls = append(calls, r.Method+" "+r.URL.Path)
-				if r.Method != http.MethodGet || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != "secret" {
+				if r.Method != http.MethodGet || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
 					t.Errorf("unexpected method or credentials on %s", r.URL.Path)
 					http.Error(w, "forbidden", http.StatusForbidden)
 					return

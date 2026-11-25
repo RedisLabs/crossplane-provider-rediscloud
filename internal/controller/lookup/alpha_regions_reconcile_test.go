@@ -33,7 +33,7 @@ func TestAlphaRegionLookup(t *testing.T) { //nolint:gocyclo // Keep the GET-only
 					http.Error(w, "GET regions only", http.StatusMethodNotAllowed)
 					return
 				}
-				if r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != "secret" {
+				if r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
 					t.Error("dummy credentials were not sent")
 					http.Error(w, "authentication required", http.StatusForbidden)
 					return
