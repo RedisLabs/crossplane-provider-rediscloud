@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = b3e5f4c9a291553f96a65a0e2643b28ef9188937; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 6be53081e30f51e8d2d5fbbe8e80916a86c77a43; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
@@ -187,6 +187,77 @@ jobs:
           "$kubectl" -n upbound-system cp -c package-runtime "$runtime_pod:/usr/local/bin/provider" "$RUNNER_TEMP/running-provider"
           cmp _output/bin/linux_amd64/provider "$RUNNER_TEMP/running-provider"
           echo "Provider binary in running pod matches the binary built from the pinned source."
+      - name: Probe installed-provider node relay and API permissions (partial proof)
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl=.cache/tools/linux_x86_64/kubectl-v1.33.5
+          runtime_pod=$(cat "$RUNNER_TEMP/provider-pod.txt")
+          "$kubectl" -n upbound-system get pod "$runtime_pod" -o json > "$RUNNER_TEMP/provider-identity.json"
+          python3 - "$RUNNER_TEMP/provider-identity.json" "$RUNNER_TEMP/provider-identity.env" <<'PYTHON'
+          import ipaddress, json, pathlib, re, sys
+          pod = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          spec, metadata, status = pod["spec"], pod["metadata"], pod["status"]
+          if spec.get("hostNetwork", False) or status.get("phase") != "Running":
+              raise SystemExit("provider must be a running non-host-network pod")
+          ip = str(ipaddress.IPv4Address(status["podIP"]))
+          fields = {"POD_UID": metadata["uid"], "POD_IP": ip, "NODE": spec["nodeName"], "SA": spec["serviceAccountName"]}
+          if any(not re.fullmatch(r"[a-zA-Z0-9.:-]+", value) for value in fields.values()):
+              raise SystemExit("invalid provider identity")
+          pathlib.Path(sys.argv[2]).write_text("".join(f"{key}={value}\n" for key, value in fields.items()))
+          PYTHON
+          source "$RUNNER_TEMP/provider-identity.env"
+          test "$NODE" = local-dev-control-plane
+          node_ip=$("$kubectl" get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+          python3 - "$node_ip" <<'PYTHON'
+          import ipaddress, sys
+          ipaddress.IPv4Address(sys.argv[1])
+          PYTHON
+          image='registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373'
+          docker run -d --rm --name node-relay-fixture --network "container:$NODE" -e REGISTRY_HTTP_ADDR=0.0.0.0:5555 "$image" >/dev/null
+          cleanup() {
+            docker exec "$NODE" iptables -D INPUT -s "$POD_IP/32" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe -j REJECT 2>/dev/null || true
+            docker stop node-relay-fixture >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 60); do
+            if docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/; then break; fi
+            sleep 1
+          done
+          docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
+          "$kubectl" -n upbound-system debug "pod/$runtime_pod" --container=node-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200'
+          for attempt in $(seq 1 60); do
+            if "$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="node-probe")].state.running.startedAt}' | grep -q .; then break; fi
+            sleep 1
+          done
+          test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
+          "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- wget -q -T 3 -O /dev/null "http://$node_ip:5555/v2/"
+          echo "Provider pod network can reach the independently verified node listener before firewalling."
+          docker exec "$NODE" iptables -I INPUT 1 -s "$POD_IP/32" -p tcp --dport 5555 -m comment --comment codex-provider-node-probe -j REJECT
+          mapfile -t before < <(docker exec "$NODE" iptables -nvx -L INPUT | awk '/codex-provider-node-probe/ {print $1}')
+          test "${#before[@]}" -eq 1 && [[ "${before[0]}" =~ ^[0-9]+$ ]]
+          "$kubectl" -n upbound-system exec "$runtime_pod" -c node-probe -- /bin/sh -c 'if wget -q -T 3 -O /dev/null "http://$1:5555/v2/"; then exit 42; else exit 0; fi' -- "$node_ip"
+          mapfile -t after < <(docker exec "$NODE" iptables -nvx -L INPUT | awk '/codex-provider-node-probe/ {print $1}')
+          test "${#after[@]}" -eq 1 && [[ "${after[0]}" =~ ^[0-9]+$ ]] && (( after[0] > before[0] ))
+          docker run --rm --network "container:$NODE" --entrypoint wget "$image" -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
+          test "$("$kubectl" -n upbound-system get pod "$runtime_pod" -o jsonpath='{.metadata.uid}')" = "$POD_UID"
+          echo "One IPv4 node-listener port was blocked; this is not a full egress boundary."
+          for rule in 'create pods' 'create pods/exec' 'create pods/portforward' 'get pods/proxy' 'get services/proxy' 'create networkpolicies.networking.k8s.io'; do
+            read -r verb resource <<< "$rule"
+            set +e
+            answer=$("$kubectl" auth can-i "$verb" "$resource" --as="system:serviceaccount:upbound-system:$SA" --all-namespaces 2>"$RUNNER_TEMP/auth-error")
+            auth_rc=$?
+            set -e
+            if [ -s "$RUNNER_TEMP/auth-error" ]; then echo "API permission check failed" >&2; exit 1; fi
+            if [ "$answer" = yes ] && [ "$auth_rc" -eq 0 ]; then
+              echo "Potential API relay/policy permission allowed: $rule"
+            elif [ "$answer" = no ] && [ "$auth_rc" -eq 1 ]; then
+              echo "API relay/policy permission denied: $rule"
+            else
+              echo "Unexpected API permission check outcome" >&2; exit 1
+            fi
+          done
+          echo "Partial credential-free observation only. Do not enable live QA until full egress, startup/replacement, IPv6 and RBAC boundaries are proven."
       - name: Preserve package and OCI manifest
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
