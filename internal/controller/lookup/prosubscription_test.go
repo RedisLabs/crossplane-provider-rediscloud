@@ -7,6 +7,9 @@ package lookup
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,6 +71,53 @@ func TestProSubscriptionLookupReadOnlyAndFailure(t *testing.T) { //nolint:gocycl
 				t.Fatalf("failure did not clear stale status: %+v", got.Status.AtProvider)
 			}
 		})
+	}
+}
+
+func TestProSubscriptionRejectsRedirectWithoutLeakingCredentials(t *testing.T) {
+	var targetCalls atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetCalls.Add(1)
+	}))
+	t.Cleanup(target.Close)
+	obj := &lookupv1alpha1.ProSubscription{ObjectMeta: metav1.ObjectMeta{Name: "subject"}, Spec: lookupv1alpha1.ProSubscriptionSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}, Status: lookupv1alpha1.ProSubscriptionStatus{AtProvider: lookupv1alpha1.ProSubscriptionObservation{ID: "stale"}}}
+	kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+			t.Error("origin did not receive fixture credentials")
+		}
+		http.Redirect(w, r, target.URL+"/unexpected", http.StatusFound)
+	}), obj)
+	result, err := (&ProSubscriptionReconciler{Client: kube}).Reconcile(context.Background(), request("subject"))
+	if err != nil || result.RequeueAfter != requeueFailed || targetCalls.Load() != 0 {
+		t.Fatalf("redirect was followed or failed to requeue: calls=%d result=%+v err=%v", targetCalls.Load(), result, err)
+	}
+	got := &lookupv1alpha1.ProSubscription{}
+	if err = kube.Get(context.Background(), types.NamespacedName{Name: "subject"}, got); err != nil || got.Status.AtProvider.ID != "" || got.Status.GetCondition(xpv1.TypeReady).Status != "False" {
+		t.Fatal("redirect did not clear status and mark lookup unavailable")
+	}
+}
+
+func TestProSubscriptionDoesNotExposeAPIErrorBody(t *testing.T) {
+	const sentinel = "fixture-sensitive-error-body"
+	obj := &lookupv1alpha1.ProSubscription{ObjectMeta: metav1.ObjectMeta{Name: "subject"}, Spec: lookupv1alpha1.ProSubscriptionSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}, Status: lookupv1alpha1.ProSubscriptionStatus{AtProvider: lookupv1alpha1.ProSubscriptionObservation{ID: "stale"}}}
+	kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, sentinel, http.StatusForbidden)
+	}), obj)
+	result, err := (&ProSubscriptionReconciler{Client: kube}).Reconcile(context.Background(), request("subject"))
+	if err != nil || result.RequeueAfter != requeueFailed {
+		t.Fatal("failed API read did not requeue")
+	}
+	got := &lookupv1alpha1.ProSubscription{}
+	if err = kube.Get(context.Background(), types.NamespacedName{Name: "subject"}, got); err != nil {
+		t.Fatal(err)
+	}
+	for _, condition := range got.Status.Conditions {
+		if strings.Contains(condition.Message, sentinel) {
+			t.Fatal("API response body leaked into status")
+		}
+	}
+	if got.Status.AtProvider.ID != "" || got.Status.GetCondition(xpv1.TypeReady).Status != "False" {
+		t.Fatal("API failure did not clear status and mark lookup unavailable")
 	}
 }
 

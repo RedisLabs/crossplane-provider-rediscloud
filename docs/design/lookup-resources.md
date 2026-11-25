@@ -109,6 +109,11 @@ identity/status lookup, not a replacement for Terraform's full
 `rediscloud_subscription` data source: maintenance and pricing are deliberately
 not read or represented.
 
+The shared lookup HTTP transport denies redirects before the SDK can issue a
+second authenticated request. This applies to all lookup controllers, not the
+managed-resource clients. Pro subscription API failures use a fixed condition
+message so response bodies and transport errors cannot leak into CR status.
+
 Credential-free controller tests should verify the authenticated GET, rejected
 identities and types, API errors, stale status clearing, and no request on
 resource deletion. Live behavior requires a separately authorized GET-only

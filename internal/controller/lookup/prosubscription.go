@@ -52,7 +52,9 @@ func readProSubscription(ctx context.Context, api *rediscloud.Client, obj *looku
 	}
 	item, err := api.Subscription.Get(ctx, id)
 	if err != nil {
-		return empty, errors.Wrap(err, "cannot get Pro subscription")
+		// The SDK includes the response body in errors. Do not expose it in
+		// Kubernetes conditions, where it could contain sensitive information.
+		return empty, errors.New("cannot get Pro subscription from Redis Cloud")
 	}
 	if item == nil || item.ID == nil || *item.ID != id {
 		return empty, errors.New("subscription response identity does not match the requested id")
