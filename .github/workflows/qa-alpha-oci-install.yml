@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = e8ed94c75e0dfa0e6e965df46c6899bd6c04bb6c; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = f9310c1f90564186511fa864cf54e12dcccd444b; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
@@ -304,6 +304,15 @@ jobs:
             fi
           done
           echo "Partial credential-free observation only. Do not enable live QA until full egress, startup/replacement, IPv6 and RBAC boundaries are proven."
+      - name: Check out exact experiment source
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: proof-source
+          persist-credentials: false
+      - name: Probe fake proxy and CIDR rules through provider replacement
+        shell: bash
+        run: bash proof-source/scripts/readonly_boundary/hosted_probe.sh
       - name: Preserve package and OCI manifest
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
