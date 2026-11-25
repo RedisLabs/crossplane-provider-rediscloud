@@ -73,9 +73,9 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			parent, bootstrap = true, true
 			response = map[string]any{fixtureTaskKey: "parent-create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-create":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 1}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 1}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath && parent:
-			response = map[string]any{"id": 1, fixtureNameKey: fixtureProParentName, fixtureStatusKey: fixtureActive, "paymentMethodType": "credit-card", "paymentMethodId": 3, "memoryStorage": "ram", "publicEndpointAccess": true, "cloudDetails": []any{map[string]any{"provider": "GCP", "cloudAccountId": 1, "regions": []any{map[string]any{"region": "us-central1", "multipleAvailabilityZones": false, "networking": []any{map[string]any{"deploymentCIDR": "10.0.0.0/24"}}}}}}}
+			response = map[string]any{"id": 1, fixtureNameKey: fixtureProParentName, fixtureStatusKey: fixtureActive, "paymentMethodType": fixturePaymentType, "paymentMethodId": 3, "memoryStorage": "ram", "publicEndpointAccess": true, "cloudDetails": []any{map[string]any{"provider": fixtureGCP, "cloudAccountId": 1, "regions": []any{map[string]any{"region": fixtureRegion, "multipleAvailabilityZones": false, "networking": []any{map[string]any{"deploymentCIDR": "10.0.0.0/24"}}}}}}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureProParentPath && parent:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || (body[fixtureNameKey] != nil && body[fixtureNameKey] != fixtureProParentName) {
@@ -86,7 +86,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			response = map[string]any{fixtureTaskKey: "parent-update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-update":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases":
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
 			dbs := []any{}
 			if bootstrap {
 				dbs = append(dbs, map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: "fixture-bootstrap", fixtureStatusKey: fixtureActive})
@@ -130,7 +130,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	for _, k := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(k, "")
 	}
-	for _, k := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, k := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(k, "http://127.0.0.1:1")
 	}
 	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -146,7 +146,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	if err := pro.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	name, parentName, region, cidr, provider, payment, paymentID, storage, by := fixtureName, fixtureProParentName, "us-central1", "10.0.0.0/24", "GCP", "credit-card", "3", "ram", "operations-per-second"
+	name, parentName, region, cidr, provider, payment, paymentID, storage, by := fixtureName, fixtureProParentName, fixtureRegion, "10.0.0.0/24", fixtureGCP, fixturePaymentType, "3", "ram", fixtureThroughputBy
 	count, memory, throughput := float64(1), float64(1), float64(1000)
 	replication := false
 	item := &pro.Subscription{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-pro-parent-uid")}}

@@ -43,7 +43,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			var body map[string]any
 			validAuth := r.Header.Get("X-Api-Key") == dummyCredential && r.Header.Get("X-Api-Secret-Key") == dummyCredential
 			validBody := json.NewDecoder(r.Body).Decode(&body) == nil
-			databaseUpdate := r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && validBody && body["dataEvictionPolicy"] == desiredEviction
+			databaseUpdate := r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && validBody && body[fixtureEvictionKey] == desiredEviction
 			tagUpdate := r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && validBody
 			if !validAuth || (!databaseUpdate && (!acceptFixtureUpdate || !tagUpdate)) {
 				badWrites++
@@ -88,7 +88,7 @@ func TestEssentialsRefreshAndPlan(t *testing.T) { //nolint:gocyclo // The integr
 			_ = json.NewEncoder(w).Encode(map[string]any{fixtureTagsKey: []any{}})
 		case fixtureDatabasePath:
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": eviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{},
+				fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, fixtureProtocolKey: fixtureProtocolValue, fixtureProviderKey: fixtureGCP, "region": fixtureRegion, fixtureStatusKey: fixtureActive, fixturePersistenceKey: fixtureNoPersistence, fixtureEvictionKey: eviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", fixtureSecurityKey: map[string]any{"defaultUserEnabled": true, fixtureSourceIPsKey: []string{"0.0.0.0/0"}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{},
 			})
 		default:
 			http.NotFound(w, r)

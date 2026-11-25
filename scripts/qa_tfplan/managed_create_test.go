@@ -32,6 +32,20 @@ import (
 )
 
 const (
+	fixtureSourceIPsKey     = "sourceIps"
+	fixtureProtocolKey      = "protocol"
+	fixtureProtocolValue    = "redis"
+	fixtureSecurityKey      = "security"
+	fixtureModulesKey       = "modules"
+	fixtureHTTPProxy        = "HTTP_PROXY"
+	fixtureHTTPProxyLower   = "http_proxy"
+	fixtureHTTPSProxyLower  = "https_proxy"
+	fixtureAllProxyLower    = "all_proxy"
+	fixturePersistenceKey   = "dataPersistence"
+	fixtureHTTPSProxy       = "HTTPS_PROXY"
+	fixtureEvictionKey      = "dataEvictionPolicy"
+	fixtureResponseKey      = "response"
+	fixtureRegion           = "us-central1"
 	fixtureAPIKey           = "api_key"
 	fixtureSecretKey        = "secret_key"
 	fixtureURLKey           = "url"
@@ -52,6 +66,15 @@ const (
 	fixtureTagsKey          = "tags"
 	fixtureTerraformVersion = "1.5.7"
 	fixtureProParentPath    = "/v1/subscriptions/1"
+	fixtureTaskResourceKey  = "resourceId"
+	fixturePaymentType      = "credit-card"
+	fixtureGCP              = "GCP"
+	fixtureAllProxy         = "ALL_PROXY"
+	fixtureProDBsPath       = "/v1/subscriptions/1/databases"
+	fixtureProDBName        = "fixture-pro-db"
+	fixtureAlertsKey        = "alerts"
+	fixtureProDBID          = "1/42"
+	fixtureThroughputBy     = "operations-per-second"
 	fixtureReplicationKey   = "replication"
 	fixtureNoPersistence    = "none"
 )
@@ -93,9 +116,9 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			parentCreated = true
 			response = map[string]any{fixtureTaskKey: "parent-create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-create":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 1}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 1}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureParentPath && parentCreated:
-			response = map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive, "planId": 1, "paymentMethodType": "credit-card", "creationDate": "2025-01-01T00:00:00Z"}
+			response = map[string]any{"id": 1, fixtureNameKey: fixtureName, fixtureStatusKey: fixtureActive, "planId": 1, "paymentMethodType": fixturePaymentType, "creationDate": "2025-01-01T00:00:00Z"}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureParentPath && parentCreated && !created:
 			parentCreated, parentDeleted = false, true
 			response = map[string]any{fixtureTaskKey: "parent-delete"}
@@ -106,7 +129,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			return
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/fixed/subscriptions/1/databases" && parentCreated && !created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body["dataEvictionPolicy"] != desiredEviction || body["dataPersistence"] != fixtureNoPersistence || body[fixtureReplicationKey] != false {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureName || body[fixtureEvictionKey] != desiredEviction || body[fixturePersistenceKey] != fixtureNoPersistence || body[fixtureReplicationKey] != false {
 				unexpected = true
 				http.Error(w, "wrong fixture body", http.StatusBadRequest)
 				return
@@ -114,15 +137,15 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			created = true
 			response = map[string]any{fixtureTaskKey: "create"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, "response": map[string]any{"resourceId": 2}}
+			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 2}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath && created:
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || (body["dataEvictionPolicy"] != desiredEviction && body["dataEvictionPolicy"] != fixtureVolatileLRU) {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || (body[fixtureEvictionKey] != desiredEviction && body[fixtureEvictionKey] != fixtureVolatileLRU) {
 				unexpected = true
 				http.Error(w, "wrong fixture update", http.StatusBadRequest)
 				return
 			}
-			fixtureEviction = body["dataEvictionPolicy"].(string)
+			fixtureEviction = body[fixtureEvictionKey].(string)
 			response = map[string]any{fixtureTaskKey: "update"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
@@ -135,7 +158,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && created:
-			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, "protocol": "redis", fixtureProviderKey: "GCP", "region": "us-central1", fixtureStatusKey: fixtureActive, "dataPersistence": fixtureNoPersistence, "dataEvictionPolicy": fixtureEviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", "security": map[string]any{"defaultUserEnabled": true, "sourceIps": []string{"0.0.0.0/0"}}, "modules": []any{}, "alerts": []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, fixtureProtocolKey: fixtureProtocolValue, fixtureProviderKey: fixtureGCP, "region": fixtureRegion, fixtureStatusKey: fixtureActive, fixturePersistenceKey: fixtureNoPersistence, fixtureEvictionKey: fixtureEviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", fixtureSecurityKey: map[string]any{"defaultUserEnabled": true, fixtureSourceIPsKey: []string{"0.0.0.0/0"}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath+"/tags" && created:
 			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && created:
@@ -155,7 +178,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 	for _, key := range []string{"TF_CLI_ARGS", "TF_CLI_ARGS_init", "TF_CLI_ARGS_apply", "TF_CLI_ARGS_plan", "TF_CLI_ARGS_destroy"} {
 		t.Setenv(key, "")
 	}
-	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, key := range []string{fixtureHTTPProxy, fixtureHTTPSProxy, fixtureAllProxy, fixtureHTTPProxyLower, fixtureHTTPSProxyLower, fixtureAllProxyLower} {
 		t.Setenv(key, "http://127.0.0.1:1")
 	}
 	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -355,7 +378,7 @@ func assertManagedFakeUpdate(t *testing.T, base, eviction string) {
 	var body map[string]any
 	err = json.NewDecoder(res.Body).Decode(&body)
 	_ = res.Body.Close()
-	if err != nil || res.StatusCode != http.StatusOK || body[fixtureDatabaseIDKey] != float64(2) || body["dataEvictionPolicy"] != eviction {
+	if err != nil || res.StatusCode != http.StatusOK || body[fixtureDatabaseIDKey] != float64(2) || body[fixtureEvictionKey] != eviction {
 		t.Fatal("fake update readback or identity mismatch")
 	}
 }
