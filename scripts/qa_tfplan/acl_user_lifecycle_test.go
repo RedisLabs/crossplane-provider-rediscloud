@@ -51,7 +51,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	var mu sync.Mutex
 	exists, unexpected := false, false
 	rejectCreate, rejectUpdate, rejectDelete := mode != "success", true, true
-	createRequests := 0
+	createRequests, deleteRequests := 0, 0
 	rule := "fixture-rule-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -105,6 +105,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureACLUserPath && exists:
+			deleteRequests++
 			if rejectDelete {
 				rejectDelete = false
 				http.Error(w, "injected delete rejection", http.StatusForbidden)
@@ -214,7 +215,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 			}
 		}
 		mu.Lock()
-		if exists != (mode == fixtureUncertainMode) || unexpected || createRequests != 1 {
+		if exists != (mode == fixtureUncertainMode) || unexpected || createRequests != 1 || deleteRequests != 0 {
 			mu.Unlock()
 			t.Fatal("failed create was replayed or fake outcome changed")
 		}
