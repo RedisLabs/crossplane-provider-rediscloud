@@ -20,6 +20,67 @@ env:
   UPBOUND_MARKETPLACE_PUSH_ROBOT_USR: ${{ secrets.UPBOUND_MARKETPLACE_PUSH_ROBOT_USR }}
 
 jobs:
+  readonly-pro-guard:
+    if: github.head_ref == 'codex/crossplane-pro-readonly-discovery' || github.ref == 'refs/heads/codex/crossplane-pro-readonly-discovery'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.binary.outputs.artifact-id }}
+      sha256: ${{ steps.digest.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.26'
+      - name: Compile and verify read-only guard without credentials
+        run: |
+          set -euo pipefail
+          go test -c -o "$RUNNER_TEMP/readonly-pro.test" ./internal/controller/lookup
+          "$RUNNER_TEMP/readonly-pro.test" -test.run '^TestReadonly(ProTransportRejectsUnsafeRequests|ProDiscoveryRejectsAmbiguity|ProDiagnosticCategories|RegionTransportRejectsUnsafeRequests)$' -test.v
+      - name: Record binary digest
+        id: digest
+        run: echo "sha256=$(sha256sum "$RUNNER_TEMP/readonly-pro.test" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Store verified test binary
+        id: binary
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: readonly-pro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/readonly-pro.test
+          if-no-files-found: error
+          retention-days: 1
+
+  readonly-pro-live:
+    needs: readonly-pro-guard
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/crossplane-pro-readonly-discovery' && needs.readonly-pro-guard.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.readonly-pro-guard.outputs.artifact-id }}
+          path: ${{ runner.temp }}/readonly-pro
+          merge-multiple: true
+      - name: Verify binary digest
+        env:
+          EXPECTED_DIGEST: ${{ needs.readonly-pro-guard.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum "$RUNNER_TEMP/readonly-pro/readonly-pro.test" | cut -d' ' -f1)" = "$EXPECTED_DIGEST"
+          chmod 700 "$RUNNER_TEMP/readonly-pro/readonly-pro.test"
+      - name: Diagnose Pro inventory without selecting a subscription
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+          QA_READONLY_REGIONS: '1'
+        run: '"$RUNNER_TEMP/readonly-pro/readonly-pro.test" -test.run "^TestLiveReadonlyProDiagnostic$" -test.v'
+
   detect-noop:
     runs-on: ubuntu-24.04
     outputs:
