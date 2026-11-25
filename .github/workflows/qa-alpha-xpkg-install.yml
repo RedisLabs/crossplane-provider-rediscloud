@@ -46,13 +46,41 @@ jobs:
           "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=5m
           "$kubectl" -n upbound-system wait deployments --all --for=condition=Available --timeout=5m
           "$kubectl" -n upbound-system get pods -o json | python3 -c '
-          import json, re, sys
-          pods = json.load(sys.stdin)["items"]
-          matches = [(p["metadata"]["name"], c) for p in pods if p["metadata"]["name"].startswith("provider-rediscloud-") for c in p.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime"]
-          if len(matches) != 1 or not matches[0][1].get("ready") or not re.search(r"@sha256:[0-9a-f]{64}$", matches[0][1].get("imageID", "")):
-              raise SystemExit("expected exactly one ready provider runtime with immutable image ID")
-          print("Observed provider runtime image ID (not independently bound to build):", matches[0][1]["imageID"])
+          import json, os, pathlib, re, sys
+          def select(pods):
+              matches = [(p, c) for p in pods if p["metadata"]["name"].startswith("provider-rediscloud-") for c in p.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime"]
+              if len(matches) != 1 or not matches[0][1].get("ready") or not re.search(r"@sha256:[0-9a-f]{64}$", matches[0][1].get("imageID", "")):
+                  raise ValueError("expected exactly one ready provider runtime with immutable image ID")
+              images = [c["image"] for c in matches[0][0]["spec"]["containers"] if c["name"] == "package-runtime"]
+              if len(images) != 1 or not re.fullmatch(r"build-[a-f0-9]{8}/provider-rediscloud-amd64", images[0]):
+                  raise ValueError("provider runtime does not reference the expected local build image")
+              return images[0], matches[0][1]["imageID"]
+          try:
+              select([])
+          except ValueError:
+              pass
+          else:
+              raise SystemExit("missing provider negative check failed")
+          image, observed = select(json.load(sys.stdin)["items"])
+          pathlib.Path(os.environ["RUNNER_TEMP"], "provider-image.txt").write_text(image)
+          print("Observed provider runtime image ID (not independently bound to build):", observed)
           '
+          image=$(cat "$RUNNER_TEMP/provider-image.txt")
+          docker image inspect "$image" --format 'Local build image config ID: {{.Id}}'
+          mkdir -p "$RUNNER_TEMP/pinned-tools"
+          curl -fsSL https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip -o "$RUNNER_TEMP/pinned-tools/terraform.zip"
+          echo 'c0ed7bc32ee52ae255af9982c8c88a7a4c610485cf1d55feeb037eab75fa082c  '"$RUNNER_TEMP/pinned-tools/terraform.zip" | sha256sum -c -
+          curl -fsSL https://github.com/RedisLabs/terraform-provider-rediscloud/releases/download/v2.20.0/terraform-provider-rediscloud_2.20.0_linux_amd64.zip -o "$RUNNER_TEMP/pinned-tools/provider.zip"
+          echo 'a8642d27a521ebac0a08392bc2cce35b53d8e6a3a6e8b37a3895d83ad2e2c998  '"$RUNNER_TEMP/pinned-tools/provider.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/pinned-tools/terraform.zip" terraform -d "$RUNNER_TEMP/pinned-tools"
+          unzip -q "$RUNNER_TEMP/pinned-tools/provider.zip" terraform-provider-rediscloud_v2.20.0 -d "$RUNNER_TEMP/pinned-tools"
+          container=$(docker create "$image")
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/local/bin/terraform" "$RUNNER_TEMP/pinned-tools/image-terraform"
+          docker cp "$container:/terraform/provider-mirror/registry.terraform.io/RedisLabs/rediscloud/2.20.0/linux_amd64/terraform-provider-rediscloud_v2.20.0_x5" "$RUNNER_TEMP/pinned-tools/image-provider"
+          cmp "$RUNNER_TEMP/pinned-tools/terraform" "$RUNNER_TEMP/pinned-tools/image-terraform"
+          cmp "$RUNNER_TEMP/pinned-tools/terraform-provider-rediscloud_v2.20.0" "$RUNNER_TEMP/pinned-tools/image-provider"
+          echo "Local build image Terraform and provider bytes match independently SHA-pinned release archives."
           for crd in providerconfigs.rediscloud.redis.io subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io; do
             "$kubectl" wait "crd/$crd" --for=condition=Established --timeout=2m
           done
