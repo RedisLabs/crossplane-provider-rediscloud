@@ -48,7 +48,8 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 	reads, writes := 0, 0
 	exists, unexpected := false, false
 	rule := "+@read ~*"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	gate := &fixtureMutationGate{}
+	server := httptest.NewServer(gate.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		if r.Method == http.MethodGet {
@@ -108,8 +109,9 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 			return
 		}
 		_ = json.NewEncoder(w).Encode(response)
-	}))
+	})))
 	defer server.Close()
+	gate.assertRejected(t, server.URL, fixtureACLRulePath, "stale-fixture-key", http.StatusForbidden)
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
@@ -264,6 +266,7 @@ func TestACLRuleManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The
 		}
 		time.Sleep(time.Second)
 	}
+	gate.assertRejected(t, server.URL, fixtureACLRulePath, dummyCredential, http.StatusConflict)
 	mu.Lock()
 	if exists || unexpected {
 		mu.Unlock()
