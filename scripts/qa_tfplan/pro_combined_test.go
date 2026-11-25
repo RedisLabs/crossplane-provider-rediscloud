@@ -45,7 +45,8 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	child := false
 	childEviction := desiredEviction
 	var calls []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	gate := &fixtureMutationGate{}
+	server := httptest.NewServer(gate.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		calls = append(calls, r.Method+" "+r.URL.Path)
@@ -167,8 +168,9 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			return
 		}
 		_ = json.NewEncoder(w).Encode(response)
-	}))
+	})))
 	defer server.Close()
+	gate.assertRejected(t, server.URL, fixtureProParentPath, "stale-fixture-key", http.StatusForbidden)
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
@@ -314,6 +316,8 @@ func TestProCombinedManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		}
 		time.Sleep(time.Second)
 	}
+	gate.assertRejected(t, server.URL, fixtureProDatabasePath, dummyCredential, http.StatusConflict)
+	gate.assertRejected(t, server.URL, fixtureProParentPath, dummyCredential, http.StatusConflict)
 	mu.Lock()
 	if parent || bootstrap || child || unexpected {
 		mu.Unlock()
