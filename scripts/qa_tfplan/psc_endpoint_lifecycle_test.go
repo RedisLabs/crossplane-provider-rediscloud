@@ -31,7 +31,15 @@ import (
 
 // This fixture starts with an existing fake Pro parent. All writes target the
 // local fake PSC endpoint; no AWS, Cloud account or live lock is exercised.
-func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
+func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) {
+	runPSCManagedEndpoint(t, false)
+}
+
+func TestPSCManagedEndpointFailureLoopback(t *testing.T) {
+	runPSCManagedEndpoint(t, true)
+}
+
+func runPSCManagedEndpoint(t *testing.T, injectFailure bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("provider acceptance fixture runs only in GitHub Actions")
 	}
@@ -45,7 +53,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	const parentPath = "/v1/subscriptions/1/private-service-connect"
 	const path = parentPath + "/7"
 	var mu sync.Mutex
-	exists, created, deleted, unexpected := false, false, false, false
+	exists, created, deleted, unexpected, failCreate := false, false, false, false, injectFailure
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -76,6 +84,11 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-script" && exists:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"script": map[string]any{"terraformGcp": map[string]any{"serviceAttachments": []any{}}}}}}
 		case r.Method == http.MethodPost && r.URL.Path == path && !exists && !created:
+			if failCreate {
+				failCreate = false
+				http.Error(w, "injected fixture failure", http.StatusBadRequest)
+				return
+			}
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body["gcpProjectId"] != "fixture-project" || body["gcpVpcName"] != "fixture-vpc" || body["gcpVpcSubnetName"] != "fixture-subnet" || body["endpointConnectionName"] != "fixture-prefix" {
 				unexpected = true
@@ -141,7 +154,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_private_service_connect_endpoint"], ujcontroller.WithCallbackProvider(callback))
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(api.ServiceConnectEndpoint_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: item.Name}}
-	await := func(label string) {
+	await := func(label string, wantError bool) {
 		t.Helper()
 		for i := 0; i < 8; i++ {
 			if _, err := rec.Reconcile(context.Background(), req); err != nil {
@@ -149,7 +162,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			}
 			select {
 			case err := <-callback.done:
-				if err != nil {
+				if (err != nil) != wantError {
 					t.Fatalf("%s failed: %v", label, err)
 				}
 				return
@@ -158,7 +171,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			if store.current != nil && store.current.LastOperation != nil && store.current.LastOperation.IsRunning() {
 				select {
 				case err := <-callback.done:
-					if err != nil {
+					if (err != nil) != wantError {
 						t.Fatalf("%s failed: %v", label, err)
 					}
 					return
@@ -169,7 +182,22 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		}
 		t.Fatalf("%s callback not observed", label)
 	}
-	await("create")
+	if injectFailure {
+		await("injected endpoint failure", true)
+		for i := 0; i < 3; i++ {
+			if _, err := rec.Reconcile(context.Background(), req); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if exists || created || unexpected {
+			t.Fatal("uncertain endpoint create was automatically replayed")
+		}
+		t.Log("SIMULATED: endpoint create failure remained fenced; recovery requires an independent absence check")
+		return
+	}
+	await("create", false)
 	for i := 0; i < 6; i++ {
 		if _, err := rec.Reconcile(context.Background(), req); err != nil {
 			t.Fatal(err)
@@ -194,7 +222,7 @@ func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	if err := kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
-	await("delete")
+	await("delete", false)
 	mu.Lock()
 	if exists || !deleted || unexpected {
 		mu.Unlock()
