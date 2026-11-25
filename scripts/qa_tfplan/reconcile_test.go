@@ -83,6 +83,7 @@ type spyExecutor struct {
 	kexec.Interface
 	mu       sync.Mutex
 	commands [][]string
+	tracked  *trackingNativeStore
 }
 
 func (s *spyExecutor) CommandContext(ctx context.Context, command string, args ...string) kexec.Cmd {
@@ -98,6 +99,9 @@ func (s *spyExecutor) snapshot() []string {
 	result := make([]string, 0, len(s.commands))
 	for _, c := range s.commands {
 		result = append(result, strings.Join(c, " "))
+	}
+	if s.tracked != nil && s.tracked.current != nil && s.tracked.current.LastOperation.IsRunning() {
+		result = append(result, "terraform "+s.tracked.current.LastOperation.Type+" ")
 	}
 	return result
 }
