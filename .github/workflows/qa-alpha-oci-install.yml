@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = f2e4bbc86495d31eb2bed76ebe4124622150c80a
           test -z "$(git status --porcelain)"
-          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 8d9ec76ca0571f6a1aa6a865add64015814d3ea3; fi
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 9c1ee00c5aaf785e85deb5de91fc9005595ae1cb; fi
           echo "Integrated source: $(git rev-parse HEAD)"
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
         with:
@@ -193,6 +193,65 @@ jobs:
                       configMap:
                         name: provider-startup-gate
           YAML
+          # Fake-cluster admission experiment: enforce a gate shape on matching
+          # provider pod creates before the Provider object is submitted. This
+          # is not a complete authorization or network boundary.
+          cat <<'YAML' | "$kubectl" apply -f -
+          apiVersion: admissionregistration.k8s.io/v1
+          kind: ValidatingAdmissionPolicy
+          metadata:
+            name: fixture-provider-gate
+          spec:
+            failurePolicy: Fail
+            matchConstraints:
+              resourceRules:
+              - apiGroups: [""]
+                apiVersions: ["v1"]
+                operations: ["CREATE"]
+                resources: ["pods"]
+            matchConditions:
+            - name: provider-name
+              expression: "object.metadata.name.startsWith('provider-rediscloud-')"
+            validations:
+            - expression: "has(object.spec.initContainers) && object.spec.initContainers.exists(c, c.name == 'startup-gate' && !has(c.restartPolicy) && c.image == 'registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373' && c.command == ['/bin/sh', '-c', 'while [ \"$(cat /gate/state)\" != open ]; do sleep 1; done'] && has(c.volumeMounts) && c.volumeMounts.exists(m, m.name == 'startup-gate' && m.mountPath == '/gate' && m.readOnly == true)) && has(object.spec.volumes) && object.spec.volumes.exists(v, v.name == 'startup-gate' && has(v.configMap) && v.configMap.name == 'provider-startup-gate')"
+              message: fixture-provider-gate-required
+          ---
+          apiVersion: admissionregistration.k8s.io/v1
+          kind: ValidatingAdmissionPolicyBinding
+          metadata:
+            name: fixture-provider-gate
+          spec:
+            policyName: fixture-provider-gate
+            validationActions: [Deny]
+            matchResources:
+              namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: upbound-system
+          YAML
+          # Server-side dry run proves denial is admission, not a transport error.
+          cat > "$RUNNER_TEMP/ungated-provider-pod.json" <<'JSON'
+          {"apiVersion":"v1","kind":"Pod","metadata":{"name":"provider-rediscloud-admission-negative","namespace":"upbound-system"},"spec":{"containers":[{"name":"package-runtime","image":"invalid.example/fixture"}]}}
+          JSON
+          if "$kubectl" create --dry-run=server -f "$RUNNER_TEMP/ungated-provider-pod.json" >"$RUNNER_TEMP/admission-negative.log" 2>&1; then
+            echo 'Ungated matching pod unexpectedly admitted' >&2
+            exit 1
+          fi
+          grep -q 'fixture-provider-gate-required' "$RUNNER_TEMP/admission-negative.log"
+          python3 - "$RUNNER_TEMP/ungated-provider-pod.json" "$RUNNER_TEMP/sidecar-provider-pod.json" <<'PY'
+          import json, sys
+          p = json.load(open(sys.argv[1]))
+          p['metadata']['name'] = 'provider-rediscloud-admission-sidecar'
+          p['spec']['initContainers'] = [{'name': 'startup-gate', 'restartPolicy': 'Always', 'image': 'registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373', 'command': ['/bin/sh', '-c', 'while [ "$(cat /gate/state)" != open ]; do sleep 1; done'], 'volumeMounts': [{'name': 'startup-gate', 'mountPath': '/gate', 'readOnly': True}]}]
+          p['spec']['volumes'] = [{'name': 'startup-gate', 'configMap': {'name': 'provider-startup-gate'}}]
+          with open(sys.argv[2], 'w') as f:
+              json.dump(p, f)
+          PY
+          if "$kubectl" create --dry-run=server -f "$RUNNER_TEMP/sidecar-provider-pod.json" >"$RUNNER_TEMP/admission-sidecar.log" 2>&1; then
+            echo 'Restartable init sidecar unexpectedly admitted' >&2
+            exit 1
+          fi
+          grep -q 'fixture-provider-gate-required' "$RUNNER_TEMP/admission-sidecar.log"
+          echo 'Admission denied an ungated matching provider pod before Provider creation.'
           printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always","runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-startup-gate"}}}\n' "$digest" | "$kubectl" apply -f -
           for attempt in $(seq 1 180); do
             "$kubectl" -n upbound-system get pods -o json > "$RUNNER_TEMP/startup-pods.json"
