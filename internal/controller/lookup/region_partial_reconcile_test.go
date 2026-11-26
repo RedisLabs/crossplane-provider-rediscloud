@@ -19,6 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+const fixturePartialRegionsName = "regions"
+
 func TestRegionPartialResponseRecovery(t *testing.T) { //nolint:gocyclo // Each response transition is asserted.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
@@ -36,7 +38,7 @@ func TestRegionPartialResponseRecovery(t *testing.T) { //nolint:gocyclo // Each 
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"regions":[`+rows.Load().(string)+`]}`)
-	}), &lookupv1alpha1.Regions{ObjectMeta: metav1.ObjectMeta{Name: "regions"}, Spec: lookupv1alpha1.RegionsSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.RegionsParameters{ProviderName: stringPtr("AWS"), Name: stringPtr("us-east-1")}}})
+	}), &lookupv1alpha1.Regions{ObjectMeta: metav1.ObjectMeta{Name: fixturePartialRegionsName}, Spec: lookupv1alpha1.RegionsSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.RegionsParameters{ProviderName: stringPtr("AWS"), Name: stringPtr("us-east-1")}}})
 	rec := &RegionsReconciler{Client: kube}
 	for _, tc := range []struct {
 		name, body, id string
@@ -58,12 +60,12 @@ func TestRegionPartialResponseRecovery(t *testing.T) { //nolint:gocyclo // Each 
 		t.Run(tc.name, func(t *testing.T) {
 			rows.Store(tc.body)
 			before := calls.Load()
-			result, err := rec.Reconcile(context.Background(), request("regions"))
+			result, err := rec.Reconcile(context.Background(), request(fixturePartialRegionsName))
 			if err != nil || calls.Load() != before+1 {
 				t.Fatalf("reconcile failed: %v, calls=%d", err, calls.Load()-before)
 			}
 			obj := &lookupv1alpha1.Regions{}
-			if err := kube.Get(context.Background(), types.NamespacedName{Name: "regions"}, obj); err != nil {
+			if err := kube.Get(context.Background(), types.NamespacedName{Name: fixturePartialRegionsName}, obj); err != nil {
 				t.Fatal(err)
 			}
 			ready := obj.Status.GetCondition(xpv1.TypeReady)
@@ -106,14 +108,14 @@ func TestRegionSelectedObservationFields(t *testing.T) { //nolint:gocyclo // Sel
 				calls.Add(1)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{"regions":[`+tc.body+`]}`)
-			}), &lookupv1alpha1.Regions{ObjectMeta: metav1.ObjectMeta{Name: "regions"}, Spec: lookupv1alpha1.RegionsSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.RegionsParameters{ProviderName: tc.provider, Name: tc.regionName}}})
+			}), &lookupv1alpha1.Regions{ObjectMeta: metav1.ObjectMeta{Name: fixturePartialRegionsName}, Spec: lookupv1alpha1.RegionsSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.RegionsParameters{ProviderName: tc.provider, Name: tc.regionName}}})
 			rec := &RegionsReconciler{Client: kube}
-			result, err := rec.Reconcile(context.Background(), request("regions"))
+			result, err := rec.Reconcile(context.Background(), request(fixturePartialRegionsName))
 			if err != nil || calls.Load() != 1 {
 				t.Fatalf("reconcile: %v; calls=%d", err, calls.Load())
 			}
 			obj := &lookupv1alpha1.Regions{}
-			if err := kube.Get(context.Background(), types.NamespacedName{Name: "regions"}, obj); err != nil {
+			if err := kube.Get(context.Background(), types.NamespacedName{Name: fixturePartialRegionsName}, obj); err != nil {
 				t.Fatal(err)
 			}
 			ready := obj.Status.GetCondition(xpv1.TypeReady)

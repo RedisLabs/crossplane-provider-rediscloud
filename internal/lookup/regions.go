@@ -6,6 +6,7 @@ package lookup
 
 import (
 	"fmt"
+
 	"github.com/RedisLabs/rediscloud-go-api/service/account"
 )
 
@@ -17,7 +18,7 @@ type RegionQuery struct {
 
 // MatchRegions returns every region that passes the filter.
 // An empty result is ErrNone.
-func MatchRegions(regions []*account.Region, query RegionQuery) ([]*account.Region, error) {
+func MatchRegions(regions []*account.Region, query RegionQuery) ([]*account.Region, error) { //nolint:gocyclo // Known mismatches must precede missing-field validation.
 	matched := make([]*account.Region, 0, len(regions))
 	for _, region := range regions {
 		if region == nil {
