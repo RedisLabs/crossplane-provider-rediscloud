@@ -21,6 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const identityLinkTask = "identity-link"
+
 func TestPrivateLinkIdentityReconcile(t *testing.T) { //nolint:gocyclo // Both resource paths and each transition are checked.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("hosted Actions only")
@@ -49,13 +51,13 @@ func TestPrivateLinkIdentityReconcile(t *testing.T) { //nolint:gocyclo // Both r
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := []string{}
-			bodies := map[string]taskBody{tc.path: {task: "link", resource: tc.steps[0].resource}}
+			bodies := map[string]taskBody{tc.path: {task: identityLinkTask, resource: tc.steps[0].resource}}
 			handler := taskRoutes(t, &calls, bodies)
 			kube := lookupClient(t, onlyGET(t, handler), tc.obj)
 			run := tc.run(kube)
 			for _, step := range tc.steps {
 				t.Run(step.name, func(t *testing.T) {
-					bodies[tc.path] = taskBody{task: "link", resource: step.resource}
+					bodies[tc.path] = taskBody{task: identityLinkTask, resource: step.resource}
 					result, err := run(context.Background(), request(name))
 					if err != nil {
 						t.Fatal(err)
@@ -111,7 +113,7 @@ func TestPrivateLinkScriptParentIdentity(t *testing.T) { //nolint:gocyclo // Ver
 	calls := []string{}
 	bodies := map[string]taskBody{
 		"/subscriptions/1001":                              {direct: `{"id":1001}`},
-		"/subscriptions/1001/private-link":                 {task: "link", resource: `{"subscriptionId":1001}`},
+		"/subscriptions/1001/private-link":                 {task: identityLinkTask, resource: `{"subscriptionId":1001,"status":"active"}`},
 		"/subscriptions/1001/private-link/endpoint-script": {task: "script", resource: `{"resourceEndpointScript":"fixture-script"}`},
 	}
 	kube := lookupClient(t, onlyGET(t, taskRoutes(t, &calls, bodies)), obj)
@@ -121,15 +123,15 @@ func TestPrivateLinkScriptParentIdentity(t *testing.T) { //nolint:gocyclo // Ver
 		ready           bool
 		wantLink        bool
 	}{
-		{"initial", `{"id":1001}`, `{"subscriptionId":1001}`, true, true},
-		{"wrong_subscription", `{"id":1002}`, `{"subscriptionId":1001}`, false, false},
-		{"wrong_link", `{"id":1001}`, `{"subscriptionId":1002}`, false, true},
-		{"missing_optional", `{}`, `{}`, true, true},
-		{"recovery", `{"id":1001}`, `{"subscriptionId":1001}`, true, true},
+		{"initial", `{"id":1001}`, `{"subscriptionId":1001,"status":"active"}`, true, true},
+		{"wrong_subscription", `{"id":1002}`, `{"subscriptionId":1001,"status":"active"}`, false, false},
+		{"wrong_link", `{"id":1001}`, `{"subscriptionId":1002,"status":"active"}`, false, true},
+		{"missing_optional", `{}`, `{"status":"active"}`, true, true},
+		{"recovery", `{"id":1001}`, `{"subscriptionId":1001,"status":"active"}`, true, true},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			bodies["/subscriptions/1001"] = taskBody{direct: step.sub}
-			bodies["/subscriptions/1001/private-link"] = taskBody{task: "link", resource: step.link}
+			bodies["/subscriptions/1001/private-link"] = taskBody{task: identityLinkTask, resource: step.link}
 			before := len(calls)
 			result, err := rec.Reconcile(context.Background(), request(name))
 			if err != nil {
