@@ -128,3 +128,9 @@ is no new ADR or BDR: this extends the existing read-only lookup pattern and
 uses the already supported subscription endpoint. An open question is whether
 future consumers need maintenance or pricing; those fields require their own
 explicit contract and tests rather than being inferred here.
+
+### Payment-method partial identity
+
+A missing card-ending field is not `0000`; when a last-four filter is active, an otherwise eligible method without that field makes the lookup unavailable rather than silently hiding a potentially matching method. A uniquely matched method without an ID fails the lookup and clears stale status; explicit numeric zero retains its existing behavior. A method without card-ending data and without a last-four filter publishes an empty value rather than invented digits. Hosted fake API tests must exercise valid zero, missing digits, mixed known/unknown digits, missing ID and recovery; they are not live qualification.
+
+Missing card type or expiration in other filter paths and null payment entries remain separately unverified; this change does not establish full list completeness.

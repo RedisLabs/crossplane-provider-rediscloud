@@ -254,6 +254,15 @@ jobs:
           run_selected("./scripts/qa_envtest", tuple(names))
           PY
 
+      - name: Verify payment lookup partial response handling
+        run: |
+          python3 - <<'PY'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestPaymentMethodPartialIdentity"
+          names = (root,) + tuple(f"{root}/{case}" for case in ("zero_id", "missing_digits", "after_missing_digits", "ambiguous_digits", "after_ambiguous_digits", "missing_id", "recovery"))
+          run_selected("./internal/controller/lookup", names)
+          PY
+
       - name: Verify ACL lookup identity and recovery
         run: |
           python3 - <<'PY'
