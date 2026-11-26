@@ -179,7 +179,7 @@ func TestEssentialsManagedCreateLoopback(t *testing.T) { //nolint:gocyclo // The
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath && created:
-			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, fixtureProtocolKey: fixtureProtocolValue, fixtureProviderKey: fixtureGCP, "region": fixtureRegion, fixtureStatusKey: fixtureActive, fixturePersistenceKey: fixtureNoPersistence, fixtureEvictionKey: fixtureEviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", fixtureSecurityKey: map[string]any{"defaultUserEnabled": true, fixtureSourceIPsKey: []string{"0.0.0.0/0"}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}}
+			response = map[string]any{fixtureDatabaseIDKey: 2, fixtureNameKey: fixtureName, fixtureProtocolKey: fixtureProtocolValue, fixtureProviderKey: fixtureGCP, "region": fixtureRegion, fixtureStatusKey: fixtureActive, fixturePersistenceKey: fixtureNoPersistence, fixtureEvictionKey: fixtureEviction, fixtureReplicationKey: false, "activatedOn": "2025-01-01T00:00:00Z", fixtureSecurityKey: map[string]any{"defaultUserEnabled": true, fixtureSourceIPsKey: []string{fixturePublicCIDR}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDatabasePath+"/tags" && created:
 			response = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureDatabasePath+"/tags" && created:

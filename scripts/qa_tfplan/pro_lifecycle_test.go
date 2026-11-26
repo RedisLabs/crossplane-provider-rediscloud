@@ -35,6 +35,8 @@ import (
 // TestProDatabaseManagedLifecycleLoopback uses actual reconciliation and Terraform
 // against loopback fake Cloud, with a pre-existing fake parent; it never contacts Cloud.
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
+const fixturePublicCIDR = "0.0.0.0/0"
+const fixturePolicyTransitionMode = "policy_transition"
 const fixtureSourceCIDRMode = "source_cidrs"
 const fixtureSourceCIDRDriftMode = "source_cidr_drift"
 const fixtureInitialSourceCIDR = "192.0.2.0/24"
@@ -43,7 +45,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
 	t.Run(fixtureSourceCIDRMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRMode) })
 	if os.Getenv("QA_POLICY_TRANSITION") == "true" {
-		t.Run("policy_transition", func(t *testing.T) { runProDatabaseFixture(t, "policy_transition") })
+		t.Run(fixturePolicyTransitionMode, func(t *testing.T) { runProDatabaseFixture(t, fixturePolicyTransitionMode) })
 	}
 	t.Run(fixtureSourceCIDRDriftMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRDriftMode) })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
@@ -64,7 +66,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	cidrUpdates := 0
 	policyUpdates := 0
 	publicParentReads := 0
-	publicAccess := mode != "policy_transition"
+	publicAccess := mode != fixturePolicyTransitionMode
 	beforeDeleteReconcileReads := 0
 	rule := desiredEviction
 	sourceIPs := []any{}
@@ -84,7 +86,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
 			parent := map[string]any{"id": 1, fixtureNameKey: "fixture-existing-parent", fixtureStatusKey: fixtureActive}
-			if mode == "policy_transition" {
+			if mode == fixturePolicyTransitionMode {
 				parent["publicEndpointAccess"] = publicAccess
 				if publicAccess {
 					publicParentReads++
@@ -175,7 +177,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				sourceIPs = expected
 				cidrUpdates++
 			}
-			if mode == "policy_transition" {
+			if mode == fixturePolicyTransitionMode {
 				if publicAccess && publicParentReads == 0 {
 					unexpected = true
 					http.Error(w, "updated fake parent policy was not read", http.StatusBadRequest)
@@ -371,7 +373,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		}
 	}
 	markRawConfigPhase(t, "after_observe", kube, name)
-	if mode == "policy_transition" {
+	if mode == fixturePolicyTransitionMode {
 		if store.current == nil || store.current.LastOperation.IsRunning() {
 			t.Fatal("initial operation must settle before the modeled policy transition")
 		}
@@ -407,7 +409,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatal("initial CIDR update was not observed")
 		}
 		beforeDriftRead := childPresentReads
-		sourceIPs = []any{"0.0.0.0/0"}
+		sourceIPs = []any{fixturePublicCIDR}
 		mu.Unlock()
 		// Refresh and plan are synchronous Upjet workspace operations. Requiring
 		// their successful results distinguishes masked drift from no observation.
@@ -420,7 +422,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatalf("drift plan did not complete: %v", err)
 		}
 		mu.Lock()
-		observedDrift := childPresentReads > beforeDriftRead && cidrUpdates == 1 && reflect.DeepEqual(sourceIPs, []any{"0.0.0.0/0"}) && !unexpected
+		observedDrift := childPresentReads > beforeDriftRead && cidrUpdates == 1 && reflect.DeepEqual(sourceIPs, []any{fixturePublicCIDR}) && !unexpected
 		mu.Unlock()
 		if !observedDrift {
 			t.Fatal("fake drift was not read without a mutation")
@@ -456,7 +458,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		mu.Unlock()
 		t.Fatal("Pro database update or fixture trace invalid")
 	}
-	if mode == "policy_transition" && (policyUpdates != 2 || publicParentReads == 0 || !reflect.DeepEqual(sourceIPs, []any{"0.0.0.0/0"})) {
+	if mode == fixturePolicyTransitionMode && (policyUpdates != 2 || publicParentReads == 0 || !reflect.DeepEqual(sourceIPs, []any{fixturePublicCIDR})) {
 		mu.Unlock()
 		t.Fatal("fake public default update was not observed after the modeled policy transition")
 	}
