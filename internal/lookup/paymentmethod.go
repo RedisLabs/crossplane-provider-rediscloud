@@ -58,11 +58,12 @@ func paymentMethodMatches(method *account.PaymentMethod, query PaymentMethodQuer
 		}
 	}
 	if query.ExcludeExpired {
-		if method.ExpirationYear == nil {
+		switch {
+		case method.ExpirationYear == nil:
 			unknown = true
-		} else if *method.ExpirationYear < query.Now.Year() {
+		case *method.ExpirationYear < query.Now.Year():
 			return false, nil
-		} else if *method.ExpirationYear == query.Now.Year() {
+		case *method.ExpirationYear == query.Now.Year():
 			if method.ExpirationMonth == nil {
 				unknown = true
 			} else if *method.ExpirationMonth < int(query.Now.Month()) {
