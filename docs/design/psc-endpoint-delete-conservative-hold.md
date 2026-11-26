@@ -38,3 +38,9 @@ read, checks no DELETE was sent, and only then removes the endpoint in the fake
 model. The case expects the marker and managed finalizer to remain after the
 operation completes and the connector is reconstructed. The model does not
 contact GCP and cannot prove real external cleanup or Cloud task behavior.
+
+The pending policy-boundary fixture starts with the persisted PSC intent and
+managed finalizer, then exercises Orphan and a management policy without Delete
+using a real API server and managed reconciler. The synthetic inner connector
+counts connections and deletions. Observing that the CR disappears without an
+inner call would demonstrate abandonment of management, not Cloud cleanup.

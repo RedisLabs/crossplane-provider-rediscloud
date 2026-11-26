@@ -32,12 +32,16 @@ import (
 )
 
 const (
-	pscOperationDestroy    = "destroy"
-	pscServiceTask         = "get-service"
-	pscEndpointsTask       = "get-endpoints"
-	pscServiceTaskPath     = "/v1/tasks/get-service"
-	pscEndpointsTaskPath   = "/v1/tasks/get-endpoints"
-	pscEndpointInitialized = "initialized"
+	pscTestEndpointExternal = "1/7/8"
+	pscTestIntentAnnotation = "rediscloud.crossplane.io/psc-endpoint-delete-intent"
+	pscTestProviderConfig   = "fixture-config"
+	pscTestHeldMarker       = "held"
+	pscOperationDestroy     = "destroy"
+	pscServiceTask          = "get-service"
+	pscEndpointsTask        = "get-endpoints"
+	pscServiceTaskPath      = "/v1/tasks/get-service"
+	pscEndpointsTaskPath    = "/v1/tasks/get-endpoints"
+	pscEndpointInitialized  = "initialized"
 )
 
 // This fixture starts with an existing fake Pro parent. All writes target the
@@ -198,7 +202,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	item.Spec.ForProvider.GCPProjectID, item.Spec.ForProvider.GCPVPCName = &project, &vpc
 	item.Spec.ForProvider.GCPVPCSubnetName, item.Spec.ForProvider.EndpointConnectionName = &subnet, &prefix
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
-	item.Spec.ProviderConfigReference = &xpv2.Reference{Name: "fixture-config"}
+	item.Spec.ProviderConfigReference = &xpv2.Reference{Name: pscTestProviderConfig}
 	var kube client.Client
 	if os.Getenv("QA_PSC_HOLD_ENVTEST") == fixtureStringTrue {
 		kube = newPSCEnvtestClient(t, scheme, item)
@@ -289,11 +293,11 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		if err := kube.Get(context.Background(), req.NamespacedName, item); err != nil {
 			t.Fatal(err)
 		}
-		if item.Status.AtProvider.ID != nil && *item.Status.AtProvider.ID == "1/7/8" && len(item.Finalizers) != 0 {
+		if item.Status.AtProvider.ID != nil && *item.Status.AtProvider.ID == pscTestEndpointExternal && len(item.Finalizers) != 0 {
 			break
 		}
 	}
-	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1/7/8" || len(item.Finalizers) == 0 {
+	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != pscTestEndpointExternal || len(item.Finalizers) == 0 {
 		t.Fatal("fake PSC identity/finalizer missing")
 	}
 	mu.Lock()
@@ -338,7 +342,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 				if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID {
 					t.Fatal("endpoint identity lost before destroy")
 				}
-				intent = current.Annotations["rediscloud.crossplane.io/psc-endpoint-delete-intent"]
+				intent = current.Annotations[pscTestIntentAnnotation]
 				if intent == "" || !slices.Contains(current.Finalizers, managed.FinalizerName) {
 					t.Fatal("destroy has no persisted hold and managed finalizer")
 				}
@@ -362,7 +366,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			if observed {
 				mu.Unlock()
 				current := &api.ServiceConnectEndpoint{}
-				if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID || current.Annotations["rediscloud.crossplane.io/psc-endpoint-delete-intent"] != intent || !slices.Contains(current.Finalizers, managed.FinalizerName) {
+				if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID || current.Annotations[pscTestIntentAnnotation] != intent || !slices.Contains(current.Finalizers, managed.FinalizerName) {
 					t.Fatal("hold changed during provider collection read")
 				}
 				op := store.current.LastOperation
@@ -399,7 +403,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID || !slices.Contains(current.Finalizers, managed.FinalizerName) || current.GetDeletionTimestamp().IsZero() {
 				t.Fatal("held CR or finalizer lost")
 			}
-			if _, ok := current.Annotations["rediscloud.crossplane.io/psc-endpoint-delete-intent"]; !ok {
+			if _, ok := current.Annotations[pscTestIntentAnnotation]; !ok {
 				t.Fatal("PSC delete intent lost")
 			}
 			if store.current != nil {
