@@ -248,6 +248,15 @@ jobs:
           tar -xzf "$RUNNER_TEMP/envtest.tgz" --strip-components=2 -C "$RUNNER_TEMP/envtest" controller-tools/envtest/etcd controller-tools/envtest/kube-apiserver
           KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest" QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl" go test -p 2 ./scripts/qa_envtest -run TestUIDPreconditionAgainstAPIServer -count=1 -v
 
+      - name: Verify ACL lookup identity and recovery
+        run: |
+          python3 - <<'PY'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestACLLookupIdentityValidationAndRecovery"
+          names = (root,) + tuple(f"{root}/{kind}/{case}" for kind in ("role", "rule", "user") for case in ("initial", "missing", "zero", "negative", "recovery"))
+          run_selected("./internal/controller/lookup", names)
+          PY
+
       - name: Run Unit Tests
         run: make -j2 test
 
