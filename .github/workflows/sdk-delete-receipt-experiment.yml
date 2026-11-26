@@ -1,0 +1,50 @@
+name: Credential-free SDK delete receipt experiment
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sdk-delete-receipt-experiment.yml'
+      - 'experiments/sdk-delete-receipt/**'
+
+permissions: {}
+
+jobs:
+  sdk-receipt-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      SDK_BASE: 2cb6b15f705ae2969253d6e3da7d870e7d22cc44
+      PATCH_SHA256: 280cf9dfdc653300124832ace1cbc4789ccc0755517417738cfffeb700d9ca27
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.26.11'
+          cache: false
+      - name: Fetch pinned public source and reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PR_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          mkdir -p "$RUNNER_TEMP/sdk-receipt"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            "https://raw.githubusercontent.com/RedisLabs/crossplane-provider-rediscloud/${PR_HEAD}/experiments/sdk-delete-receipt/proposal.patch.b64" \
+            -o "$RUNNER_TEMP/sdk-receipt/proposal.patch.b64"
+          base64 --decode "$RUNNER_TEMP/sdk-receipt/proposal.patch.b64" > "$RUNNER_TEMP/sdk-receipt/proposal.patch"
+          echo "$PATCH_SHA256  $RUNNER_TEMP/sdk-receipt/proposal.patch" | sha256sum -c -
+          git init -q "$RUNNER_TEMP/sdk-receipt/source"
+          git -C "$RUNNER_TEMP/sdk-receipt/source" remote add origin https://github.com/RedisLabs/rediscloud-go-api.git
+          git -C "$RUNNER_TEMP/sdk-receipt/source" fetch --no-tags --depth=1 origin "$SDK_BASE"
+          git -C "$RUNNER_TEMP/sdk-receipt/source" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/sdk-receipt/source" rev-parse HEAD)" = "$SDK_BASE"
+          git -C "$RUNNER_TEMP/sdk-receipt/source" apply --check "$RUNNER_TEMP/sdk-receipt/proposal.patch"
+          git -C "$RUNNER_TEMP/sdk-receipt/source" apply "$RUNNER_TEMP/sdk-receipt/proposal.patch"
+      - name: Run focused fake-only receipt tests
+        shell: bash
+        working-directory: ${{ runner.temp }}/sdk-receipt/source
+        run: |
+          set -euo pipefail
+          go test -count=1 -v ./internal -run '^TestHttpClient_DeleteOnceDoesNotRetry429$'
+          go test -count=1 -v ./service/databases -run '^TestStartDeleteReceiptAndUnknownOutcome$'
+          go test -count=1 -v ./service/psc -run '^TestStartDeleteEndpointReceiptAndUnknownOutcome$'
