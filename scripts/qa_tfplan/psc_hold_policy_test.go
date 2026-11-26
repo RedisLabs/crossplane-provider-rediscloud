@@ -36,7 +36,7 @@ func TestProductPSCHoldPolicyBoundaries(t *testing.T) { //nolint:gocyclo // Each
 			}
 			item := &psc.ServiceConnectEndpoint{ObjectMeta: metav1.ObjectMeta{Name: "psc-policy-fixture", Finalizers: []string{managed.FinalizerName}}}
 			sub, service := "1", float64(7)
-			project, vpc, subnet, prefix := "fixture-project", "fixture-vpc", "fixture-subnet", "fixture-prefix"
+			project, vpc, subnet, prefix := pscFixtureProject, pscFixtureVPC, pscFixtureSubnet, pscFixturePrefix
 			item.Spec.ForProvider.SubscriptionID, item.Spec.ForProvider.PrivateServiceConnectServiceID = &sub, &service
 			item.Spec.ForProvider.GCPProjectID, item.Spec.ForProvider.GCPVPCName = &project, &vpc
 			item.Spec.ForProvider.GCPVPCSubnetName, item.Spec.ForProvider.EndpointConnectionName = &subnet, &prefix
