@@ -67,10 +67,10 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 				ready          corev1.ConditionStatus
 				wantScript     bool
 			}{
-				{"initial", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{fixtureLookupInitial, `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
 				{"mismatch", `{"pscServiceId":10,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionFalse, false},
 				{"missing_optional_id", `{"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
-				{"recovery", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{fixtureLookupRecovery, `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
 			} {
 				t.Run(step.name, func(t *testing.T) {
 					paths[tc.path] = taskBody{task: "endpoints", resource: step.resource}
@@ -102,7 +102,7 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 						if !reflect.DeepEqual(observation, lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}) {
 							t.Fatal("stale observation not cleared")
 						}
-						if ready.Message != "lookup failed; check provider configuration and Redis Cloud access" {
+						if ready.Message != fixtureLookupSafeError {
 							t.Fatalf("unsafe condition: %q", ready.Message)
 						}
 					} else if observation.ID != "1001/9" || len(observation.Endpoints) != 1 {

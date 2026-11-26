@@ -41,13 +41,13 @@ func TestPrivateLinkIdentityReconcile(t *testing.T) { //nolint:gocyclo // Both r
 		}, func(o client.Object) (lookupv1alpha1.PrivateLinkObservation, xpv1.Condition) {
 			v := o.(*lookupv1alpha1.PrivateLink)
 			return v.Status.AtProvider, v.Status.GetCondition(xpv1.TypeReady)
-		}, []identityStep{{"initial", `{"subscriptionId":1001,"shareName":"fixture"}`, true}, {"wrong_subscription", `{"subscriptionId":1002,"shareName":"fixture"}`, false}, {"missing_optional", `{"shareName":"fixture"}`, true}, {"recovery", `{"subscriptionId":1001,"shareName":"fixture"}`, true}}},
+		}, []identityStep{{fixtureLookupInitial, `{"subscriptionId":1001,"shareName":"fixture"}`, true}, {"wrong_subscription", `{"subscriptionId":1002,"shareName":"fixture"}`, false}, {"missing_optional", `{"shareName":"fixture"}`, true}, {fixtureLookupRecovery, `{"subscriptionId":1001,"shareName":"fixture"}`, true}}},
 		{"active_active", "/subscriptions/1001/regions/7/private-link", &lookupv1alpha1.ActiveActivePrivateLink{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: lookupv1alpha1.ActiveActivePrivateLinkSpec{ProviderConfigRef: ref, ForProvider: lookupv1alpha1.SubscriptionRegionParameters{SubscriptionID: "1001", RegionID: "7"}}}, func(c client.Client) func(context.Context, reconcile.Request) (reconcile.Result, error) {
 			return (&ActiveActivePrivateLinkReconciler{Client: c}).Reconcile
 		}, func(o client.Object) (lookupv1alpha1.PrivateLinkObservation, xpv1.Condition) {
 			v := o.(*lookupv1alpha1.ActiveActivePrivateLink)
 			return v.Status.AtProvider, v.Status.GetCondition(xpv1.TypeReady)
-		}, []identityStep{{"initial", `{"subscriptionId":1001,"regionId":7,"shareName":"fixture"}`, true}, {"wrong_subscription", `{"subscriptionId":1002,"regionId":7,"shareName":"fixture"}`, false}, {"wrong_region", `{"subscriptionId":1001,"regionId":8,"shareName":"fixture"}`, false}, {"missing_optional", `{"shareName":"fixture"}`, true}, {"recovery", `{"subscriptionId":1001,"regionId":7,"shareName":"fixture"}`, true}}},
+		}, []identityStep{{fixtureLookupInitial, `{"subscriptionId":1001,"regionId":7,"shareName":"fixture"}`, true}, {"wrong_subscription", `{"subscriptionId":1002,"regionId":7,"shareName":"fixture"}`, false}, {"wrong_region", `{"subscriptionId":1001,"regionId":8,"shareName":"fixture"}`, false}, {"missing_optional", `{"shareName":"fixture"}`, true}, {fixtureLookupRecovery, `{"subscriptionId":1001,"regionId":7,"shareName":"fixture"}`, true}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := []string{}
@@ -77,7 +77,7 @@ func TestPrivateLinkIdentityReconcile(t *testing.T) { //nolint:gocyclo // Both r
 						if ready.Status != corev1.ConditionTrue || observed.ShareName != "fixture" {
 							t.Fatalf("status=%+v observation=%+v", ready, observed)
 						}
-					} else if ready.Status != corev1.ConditionFalse || !reflect.DeepEqual(observed, lookupv1alpha1.PrivateLinkObservation{}) || ready.Message != "lookup failed; check provider configuration and Redis Cloud access" {
+					} else if ready.Status != corev1.ConditionFalse || !reflect.DeepEqual(observed, lookupv1alpha1.PrivateLinkObservation{}) || ready.Message != fixtureLookupSafeError {
 						t.Fatalf("failure not safely cleared: %+v %+v", ready, observed)
 					}
 				})
@@ -123,11 +123,11 @@ func TestPrivateLinkScriptParentIdentity(t *testing.T) { //nolint:gocyclo // Ver
 		ready           bool
 		wantLink        bool
 	}{
-		{"initial", `{"id":1001}`, `{"subscriptionId":1001,"status":"active"}`, true, true},
+		{fixtureLookupInitial, `{"id":1001}`, `{"subscriptionId":1001,"status":"active"}`, true, true},
 		{"wrong_subscription", `{"id":1002}`, `{"subscriptionId":1001,"status":"active"}`, false, false},
 		{"wrong_link", `{"id":1001}`, `{"subscriptionId":1002,"status":"active"}`, false, true},
 		{"missing_optional", `{}`, `{"status":"active"}`, true, true},
-		{"recovery", `{"id":1001}`, `{"subscriptionId":1001,"status":"active"}`, true, true},
+		{fixtureLookupRecovery, `{"id":1001}`, `{"subscriptionId":1001,"status":"active"}`, true, true},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			bodies["/subscriptions/1001"] = taskBody{direct: step.sub}
@@ -158,7 +158,7 @@ func TestPrivateLinkScriptParentIdentity(t *testing.T) { //nolint:gocyclo // Ver
 				if ready.Status != corev1.ConditionTrue || obj.Status.AtProvider.EndpointScript != "fixture-script" {
 					t.Fatalf("unexpected status: %+v", obj.Status)
 				}
-			} else if ready.Status != corev1.ConditionFalse || !reflect.DeepEqual(obj.Status.AtProvider, lookupv1alpha1.PrivateLinkEndpointScriptObservation{}) || ready.Message != "lookup failed; check provider configuration and Redis Cloud access" {
+			} else if ready.Status != corev1.ConditionFalse || !reflect.DeepEqual(obj.Status.AtProvider, lookupv1alpha1.PrivateLinkEndpointScriptObservation{}) || ready.Message != fixtureLookupSafeError {
 				t.Fatalf("failure not safely cleared: %+v", obj.Status)
 			}
 		})

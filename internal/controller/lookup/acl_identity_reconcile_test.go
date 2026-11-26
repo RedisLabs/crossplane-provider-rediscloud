@@ -21,6 +21,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	fixtureLookupInitial   = "initial"
+	fixtureLookupRecovery  = "recovery"
+	fixtureLookupSafeError = "lookup failed; check provider configuration and Redis Cloud access"
+)
+
 func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo // Each lookup and response transition is checked explicitly.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("hosted Actions only")
@@ -71,11 +77,11 @@ func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo
 				ready                 corev1.ConditionStatus
 				delay                 bool
 			}{
-				{"initial", `,"id":42`, "42", corev1.ConditionTrue, false},
+				{fixtureLookupInitial, `,"id":42`, "42", corev1.ConditionTrue, false},
 				{"missing", "", "", corev1.ConditionFalse, true},
 				{"zero", `,"id":0`, "0", corev1.ConditionTrue, false},
 				{"negative", `,"id":-1`, "-1", corev1.ConditionTrue, false},
-				{"recovery", `,"id":43`, "43", corev1.ConditionTrue, false},
+				{fixtureLookupRecovery, `,"id":43`, "43", corev1.ConditionTrue, false},
 			} {
 				t.Run(step.name, func(t *testing.T) {
 					idField = step.idField
@@ -101,7 +107,7 @@ func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo
 					if step.delay && !cleared {
 						t.Fatal("stale observation was not fully cleared")
 					}
-					if step.delay && ready.Message != "lookup failed; check provider configuration and Redis Cloud access" {
+					if step.delay && ready.Message != fixtureLookupSafeError {
 						t.Fatalf("unsafe failure condition: %q", ready.Message)
 					}
 				})

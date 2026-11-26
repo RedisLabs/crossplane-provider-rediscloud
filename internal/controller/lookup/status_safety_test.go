@@ -78,7 +78,7 @@ func TestLookupControllerErrorBodiesNeverReachStatus(t *testing.T) { //nolint:go
 				t.Fatal("failure conditions missing")
 			}
 			for _, condition := range conditions {
-				if strings.Contains(condition.Message, sentinel) || condition.Message != "lookup failed; check provider configuration and Redis Cloud access" {
+				if strings.Contains(condition.Message, sentinel) || condition.Message != fixtureLookupSafeError {
 					t.Fatal("condition did not use the safe failure message")
 				}
 			}
