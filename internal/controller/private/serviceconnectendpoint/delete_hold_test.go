@@ -6,6 +6,7 @@ package serviceconnectendpoint
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	pscv1 "github.com/RedisLabs/provider-rediscloud/apis/private/v1beta1"
@@ -199,4 +200,36 @@ func TestPSCDeleteIdentity(t *testing.T) {
 	if sameDeleteIdentity(fractional, fractional) {
 		t.Fatal("fractional service accepted")
 	}
+	for _, invalid := range []float64{math.NaN(), math.Inf(1), 9007199254740992} {
+		item := obj.DeepCopy()
+		item.Spec.ForProvider.PrivateServiceConnectServiceID = &invalid
+		meta.SetExternalName(item, "1/7/8")
+		if sameDeleteIdentity(item, item) {
+			t.Fatal("invalid service accepted")
+		}
+	}
+	missing := obj.DeepCopy()
+	missing.Spec.ForProvider.SubscriptionID = nil
+	meta.SetExternalName(missing, "1/7/8")
+	if sameDeleteIdentity(missing, missing) {
+		t.Fatal("missing subscription accepted")
+	}
+	missing = obj.DeepCopy()
+	missing.Spec.ForProvider.PrivateServiceConnectServiceID = nil
+	meta.SetExternalName(missing, "1/7/8")
+	if sameDeleteIdentity(missing, missing) {
+		t.Fatal("missing service accepted")
+	}
+	missing = obj.DeepCopy()
+	missing.Spec.ProviderConfigReference = nil
+	meta.SetExternalName(missing, "1/7/8")
+	if sameDeleteIdentity(missing, missing) {
+		t.Fatal("missing provider accepted")
+	}
+	overflow := obj.DeepCopy()
+	meta.SetExternalName(overflow, "1/7/999999999999999999999999999999")
+	if sameDeleteIdentity(overflow, overflow) {
+		t.Fatal("overflow endpoint accepted")
+	}
+
 }
