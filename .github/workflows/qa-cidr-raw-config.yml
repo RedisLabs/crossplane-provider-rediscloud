@@ -1,0 +1,57 @@
+name: Credential-free CIDR raw configuration observation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [lifecycle, source_cidrs]
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          repository: RedisLabs/terraform-provider-rediscloud
+          ref: 75eeed3fdae27cd7a4c4adc5b6e9e57cf03859b2
+          path: candidate-provider
+          persist-credentials: false
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version: '1.26.11'
+      - name: Verify exact fixture receipt guard
+        run: python3 -m unittest discover -s scripts/qa_raw_config -p test_run_case.py
+      - name: Build instrumented fake-only candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate-provider rev-parse HEAD)" = 75eeed3fdae27cd7a4c4adc5b6e9e57cf03859b2
+          test -z "$(git -C candidate-provider status --porcelain)"
+          sha256sum scripts/qa_raw_config/instrument.py scripts/qa_raw_config/report.py scripts/qa_raw_config/run_case.py
+          python3 scripts/qa_raw_config/instrument.py candidate-provider
+          mkdir -p "$RUNNER_TEMP/cidr/bin" "$RUNNER_TEMP/cidr/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64"
+          curl -fsSL https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip -o "$RUNNER_TEMP/cidr/terraform.zip"
+          echo 'c0ed7bc32ee52ae255af9982c8c88a7a4c610485cf1d55feeb037eab75fa082c  '"$RUNNER_TEMP/cidr/terraform.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/cidr/terraform.zip" -d "$RUNNER_TEMP/cidr/bin"
+          cd candidate-provider
+          go build -o "$RUNNER_TEMP/cidr/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64/terraform-provider-rediscloud_v2.20.0" .
+          sha256sum "$RUNNER_TEMP/cidr/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64/terraform-provider-rediscloud_v2.20.0" | tee "$RUNNER_TEMP/cidr/provider.sha256"
+      - name: Observe category-only raw configuration through managed reconciler
+        shell: bash
+        env:
+          FIXTURE_CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          export QA_TEST_TERRAFORM="$RUNNER_TEMP/cidr/bin/terraform"
+          export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/cidr/plugins"
+          export QA_RAW_CONFIG_TRACE="$RUNNER_TEMP/cidr/raw-config-trace"
+          sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
+          python3 scripts/qa_raw_config/run_case.py "$FIXTURE_CASE"
+          sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
+          python3 scripts/qa_raw_config/report.py "$FIXTURE_CASE" "$QA_RAW_CONFIG_TRACE"
