@@ -89,6 +89,23 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 			result = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: desiredEviction, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath+"/tags":
 			result = map[string]any{fixtureTagsKey: []any{}}
+		case r.Method == http.MethodPut && r.URL.Path == fixtureProDatabasePath && exists:
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) != nil {
+				unexpected = true
+				http.Error(w, "bad update", http.StatusBadRequest)
+				return
+			}
+			if policy, ok := body[fixtureEvictionKey]; ok && policy != desiredEviction {
+				unexpected = true
+				http.Error(w, "unexpected policy", http.StatusBadRequest)
+				return
+			}
+			result = map[string]any{fixtureTaskKey: fixtureUpdateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
+			result = map[string]any{fixtureStatusKey: fixtureTaskComplete}
+		case r.Method == http.MethodPut && r.URL.Path == fixtureProDatabasePath+"/tags":
+			result = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
 			rows := []any{}
 			if exists {
@@ -238,7 +255,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 		t.Fatal(err)
 	}
 	store := newTrackingNativeStore()
-	callback := &fakeCallback{done: make(chan error, 1)}
+	callback := &processCallbacks{done: make(chan processCallbackEvent, 8)}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
 		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
 	}
@@ -248,18 +265,21 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}
 	if role == fixtureFirst {
-		waitOperation := func(expectFailure bool) {
+		waitOperation := func(wantKind string, expectFailure bool) {
 			t.Helper()
 			for i := 0; i < 8; i++ {
 				if _, reconcileErr := rec.Reconcile(context.Background(), req); reconcileErr != nil {
 					t.Fatal(reconcileErr)
 				}
 				select {
-				case callbackErr := <-callback.done:
-					if (callbackErr != nil) != expectFailure {
-						t.Fatalf("unexpected callback failed=%v", callbackErr != nil)
+				case event := <-callback.done:
+					matched, checkErr := checkProcessCallback(event, wantKind, expectFailure)
+					if checkErr != nil {
+						t.Fatal(checkErr)
 					}
-					return
+					if matched {
+						return
+					}
 				case <-time.After(45 * time.Second):
 				}
 			}
@@ -269,7 +289,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 			}
 			t.Fatalf("operation callback missing; fake CR conditions=%+v", current.Status.Conditions)
 		}
-		waitOperation(false)
+		waitOperation("create", false)
 		var current *pro.Database
 		for i := 0; i < 6; i++ {
 			if _, reconcileErr := rec.Reconcile(context.Background(), req); reconcileErr != nil {
@@ -289,7 +309,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 		if deleteErr := kube.Delete(context.Background(), current); deleteErr != nil {
 			t.Fatal(deleteErr)
 		}
-		waitOperation(true)
+		waitOperation("destroy", true)
 		fmt.Printf("PROCESS_RECEIPT %s %d\n", role, os.Getpid())
 		return
 	}
@@ -307,7 +327,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 // The worker cannot target an arbitrary origin even if its environment is altered.
 func validProcessLoopback(raw, scheme string) bool { //nolint:gocyclo // Each origin boundary is checked explicitly.
 	parsed, err := url.Parse(raw)
-	if err != nil || strings.ContainsAny(raw, "?#") || parsed.Scheme != scheme || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.User != nil || (parsed.Path != "" && !(scheme == "https" && parsed.Path == "/")) {
+	if err != nil || strings.ContainsAny(raw, "?#") || parsed.Scheme != scheme || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.User != nil || (parsed.Path != "" && (scheme != "https" || parsed.Path != "/")) {
 		return false
 	}
 	port, err := strconv.Atoi(parsed.Port())
@@ -332,5 +352,52 @@ func TestProductProcessLoopbackValidation(t *testing.T) {
 		if got := validProcessLoopback(tc.raw, tc.scheme); got != tc.want {
 			t.Fatalf("unexpected origin validation: %q", tc.raw)
 		}
+	}
+}
+
+// Kind-specific receipts prevent a late update callback masquerading as delete.
+type processCallbackEvent struct {
+	kind string
+	err  error
+}
+type processCallbacks struct{ done chan processCallbackEvent }
+
+func (c *processCallbacks) result(kind string) terraform.CallbackFn {
+	return func(err error, _ context.Context) error {
+		c.done <- processCallbackEvent{kind: kind, err: err}
+		return nil
+	}
+}
+func (c *processCallbacks) Create(types.NamespacedName, bool) terraform.CallbackFn {
+	return c.result("create")
+}
+func (c *processCallbacks) Update(types.NamespacedName, bool) terraform.CallbackFn {
+	return c.result("update")
+}
+func (c *processCallbacks) Destroy(types.NamespacedName, bool) terraform.CallbackFn {
+	return c.result("destroy")
+}
+func checkProcessCallback(event processCallbackEvent, want string, failure bool) (bool, error) {
+	if event.kind == "update" && want == "destroy" {
+		if event.err != nil {
+			return false, fmt.Errorf("initial fake update failed")
+		}
+		return false, nil
+	}
+	if event.kind != want || (event.err != nil) != failure {
+		return false, fmt.Errorf("unexpected callback kind or outcome")
+	}
+	return true, nil
+}
+func TestProductProcessCallbackAttribution(t *testing.T) {
+	fakeError := fmt.Errorf("fake failure")
+	if matched, err := checkProcessCallback(processCallbackEvent{kind: "update", err: fakeError}, "destroy", true); matched || err == nil {
+		t.Fatal("failed update mistaken for destroy")
+	}
+	if matched, err := checkProcessCallback(processCallbackEvent{kind: "update"}, "destroy", true); matched || err != nil {
+		t.Fatal("successful update should not satisfy destroy")
+	}
+	if matched, err := checkProcessCallback(processCallbackEvent{kind: "destroy", err: fakeError}, "destroy", true); !matched || err != nil {
+		t.Fatal("expected failed destroy missing")
 	}
 }
