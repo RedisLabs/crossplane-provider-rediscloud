@@ -56,8 +56,8 @@ func TestDeleteFenceAPIServer(t *testing.T) { //nolint:gocyclo // Each isolated 
 		}
 	})
 	scheme := runtime.NewScheme()
-	if err := dbv1.AddToScheme(scheme); err != nil {
-		t.Fatal(err)
+	if schemeErr := dbv1.AddToScheme(scheme); schemeErr != nil {
+		t.Fatal(schemeErr)
 	}
 	kube, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
@@ -117,11 +117,12 @@ func TestDeleteFenceAPIServer(t *testing.T) { //nolint:gocyclo // Each isolated 
 		close(results)
 		success, held := 0, 0
 		for acquireErr := range results {
-			if acquireErr == nil {
+			switch {
+			case acquireErr == nil:
 				success++
-			} else if errors.Is(acquireErr, ErrHold) {
+			case errors.Is(acquireErr, ErrHold):
 				held++
-			} else {
+			default:
 				t.Fatal(acquireErr)
 			}
 		}
