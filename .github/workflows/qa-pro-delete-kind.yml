@@ -172,6 +172,8 @@ jobs:
                       env:
                       - name: ENABLE_PRO_DATABASE_DELETE_HOLD
                         value: "true"
+                      - name: PROVIDER_DEBUG
+                        value: "true"
           YAML
           printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always","runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"fixture-delete-hold"}}}\n' "$digest" | "$kubectl" apply -f -
           printf '%s' "$digest" > "$RUNNER_TEMP/installed-digest"

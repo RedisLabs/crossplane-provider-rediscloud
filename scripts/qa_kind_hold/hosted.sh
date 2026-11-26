@@ -84,7 +84,7 @@ docker exec "$node" iptables -I FORWARD 1 -j CODEX-HOLD
 probe(){
  local pod=$1 uid before after
  uid=$("$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.metadata.uid}')
- "$kubectl" -n upbound-system get pod "$pod" -o json | python3 -c 'import ipaddress,json,sys; p=json.load(sys.stdin); ips=[ipaddress.ip_address(x["ip"]) for x in p["status"]["podIPs"]]; assert not p["spec"].get("hostNetwork") and p["spec"]["nodeName"]==sys.argv[1] and len(ips)==1 and ips[0].version==4 and ips[0] in ipaddress.ip_network(sys.argv[2]); containers=[c for c in p["spec"]["containers"] if c["name"]=="package-runtime"]; assert len(containers)==1 and any(e.get("name")=="ENABLE_PRO_DATABASE_DELETE_HOLD" and e.get("value")=="true" for e in containers[0].get("env",[]))' "$node" "$cidr"
+ "$kubectl" -n upbound-system get pod "$pod" -o json | python3 -c 'import ipaddress,json,sys; p=json.load(sys.stdin); ips=[ipaddress.ip_address(x["ip"]) for x in p["status"]["podIPs"]]; assert not p["spec"].get("hostNetwork") and p["spec"]["nodeName"]==sys.argv[1] and len(ips)==1 and ips[0].version==4 and ips[0] in ipaddress.ip_network(sys.argv[2]); containers=[c for c in p["spec"]["containers"] if c["name"]=="package-runtime"]; assert len(containers)==1 and any(e.get("name")=="ENABLE_PRO_DATABASE_DELETE_HOLD" and e.get("value")=="true" for e in containers[0].get("env",[])) and any(e.get("name")=="PROVIDER_DEBUG" and e.get("value")=="true" for e in containers[0].get("env",[]))' "$node" "$cidr"
  "$kubectl" -n upbound-system debug "pod/$pod" --container=fixture-probe --image="$image" --attach=false -- /bin/sh -c 'sleep 1200' >/dev/null
  for attempt in $(seq 1 60); do
   if "$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.status.ephemeralContainerStatuses[?(@.name=="fixture-probe")].state.running.startedAt}' | grep -q .; then break; fi
@@ -209,24 +209,70 @@ PYDIAG
  echo 'replacement provider did not become ready' >&2; exit 1
 fi
 probe "$replacement"
-# Require the replacement controller to observe a fresh explicit reconcile token
-# and report the hold; a merely ready but idle replacement is not sufficient.
+# CR type does not implement the optional lastHandledReconcileAt tracker.
+# After the old runtime has gone and exactly one replacement is ready, require
+# a fresh guard event for this exact CR and a matching error condition. Event
+# count AND reporter timestamp must advance after a new annotation request.
+replacement_uid=$("$kubectl" -n upbound-system get pod "$replacement" -o jsonpath='{.metadata.uid}')
+# The event recorder does not include a Pod identity; baseline and compare
+# per event UID, and separately require a fresh guard log from the replacement.
+log_count(){
+ "$kubectl" -n upbound-system logs "$replacement" -c package-runtime | python3 -c 'import sys; uid=sys.argv[1]; print(sum(uid in x and "pro database delete is held" in x for x in sys.stdin))' "$cr_uid"
+}
+sleep 2
+"$kubectl" get events --field-selector "involvedObject.uid=$cr_uid" -o json > "$RUNNER_TEMP/hold-event-baseline.json"
+# kingpin DefaultEnvars prefixes debug with the provider executable name.
+# Verify actual debug output without printing the full fake-only logs.
+"$kubectl" -n upbound-system logs "$replacement" -c package-runtime | python3 -c 'import sys; lines=list(sys.stdin); assert any("Starting" in x and "sync-period" in x for x in lines)'
+baseline_logs=$(log_count)
+[[ "$baseline_logs" =~ ^[0-9]+$ ]]
+cutoff=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 token="hold-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 "$kubectl" annotate databases.subscription.redis.io hold-fixture --overwrite "crossplane.io/reconcile-requested-at=$token"
 handled=false
 for attempt in $(seq 1 120); do
  "$kubectl" get databases.subscription.redis.io hold-fixture -o json > "$RUNNER_TEMP/hold-status.json"
- if python3 - "$RUNNER_TEMP/hold-status.json" "$cr_uid" "$token" <<'PYHOLD'
-import json,sys
-x=json.load(open(sys.argv[1])); s=x.get('status',{})
-assert x['metadata']['uid']==sys.argv[2]
-assert s.get('lastHandledReconcileAt')==sys.argv[3]
-assert any(c.get('type')=='Synced' and c.get('status')=='False' and 'pro database delete is held' in c.get('message','') for c in s.get('conditions',[]))
+ "$kubectl" get events --field-selector "involvedObject.uid=$cr_uid" -o json > "$RUNNER_TEMP/hold-events.json"
+ current_logs=$(log_count)
+ [[ "$current_logs" =~ ^[0-9]+$ ]]
+ if python3 - "$RUNNER_TEMP/hold-status.json" "$RUNNER_TEMP/hold-events.json" "$RUNNER_TEMP/hold-event-baseline.json" "$cr_uid" "$baseline_logs" "$current_logs" "$cutoff" <<'PYHOLD'
+import copy,datetime,json,sys
+obj=json.load(open(sys.argv[1])); events=json.load(open(sys.argv[2]))['items']; baseline=json.load(open(sys.argv[3]))['items']; cutoff=datetime.datetime.fromisoformat(sys.argv[7].replace('Z','+00:00'))
+def count(e): return max(e.get('count',1), (e.get('series') or {}).get('count',0))
+def matching(e,uid): return e.get('involvedObject',{}).get('uid')==uid and e.get('reason')=='CannotConnectToProvider' and 'pro database delete is held' in e.get('message','')
+def timestamp(e):
+ value=(e.get('series') or {}).get('lastObservedTime') or e.get('lastTimestamp') or e.get('eventTime')
+ return datetime.datetime.fromisoformat(value.replace('Z','+00:00')) if value else datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+def valid(obj,items,old,uid,before_logs,after_logs,threshold):
+ status=obj.get('status',{})
+ if obj['metadata']['uid']!=uid or not any(c.get('type')=='Synced' and c.get('status')=='False' and 'pro database delete is held' in c.get('message','') for c in status.get('conditions',[])) or after_logs<=before_logs: return False
+ old_counts={e['metadata']['uid']:count(e) for e in old if matching(e,uid)}
+ return any(count(e)>old_counts.get(e['metadata']['uid'],0) and timestamp(e)>=threshold for e in items if matching(e,uid))
+uid=sys.argv[4]; before=int(sys.argv[5]); after=int(sys.argv[6])
+assert not valid(obj,events,baseline,'wrong-uid',before,after,cutoff)
+assert not valid(obj,events,events,uid,before,after,cutoff)
+assert not valid(obj,events,baseline,uid,before,before,cutoff)
+assert not valid(obj,events,baseline,uid,before,after,datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
+# A fresh timestamp on a different unchanged event cannot validate an old increment.
+old_time=(cutoff-datetime.timedelta(seconds=30)).isoformat(); future_time=(cutoff+datetime.timedelta(seconds=30)).isoformat()
+old_event={'metadata':{'uid':'old'},'involvedObject':{'uid':uid},'reason':'CannotConnectToProvider','message':'pro database delete is held','count':1,'lastTimestamp':old_time}
+fresh_event=copy.deepcopy(old_event); fresh_event['metadata']['uid']='fresh'; fresh_event['lastTimestamp']=future_time
+changed=copy.deepcopy(old_event); changed['count']=2
+assert not valid(obj,[changed,fresh_event],[old_event,fresh_event],uid,before,before+1,cutoff)
+sys.exit(0 if valid(obj,events,baseline,uid,before,after,cutoff) else 1)
 PYHOLD
  then handled=true; break; fi
  sleep 2
 done
-[[ "$handled" == true ]] || { echo 'replacement did not report the held reconcile' >&2; exit 1; }
+if [[ "$handled" != true ]]; then
+ python3 - "$RUNNER_TEMP/hold-status.json" "$RUNNER_TEMP/hold-events.json" "$baseline_logs" "$current_logs" <<'PYDIAG'
+import json,sys
+s=json.load(open(sys.argv[1])).get('status',{}); events=json.load(open(sys.argv[2]))['items']
+print({'baselineLogs':sys.argv[3], 'currentLogs':sys.argv[4], 'conditions':[{'type':c.get('type'),'status':c.get('status'),'reason':c.get('reason')} for c in s.get('conditions',[])], 'eventReasons':[e.get('reason') for e in events]})
+PYDIAG
+ echo 'replacement did not provide fresh held reconcile evidence' >&2; exit 1
+fi
+test "$("$kubectl" -n upbound-system get pod "$replacement" -o jsonpath='{.metadata.uid}')" = "$replacement_uid"
 node_wget -q -T 2 -O /dev/null --post-data='' --header='X-Fixture-Control: fixture-control' http://127.0.0.1:5556/fixture/release
 # Bounded repeated reconciliation/observation is scoped to this fake run.
 for attempt in $(seq 1 12); do
