@@ -1,0 +1,197 @@
+name: Credential-free integrated alpha OCI installation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  oci-install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact integrated source
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          ref: 089e9c1ee709c57d742638766b3a5c56bd8f360f
+          submodules: true
+          fetch-depth: 0
+      - name: Verify fixed source and PR base
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 089e9c1ee709c57d742638766b3a5c56bd8f360f
+          test -z "$(git status --porcelain)"
+          if [ -n "$PR_BASE_SHA" ]; then test "$PR_BASE_SHA" = 089e9c1ee709c57d742638766b3a5c56bd8f360f; fi
+          echo "Integrated source: $(git rev-parse HEAD)"
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.26.11'
+      - name: Build package and start isolated hosted Kind
+        run: |
+          set -euo pipefail
+          make vendor vendor.check
+          make build
+          make controlplane.up
+      - name: Pull immutable package digest from ephemeral registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl=.cache/tools/linux_x86_64/kubectl-v1.33.5
+          kind=.cache/tools/linux_x86_64/kind-v0.33.0
+          crossplane=.cache/tools/linux_x86_64/crossplane-cli-v2.4.1
+          "$kubectl" -n upbound-system rollout status deployment/crossplane --timeout=5m
+          "$kubectl" -n upbound-system patch deployment crossplane --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/-","value":{"name":"ephemeral-registry","image":"registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373","env":[{"name":"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY","value":"/tmp/registry"}],"readinessProbe":{"tcpSocket":{"port":5000},"periodSeconds":2}}},{"op":"add","path":"/spec/template/spec/hostAliases","value":[{"ip":"127.0.0.1","hostnames":["registry.localhost"]}]}]'
+          "$kubectl" -n upbound-system rollout status deployment/crossplane --timeout=5m
+          pod=$("$kubectl" -n upbound-system get pods -l app=crossplane -o json | python3 -c '
+          import json, sys
+          pods = json.load(sys.stdin)["items"]
+          ready = [p["metadata"]["name"] for p in pods if not p["metadata"].get("deletionTimestamp") and p.get("status", {}).get("phase") == "Running" and any(c["name"] == "ephemeral-registry" and c.get("ready") for c in p["status"].get("containerStatuses", []))]
+          if len(ready) != 1:
+              raise SystemExit("expected exactly one running registry-ready Crossplane pod")
+          print(ready[0])
+          ')
+          pod_ip=$("$kubectl" -n upbound-system get pod "$pod" -o jsonpath='{.status.podIP}')
+          test -n "$pod_ip"
+          "$kubectl" -n upbound-system port-forward "pod/$pod" 5001:5000 >"$RUNNER_TEMP/registry-forward.log" 2>&1 &
+          forward=$!
+          trap 'kill "$forward" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS --max-time 3 http://localhost:5001/v2/ >/dev/null 2>&1; then break; fi
+            if ! kill -0 "$forward" 2>/dev/null; then
+              cat "$RUNNER_TEMP/registry-forward.log"
+              "$kubectl" -n upbound-system logs "$pod" -c ephemeral-registry --tail=40 || true
+              exit 1
+            fi
+            sleep 1
+          done
+          if ! curl -fsS --max-time 3 http://localhost:5001/v2/ >/dev/null; then
+            cat "$RUNNER_TEMP/registry-forward.log"
+            "$kubectl" -n upbound-system logs "$pod" -c ephemeral-registry --tail=40 || true
+            exit 1
+          fi
+          mapfile -t packages < <(find _output/xpkg/linux_amd64 -maxdepth 1 -type f -name '*.xpkg' -print)
+          test "${#packages[@]}" -eq 1
+          sha256sum "${packages[0]}"
+          "$crossplane" xpkg push -f "${packages[0]}" localhost:5001/provider-rediscloud:v0.0.1
+          digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' http://localhost:5001/v2/provider-rediscloud/manifests/v0.0.1 | tr -d '\r' | awk 'tolower($1)=="docker-content-digest:" {print $2}')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' "http://localhost:5001/v2/provider-rediscloud/manifests/$digest" -o "$RUNNER_TEMP/oci-manifest.json"
+          echo "${digest#sha256:}  $RUNNER_TEMP/oci-manifest.json" | sha256sum -c -
+          wrong="0${digest:8}"
+          if [[ "$wrong" == "${digest#sha256:}" ]]; then wrong="1${digest:8}"; fi
+          if echo "$wrong  $RUNNER_TEMP/oci-manifest.json" | sha256sum -c --status; then
+            echo "Corrupt manifest digest unexpectedly passed" >&2
+            exit 1
+          fi
+          echo "Ephemeral registry OCI package digest: $digest"
+          python3 - "$RUNNER_TEMP/oci-manifest.json" "${packages[0]}" <<'PY'
+          import hashlib, io, json, re, sys, tarfile
+
+          def verify(manifest, archive):
+              descriptors = [manifest["config"], *manifest["layers"]]
+              expected = {}
+              for index, descriptor in enumerate(descriptors):
+                  digest = descriptor["digest"]
+                  size = descriptor["size"]
+                  if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest) or type(size) is not int or size < 0:
+                      raise ValueError("invalid manifest descriptor")
+                  name = digest if index == 0 else digest[7:] + ".tar.gz"
+                  if name in expected:
+                      raise ValueError("duplicate manifest descriptor")
+                  expected[name] = (digest[7:], size)
+              seen = set()
+              with tarfile.open(fileobj=archive, mode="r:*") as tar:
+                  for member in tar:
+                      if member.name == "manifest.json" and member.isfile():
+                          continue
+                      if not member.isfile() or member.name not in expected or member.name in seen:
+                          raise ValueError("unexpected or duplicate xpkg blob")
+                      expected_hash, expected_size = expected[member.name]
+                      if member.size != expected_size:
+                          raise ValueError("xpkg blob size differs from manifest")
+                      content = tar.extractfile(member)
+                      if content is None:
+                          raise ValueError("xpkg blob unreadable")
+                      digest = hashlib.sha256()
+                      for chunk in iter(lambda: content.read(1024 * 1024), b""):
+                          digest.update(chunk)
+                      if digest.hexdigest() != expected_hash:
+                          raise ValueError("xpkg blob hash differs from manifest")
+                      seen.add(member.name)
+              if seen != set(expected):
+                  raise ValueError("xpkg is missing a manifest blob")
+
+          # Synthetic corruption and missing-layer cases must both fail closed.
+          config, layer = b"config", b"layer"
+          config_hash = hashlib.sha256(config).hexdigest()
+          layer_hash = hashlib.sha256(layer).hexdigest()
+          sample = {"config": {"digest": "sha256:" + config_hash, "size": len(config)}, "layers": [{"digest": "sha256:" + layer_hash, "size": len(layer)}]}
+          def fixture(layer_bytes):
+              buf = io.BytesIO()
+              with tarfile.open(fileobj=buf, mode="w") as tar:
+                  for name, data in [("sha256:" + config_hash, config), (layer_hash + ".tar.gz", layer_bytes)]:
+                      if data is None:
+                          continue
+                      info = tarfile.TarInfo(name)
+                      info.size = len(data)
+                      tar.addfile(info, io.BytesIO(data))
+              buf.seek(0)
+              return buf
+          verify(sample, fixture(layer))
+          for corrupt in (fixture(b"wrong"), fixture(None)):
+              try:
+                  verify(sample, corrupt)
+              except ValueError:
+                  pass
+              else:
+                  raise SystemExit("corrupt or missing blob unexpectedly accepted")
+          with open(sys.argv[1], encoding="utf-8") as f:
+              manifest = json.load(f)
+          with open(sys.argv[2], "rb") as f:
+              verify(manifest, f)
+          print("Every OCI config and layer digest and size matches the locally built xpkg.")
+          PY
+          for node in $("$kind" get nodes --name local-dev); do
+            docker exec "$node" mkdir -p /etc/containerd/certs.d/registry.localhost:5000
+            printf '[host."http://%s:5000"]\n' "$pod_ip" | docker exec -i "$node" tee /etc/containerd/certs.d/registry.localhost:5000/hosts.toml >/dev/null
+          done
+          printf '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"provider-rediscloud"},"spec":{"package":"registry.localhost:5000/provider-rediscloud@%s","packagePullPolicy":"Always"}}\n' "$digest" | "$kubectl" apply -f -
+          if ! "$kubectl" wait provider.pkg.crossplane.io/provider-rediscloud --for=condition=Healthy --timeout=8m; then
+            "$kubectl" describe provider.pkg.crossplane.io/provider-rediscloud || true
+            "$kubectl" get providerrevisions.pkg.crossplane.io -o wide || true
+            "$kubectl" -n upbound-system get pods -o wide || true
+            exit 1
+          fi
+          "$kubectl" -n upbound-system wait deployments --all --for=condition=Available --timeout=8m
+          for crd in providerconfigs.rediscloud.redis.io subscriptions.rediscloud.redis.io databases.subscription.redis.io roles.acl.redis.io rules.acl.redis.io users.acl.redis.io links.private.redis.io serviceconnects.private.redis.io serviceconnectendpoints.private.redis.io regions.lookup.redis.io paymentmethods.lookup.redis.io prosubscriptions.lookup.redis.io; do
+            "$kubectl" wait "crd/$crd" --for=condition=Established --timeout=2m
+          done
+          export REGISTRY_DIGEST="$digest"
+          "$kubectl" -n upbound-system get pods -o json | python3 -c '
+          import json, os, pathlib, re, sys
+          pods = json.load(sys.stdin)["items"]
+          matches = [(p, c) for p in pods if p["metadata"]["name"].startswith("provider-rediscloud-") for c in p.get("status", {}).get("containerStatuses", []) if c["name"] == "package-runtime"]
+          if len(matches) != 1 or not matches[0][1].get("ready") or not re.search(r"@sha256:[0-9a-f]{64}$", matches[0][1].get("imageID", "")):
+              raise SystemExit("expected one ready provider runtime with immutable image ID")
+          def digest_matches(image_id, digest):
+              return image_id.rsplit("@", 1)[-1] == digest
+          if digest_matches("registry.localhost:5000/example@sha256:" + "0"*64, "sha256:" + "1"*64):
+              raise SystemExit("wrong runtime digest unexpectedly accepted")
+          if not digest_matches(matches[0][1]["imageID"], os.environ["REGISTRY_DIGEST"]):
+              raise SystemExit("running image ID does not match installed package digest")
+          pathlib.Path(os.environ["RUNNER_TEMP"], "provider-pod.txt").write_text(matches[0][0]["metadata"]["name"])
+          print("Provider runtime image ID matches installed OCI digest:", matches[0][1]["imageID"])
+          '
+          runtime_pod=$(cat "$RUNNER_TEMP/provider-pod.txt")
+          "$kubectl" -n upbound-system cp -c package-runtime "$runtime_pod:/usr/local/bin/provider" "$RUNNER_TEMP/running-provider"
+          cmp _output/bin/linux_amd64/provider "$RUNNER_TEMP/running-provider"
+          echo "Provider binary in running pod matches the binary built from the pinned source."
+      - name: Preserve package and OCI manifest
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
+        with:
+          name: alpha-oci-evidence-089e9c1
+          path: |
+            _output/xpkg/linux_amd64/*.xpkg
+            ${{ runner.temp }}/oci-manifest.json
+          if-no-files-found: error
