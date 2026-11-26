@@ -336,6 +336,9 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		if len(observed) != 1 || observed[0] == nil || *observed[0] != fixtureInitialSourceCIDR {
 			t.Fatal("initial source CIDR not observed")
 		}
+		if len(item.Spec.ForProvider.SourceIps) != 1 || item.Spec.ForProvider.SourceIps[0] == nil || *item.Spec.ForProvider.SourceIps[0] != fixtureInitialSourceCIDR {
+			t.Fatal("explicit source CIDR was not preserved during observe")
+		}
 	}
 	markRawConfigPhase(t, "after_observe", kube, name)
 	if mode == fixtureSourceCIDRDriftMode {
@@ -411,6 +414,9 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		t.Fatal("Pro database ID changed")
 	}
 	if cidrMode {
+		if len(current.Spec.ForProvider.SourceIps) != 1 || current.Spec.ForProvider.SourceIps[0] == nil || *current.Spec.ForProvider.SourceIps[0] != "198.51.100.0/24" {
+			t.Fatal("updated explicit source CIDR was not preserved")
+		}
 		mu.Lock()
 		readsBeforeObservation := childPresentReads
 		wantCIDRUpdates := 2
