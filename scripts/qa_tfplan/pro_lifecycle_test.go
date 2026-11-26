@@ -36,11 +36,12 @@ import (
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
-	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, false) })
-	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, true) })
+	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
+	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
+	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
 }
 
-func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
@@ -48,7 +49,8 @@ func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocycl
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	createRequests, deleteRequests := 0, 0
+	createRequests, deleteRequests, childAbsentReads := 0, 0, 0
+	beforeDeleteReconcileReads := 0
 	rule := desiredEviction
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -77,7 +79,7 @@ func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocycl
 				return
 			}
 			exists = true
-			if acceptedUnknown {
+			if mode == "create_unknown" {
 				http.Error(w, "injected accepted create with unavailable response", http.StatusServiceUnavailable)
 				return
 			}
@@ -108,13 +110,23 @@ func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocycl
 			response = map[string]any{fixtureTaskKey: fixtureUpdateTask}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
-		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath && exists:
+		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath:
 			deleteRequests++
+			if !exists {
+				unexpected = true
+				http.NotFound(w, r)
+				return
+			}
 			exists = false
+			if mode == "delete_unknown" {
+				http.Error(w, "injected accepted delete with unavailable response", http.StatusServiceUnavailable)
+				return
+			}
 			response = map[string]any{fixtureTaskKey: fixtureDeleteTask}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && !exists:
+			childAbsentReads++
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
@@ -207,8 +219,8 @@ func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocycl
 		}
 		t.Fatal("callback missing")
 	}
-	await("terraform apply ", acceptedUnknown)
-	if acceptedUnknown {
+	await("terraform apply ", mode == "create_unknown")
+	if mode == "create_unknown" {
 		verifyNoACLCreateReplay(t, rec, store, callback, name)
 		mu.Lock()
 		if !exists || unexpected || createRequests != 1 || deleteRequests != 0 {
@@ -272,7 +284,33 @@ func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocycl
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
 	}
-	await("terraform destroy ", false)
+	await("terraform destroy ", mode == "delete_unknown")
+	if mode == "delete_unknown" {
+		retained := &pro.Database{}
+		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
+			t.Fatal("failed delete lost the managed CR or finalizer before observation")
+		}
+		for path, status := range map[string]int{fixtureProDatabasePath: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
+			req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("X-Api-Key", dummyCredential)
+			req.Header.Set("X-Api-Secret-Key", dummyCredential)
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = res.Body.Close()
+			if res.StatusCode != status {
+				t.Fatalf("fake delete read %s: %d", path, res.StatusCode)
+			}
+		}
+		mu.Lock()
+		beforeDeleteReconcileReads = childAbsentReads
+		mu.Unlock()
+		verifyNoACLCreateReplay(t, rec, store, callback, name)
+	}
 	for i := 0; i < 30; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 			t.Fatal(err)
@@ -291,7 +329,7 @@ func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocycl
 		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	if exists || unexpected {
+	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || (mode == "delete_unknown" && childAbsentReads <= beforeDeleteReconcileReads) {
 		mu.Unlock()
 		t.Fatal("fake Pro database residue or unexpected request")
 	}
