@@ -52,3 +52,12 @@ error, pre-write rejection and an API update committed before its response is
 lost. A committed marker blocks replay. The faults and downstream connector are
 synthetic; this is not proof of a real API outage, Cloud dispatch, durable
 multi-actor authority or safe recovery.
+
+The pending hosted process fixture keeps one disposable API server, workspace,
+and dummy-authenticated loopback PSC model while starting distinct reconciler
+processes. In the abrupt case, the fake accepts the exact initialized endpoint
+DELETE and withholds the HTTP response; the supervisor SIGKILLs the worker's
+process group and confirms it exited before releasing that response. A second
+process, with the flag disabled, must retain the same UID, full identity marker
+and managed finalizer without a second fake DELETE. It is a process test, not a
+Kubernetes pod-restart, production network, Cloud cleanup, or recovery proof.
