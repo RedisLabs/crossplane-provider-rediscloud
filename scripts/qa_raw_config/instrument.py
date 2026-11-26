@@ -36,10 +36,12 @@ func qaRecordRawConfig(d *schema.ResourceData, operation string) {
  }
  f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
  if err != nil { panic("cannot open fixture trace") }
- if _, err = fmt.Fprintf(f, "%s %s\\n", operation, category); err != nil { panic("cannot write fixture trace") }
  if operation == "update" {
-  if _, err = fmt.Fprintf(f, "source-change %t\\n", d.HasChange("source_ips")); err != nil { panic("cannot write fixture trace") }
+  _, err = fmt.Fprintf(f, "%s %s\\nsource-change %t\\n", operation, category, d.HasChange("source_ips"))
+ } else {
+  _, err = fmt.Fprintf(f, "%s %s\\n", operation, category)
  }
+ if err != nil { panic("cannot write fixture trace") }
  if err = f.Close(); err != nil { panic("cannot close fixture trace") }
 }
 ''')
