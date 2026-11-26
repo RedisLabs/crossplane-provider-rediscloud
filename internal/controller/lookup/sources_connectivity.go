@@ -405,11 +405,11 @@ func observeEndpoints(got *psc.PrivateServiceConnectEndpoints, script func(int) 
 	if got == nil {
 		return nil, fmt.Errorf("private service connect endpoints response is missing")
 	}
+	if err := validateEndpointCollection(got.Endpoints); err != nil {
+		return nil, err
+	}
 	out := make([]lookupv1alpha1.PrivateServiceConnectEndpointObservation, 0, len(got.Endpoints))
 	for _, endpoint := range got.Endpoints {
-		if endpoint == nil {
-			continue
-		}
 		var attachments []lookupv1alpha1.ServiceAttachmentObservation
 		if lookup.EndpointNeedsScript(redis.StringValue(endpoint.Status)) {
 			if endpoint.ID == nil {
@@ -434,6 +434,25 @@ func observeEndpoints(got *psc.PrivateServiceConnectEndpoints, script func(int) 
 		return nil, nil
 	}
 	return out, nil
+}
+
+// Validate the complete collection before requesting any endpoint script.
+func validateEndpointCollection(endpoints []*psc.PrivateServiceConnectEndpoint) error {
+	// Every endpoint already requires an ID for the observation stage.
+	seen := make(map[int]struct{}, len(endpoints))
+	for _, endpoint := range endpoints {
+		if endpoint == nil {
+			return fmt.Errorf("private service connect endpoint is missing")
+		}
+		if endpoint.ID == nil {
+			return fmt.Errorf("private service connect endpoint id is missing")
+		}
+		if _, exists := seen[*endpoint.ID]; exists {
+			return fmt.Errorf("private service connect endpoint id is duplicated")
+		}
+		seen[*endpoint.ID] = struct{}{}
+	}
+	return nil
 }
 
 // SubscriptionPeeringsReconciler looks up VPC peerings.

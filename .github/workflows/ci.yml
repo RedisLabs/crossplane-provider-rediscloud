@@ -268,7 +268,7 @@ jobs:
           python3 - <<'PY'
           from acceptance.go_test_receipts import run_selected
           root = "TestPSCEndpointsParentIdentity"
-          names = (root,) + tuple(f"{root}/{kind}/{case}" for kind in ("pro", "active_active") for case in ("initial", "mismatch", "missing_optional_id", "recovery"))
+          names = (root,) + tuple(f"{root}/{kind}/{case}" for kind in ("pro", "active_active") for case in ("initial", "mismatch", "nil_endpoint", "after_nil", "duplicate_endpoint", "after_duplicate", "missing_endpoint_id", "after_missing_id", "missing_optional_id", "recovery"))
           run_selected("./internal/controller/lookup", names)
           PY
 

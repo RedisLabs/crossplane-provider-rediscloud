@@ -21,6 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const pscValidEndpointResponse = `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`
+
 func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both reconcilers and each transition must be exercised.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("hosted Actions only")
@@ -49,7 +51,7 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 		t.Run(tc.name, func(t *testing.T) {
 			calls := []string{}
 			paths := map[string]taskBody{
-				tc.path:                                  {task: "endpoints", resource: `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`},
+				tc.path:                                  {task: "endpoints", resource: pscValidEndpointResponse},
 				tc.path + "/endpoints/3/creationScripts": {task: "script", resource: `{"script":{"terraformGcp":{"serviceAttachments":[]}}}`},
 			}
 			base := taskRoutes(t, &calls, paths)
@@ -67,10 +69,16 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 				ready          corev1.ConditionStatus
 				wantScript     bool
 			}{
-				{fixtureLookupInitial, `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{fixtureLookupInitial, pscValidEndpointResponse, corev1.ConditionTrue, true},
+				{"nil_endpoint", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"},null]}`, corev1.ConditionFalse, false},
+				{"after_nil", pscValidEndpointResponse, corev1.ConditionTrue, true},
+				{"duplicate_endpoint", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"},{"id":3,"status":"active"}]}`, corev1.ConditionFalse, false},
+				{"after_duplicate", pscValidEndpointResponse, corev1.ConditionTrue, true},
+				{"missing_endpoint_id", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"},{"status":"active"}]}`, corev1.ConditionFalse, false},
+				{"after_missing_id", pscValidEndpointResponse, corev1.ConditionTrue, true},
 				{"mismatch", `{"pscServiceId":10,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionFalse, false},
 				{"missing_optional_id", `{"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
-				{fixtureLookupRecovery, `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{fixtureLookupRecovery, pscValidEndpointResponse, corev1.ConditionTrue, true},
 			} {
 				t.Run(step.name, func(t *testing.T) {
 					paths[tc.path] = taskBody{task: "endpoints", resource: step.resource}
