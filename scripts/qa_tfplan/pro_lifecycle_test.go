@@ -264,7 +264,9 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		}
 		t.Fatal("callback missing")
 	}
+	markRawConfigPhase(t, "before_create", kube, name)
 	await("terraform apply ", mode == "create_unknown")
+	markRawConfigPhase(t, "after_create", kube, name)
 	if mode == "create_unknown" {
 		verifyNoACLCreateReplay(t, rec, store, callback, name)
 		mu.Lock()
@@ -313,6 +315,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatal("initial source CIDR not observed")
 		}
 	}
+	markRawConfigPhase(t, "after_observe", kube, name)
 	if mode == fixtureSourceCIDRDriftMode {
 		if store.current == nil || store.current.LastOperation.IsRunning() {
 			t.Fatal("initial asynchronous operation has not settled")
@@ -371,6 +374,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		t.Fatal(err)
 	}
 	verifyManagedDrift(t, rec, spy, callback, false)
+	markRawConfigPhase(t, "after_update", kube, name)
 	mu.Lock()
 	if !exists || rule != updated || unexpected {
 		mu.Unlock()
