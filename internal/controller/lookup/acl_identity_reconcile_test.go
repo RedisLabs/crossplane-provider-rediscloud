@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func TestACLLookupIdentityValidationAndRecovery(t *testing.T) {
+func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo // Each lookup and response transition is checked explicitly.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("hosted Actions only")
 	}
