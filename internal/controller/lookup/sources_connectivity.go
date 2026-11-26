@@ -302,8 +302,8 @@ func readPrivateServiceConnectEndpoints(ctx context.Context, api *rediscloud.Cli
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get private service connect endpoints")
 	}
-	if err := validatePSCServiceIdentity(got, serviceID); err != nil {
-		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, err
+	if identityErr := validatePSCServiceIdentity(got, serviceID); identityErr != nil {
+		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
 	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
 		return api.PrivateServiceConnect.GetEndpointCreationScripts(ctx, subID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
@@ -357,8 +357,8 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get active-active private service connect endpoints")
 	}
-	if err := validatePSCServiceIdentity(got, serviceID); err != nil {
-		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, err
+	if identityErr := validatePSCServiceIdentity(got, serviceID); identityErr != nil {
+		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
 	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
 		return api.PrivateServiceConnect.GetActiveActiveEndpointCreationScripts(ctx, subID, regionID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
