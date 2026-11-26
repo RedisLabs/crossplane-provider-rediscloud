@@ -249,7 +249,8 @@ func runProductProHoldProcesses(t *testing.T, abrupt bool) { //nolint:gocyclo //
 				_ = syscall.Kill(-pid, syscall.SIGKILL)
 				release()
 				select {
-				case <-finished:
+				case waitErr := <-finished:
+					_ = waitErr // Timeout path is already a test failure.
 				case <-time.After(30 * time.Second):
 				}
 				cancel()
