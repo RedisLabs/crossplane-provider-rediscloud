@@ -25,26 +25,55 @@ type PaymentMethodQuery struct {
 func MatchPaymentMethod(methods []*account.PaymentMethod, query PaymentMethodQuery) (*account.PaymentMethod, error) {
 	matched := make([]*account.PaymentMethod, 0, len(methods))
 	for _, method := range methods {
-		if method == nil {
-			continue
+		match, err := paymentMethodMatches(method, query)
+		if err != nil {
+			return nil, err
 		}
-		if query.ExcludeExpired && expired(method, query.Now) {
-			continue
+		if match {
+			matched = append(matched, method)
 		}
-		if query.CardType != "" && redis.StringValue(method.Type) != query.CardType {
-			continue
-		}
-		if query.LastFourNumbers != "" {
-			if method.CreditCardEndsWith == nil {
-				return nil, fmt.Errorf("payment method card ending is missing")
-			}
-			if LastFour(method) != query.LastFourNumbers {
-				continue
-			}
-		}
-		matched = append(matched, method)
 	}
 	return selectedPaymentMethod(matched)
+}
+
+// Unknown selector inputs are only material if no known filter excludes the
+// row. This avoids falsely reporting one unique candidate from a partial list.
+func paymentMethodMatches(method *account.PaymentMethod, query PaymentMethodQuery) (bool, error) { //nolint:gocyclo // Independent selector decisions must preserve definite exclusions.
+	if method == nil {
+		return false, fmt.Errorf("payment method entry is missing")
+	}
+	unknown := false
+	if query.CardType != "" {
+		if method.Type == nil {
+			unknown = true
+		} else if *method.Type != query.CardType {
+			return false, nil
+		}
+	}
+	if query.LastFourNumbers != "" {
+		if method.CreditCardEndsWith == nil {
+			unknown = true
+		} else if LastFour(method) != query.LastFourNumbers {
+			return false, nil
+		}
+	}
+	if query.ExcludeExpired {
+		if method.ExpirationYear == nil {
+			unknown = true
+		} else if *method.ExpirationYear < query.Now.Year() {
+			return false, nil
+		} else if *method.ExpirationYear == query.Now.Year() {
+			if method.ExpirationMonth == nil {
+				unknown = true
+			} else if *method.ExpirationMonth < int(query.Now.Month()) {
+				return false, nil
+			}
+		}
+	}
+	if unknown {
+		return false, fmt.Errorf("payment method filter information is missing")
+	}
+	return true, nil
 }
 
 func selectedPaymentMethod(matched []*account.PaymentMethod) (*account.PaymentMethod, error) {
@@ -64,16 +93,4 @@ func LastFour(method *account.PaymentMethod) string {
 		return ""
 	}
 	return fmt.Sprintf("%04d", redis.IntValue(method.CreditCardEndsWith))
-}
-
-func expired(method *account.PaymentMethod, now time.Time) bool {
-	year := redis.IntValue(method.ExpirationYear)
-	month := redis.IntValue(method.ExpirationMonth)
-	if year < now.Year() {
-		return true
-	}
-	if year > now.Year() {
-		return false
-	}
-	return month < int(now.Month())
 }
