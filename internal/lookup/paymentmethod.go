@@ -44,7 +44,14 @@ func MatchPaymentMethod(methods []*account.PaymentMethod, query PaymentMethodQue
 		}
 		matched = append(matched, method)
 	}
-	return SelectOne(matched)
+	selected, err := SelectOne(matched)
+	if err != nil {
+		return nil, err
+	}
+	if selected.ID == nil {
+		return nil, fmt.Errorf("payment method id is missing")
+	}
+	return selected, nil
 }
 
 // LastFour formats the card ending as four digits, matching the Terraform provider.

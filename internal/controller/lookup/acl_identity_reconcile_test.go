@@ -28,7 +28,7 @@ const (
 )
 
 func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo // Each lookup and response transition is checked explicitly.
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
 	const name = "fixture"

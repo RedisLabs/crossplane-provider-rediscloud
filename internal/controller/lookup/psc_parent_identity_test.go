@@ -24,7 +24,7 @@ import (
 const pscValidEndpointResponse = `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`
 
 func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both reconcilers and each transition must be exercised.
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
 	const name = "fixture"

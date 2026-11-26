@@ -78,9 +78,6 @@ func (r *PaymentMethodReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err != nil {
 		return r.fail(ctx, obj, err)
 	}
-	if matched.ID == nil {
-		return r.fail(ctx, obj, errors.New("payment method id is missing"))
-	}
 	obj.Status.AtProvider = lookupv1alpha1.PaymentMethodObservation{
 		ID:              strconv.Itoa(redis.IntValue(matched.ID)),
 		CardType:        redis.StringValue(matched.Type),

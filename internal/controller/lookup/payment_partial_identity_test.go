@@ -20,8 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func TestPaymentMethodPartialIdentity(t *testing.T) {
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+const fixtureActionsEnabled = "true"
+
+func TestPaymentMethodPartialIdentity(t *testing.T) { //nolint:gocyclo // Sequential actual-reconciler transitions and assertions are intentional.
+	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
 	var body atomic.Value
