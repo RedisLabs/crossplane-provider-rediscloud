@@ -20,6 +20,30 @@ env:
   UPBOUND_MARKETPLACE_PUSH_ROBOT_USR: ${{ secrets.UPBOUND_MARKETPLACE_PUSH_ROBOT_USR }}
 
 jobs:
+  qa-origin-ciphertext:
+    # Intentionally disabled until a reviewed authenticated reader exists.
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          persist-credentials: false
+      - name: Encrypt allowed protected origin without network access
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_VERIFIED_ORIGIN_HASHES: ${{ secrets.QA_VERIFIED_ORIGIN_HASHES }}
+        run: python3 scripts/qa_origin_ciphertext.py
+      - name: Store ciphertext only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: qa-origin-ciphertext-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-origin-ciphertext.bin
+          if-no-files-found: error
+          retention-days: 1
+
   qa-origin-binding:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/qa-origin-binding' && github.actor == 'shay-berman'
     runs-on: ubuntu-24.04
@@ -242,6 +266,12 @@ jobs:
 
       - name: Test no-network origin comparison with dummy values
         run: python3 -m unittest discover -s scripts -p 'test_qa_origin_binding.py' -v
+
+      - name: Test encrypted origin evidence with dummy values
+        run: python3 -m unittest discover -s scripts -p 'test_qa_origin_ciphertext.py' -v
+
+      - name: Test authenticated reader with dummy metadata and keys
+        run: python3 -m unittest discover -s scripts -p 'test_qa_origin_reader.py' -v
 
       - name: Rehearse UID delete preconditions against local HTTP with pinned kubectl
         run: |
