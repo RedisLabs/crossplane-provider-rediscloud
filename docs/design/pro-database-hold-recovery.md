@@ -1,0 +1,38 @@
+# Pro database delete hold: proposed manual recovery
+
+**TLDR:** Preserve the hold until a trusted administrator has independently established identity, the uncertain operation's outcome and ownership of any remaining resource. This document does not authorize replay or Cloud deletion.
+
+**Date:** 2026-11-26
+**Status:** Draft; not approved or live-qualified
+**Ticket:** [RED-225344](https://redislabs.atlassian.net/browse/RED-225344)
+**Related:** [Hold design](pro-delete-conservative-hold.md), [ADR-0003](../adr/ADR-0003-pro-database-delete-hold.md)
+
+## Problem and scope
+
+The experimental hold persists before the connector dispatches; therefore a marker can mean that no request was sent, a request was accepted but its response was lost, or a request returned successfully while deprovisioning continues. The SDK does not expose the server-generated task identifier after a lost response. Task processing completion can precede deprovisioning. A 404, a timeout, callback success, elapsed time or task-list absence cannot by itself distinguish these cases. [#108](https://github.com/RedisLabs/crossplane-provider-rediscloud/pull/108) reproduces duplicate DELETE after a fake accepted-503; this procedure must not cause a second DELETE.
+
+## Preconditions and evidence
+
+1. Preserve the deleting CR, managed finalizer, intent annotation and relevant controller logs. Capture the API server's current CR UID, resourceVersion, deletion timestamp, policy, complete spec, external-name and raw intent in an access-controlled record. The intent contains a token; do not publish it. Do not alter the intent or finalizer to retry.
+2. Establish who has authority to adjudicate the Cloud resource and who administers the Kubernetes CR. Freeze CR spec, metadata and policy; ProviderConfig and referenced Secret identity and contents; and other credentials. Drain all old, disabled, in-flight and alternate controllers, other CRs targeting the same database, Terraform/Pulumi jobs and direct API writers. This is an operational prerequisite, not something the annotation enforces. If drain/freeze cannot be verified, stop and retain the hold.
+3. Read the CR directly from the API server again. Require the same UID, deleting state, finalizer, complete unchanged spec, external name, ProviderConfig reference and exact marker. Parse a version-1 marker strictly and check its UID, canonical positive parent/child IDs and ProviderConfig name against the CR. An empty, malformed, changed or mismatching marker is **unknown**, not permission to repair. A name is not an account or credential identity; independently bind the ProviderConfig UID, credential Secret UID/version and Cloud account using authorized evidence without exposing secrets. Refuse changed, unavailable or unverified binding.
+4. Using a separately authorized read-only path, request the exact database and its exact parent in the independently verified account, with authenticated no-redirect reads. Record timestamps, identity, response status and sanitized evidence. A child 404 is only interpretable alongside an authenticated 200 for the exact positively identified parent; parent 404/403, child 403, transport error, contradictory identity or uncertain response is unknown, not absence. Do not infer account identity solely from a supplied account ID or URL. If task correlation is known, obtain the authoritative task record and its provenance; do not guess a task from time, name or missing list entry. `processing-completed` is not a terminal deletion state. The currently inspected SDK cannot recover a lost task ID, and an authoritative terminal deletion contract has not been established.
+5. Re-read CR and all relevant identity/binding evidence before any separately authorized administrative action. Any change, concurrent writer, uncertain read, incomplete evidence or disagreement stops the procedure and retains the hold. API rechecks and a resourceVersion precondition reduce races but cannot close races with another Cloud writer, mutable credentials or a privileged Kubernetes actor.
+
+Do not expose credentials, raw tokens, or customer identifiers in public issues or CI. Preserve restricted evidence according to existing handling policies.
+
+## Decisions and actions
+
+| Evidence and decision | Proposed action |
+| --- | --- |
+| Anything missing, task outcome unknown, child present or identity/ownership uncertain | Keep the marker and finalizer. Escalate to the authorized Cloud/resource owner; continue read-only investigation. Never retry DELETE or clear the marker to force reconciliation. |
+| Resource absent, but terminal task/identity evidence is incomplete | Keep the hold. One or repeated 404s do not resolve an uncertain asynchronous operation. |
+| A responsible administrator explicitly accepts orphaning and residual resource/ownership risk under local authorization | This is a proposed option, not an available recovery procedure: changing policy on an already-terminating held CR and finalizing that same UID has not been proven. Do not perform it until the dedicated transition and failure tests and the organization's review are complete. If subsequently approved, all writers must be drained and identity rechecked, and a reviewed Kubernetes procedure must enforce UID and resourceVersion preconditions. The managed reconciler can then remove its finalizer without entering the guarded connector. This intentionally abandons management; it does not establish Cloud deletion, stop old writers or guarantee the resource is gone. Verify the intended CR UID is gone, and record any known or unknown external residue and its owner. No Cloud mutation is part of this option. |
+
+There is no automatic release or safe replay procedure in this draft. The administrator must not execute the orphan option solely because an automated checklist reports success. Existing RBAC, admission and approval policy govern that privileged action. This document does not grant permission or establish that the required controls exist.
+
+## Validation and rollout
+
+The [#117 hosted fixture](https://github.com/RedisLabs/crossplane-provider-rediscloud/actions/runs/45806690769/job/139863695507) exercises Orphan and no-Delete configured before deletion, using a disposable API server and synthetic connector. It does not test changing policy on an already-terminating held CR. The [#116 fixture](https://github.com/RedisLabs/crossplane-provider-rediscloud/actions/runs/45806572713/job/139863304340) verifies hold persistence after simulated success and accepted-503 with the actual reconciler/provider and in-process reconstruction. These are fake-Cloud results, not authentication, an actual pod restart, a live recovery rehearsal or evidence that drain/freeze is enforced.
+
+Before this procedure or feature can be used, responsible security and operator reviewers must establish an authoritative terminal-state source, cross-writer drain and credential/account binding, a protected audit record, and a reviewed privileged finalization method. Test decision logic using disposable API/fake Cloud in hosted Actions, including marker/UID/spec replacement, wrong account, inaccessible reads, ambiguous task, changing credentials, in-flight writers and a terminating-held-to-Orphan/no-Delete transition. Test API admission rejection, resourceVersion conflict and UID replacement, and require marker/finalizer retention when the transition fails. Model inputs as simulated evidence and never interpret a self-declared boolean as authenticated proof. Do not enable the feature, deploy or run live recovery on the strength of these tests.
