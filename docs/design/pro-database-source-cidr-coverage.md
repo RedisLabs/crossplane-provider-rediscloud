@@ -20,4 +20,6 @@ Terraform Pro subscription/database CRUDI maps only partially to the #114 manage
 
 ## Validation and rollout
 
+The separate candidate workflow builds the unpublished Terraform fix at exact source commit `268f8ae4e7625e429bbe41325cf65d0543c05a7e`, records the binary SHA-256 and requires the same bytes before and after the managed fixture. It uses Terraform 1.5.7 and the fixture's 2.20.0 local mirror coordinate solely to satisfy the Upjet fixture. The binary is an unreleased candidate built from the 2.21.0 branch, not the released 2.20.0 package. The original 2.20.0 fixture failure remains valid. Even a passing candidate is not live Cloud qualification or a published release.
+
 Run the named case and the inherited integration checks in GitHub Actions; require the named receipt so a skipped case cannot pass. Review independently. This adds no runtime behavior, account permissions, or deployment. Roll back by reverting the test and receipt. ADR: none, test coverage only. BDR: none.
