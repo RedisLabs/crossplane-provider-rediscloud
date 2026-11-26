@@ -49,7 +49,9 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 		t.Fatal("pinned provider and Terraform required")
 	}
 	var mu sync.Mutex
-	deletes, reads := 0, 0
+	deletes, reads, creates := 0, 0, 0
+	exists := false
+	var trace []string
 	unexpected := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -59,21 +61,43 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 			http.Error(w, "unauthorized fixture", http.StatusForbidden)
 			return
 		}
+		trace = append(trace, r.Method+" "+r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		var result any
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
 			result = map[string]any{"id": 1, fixtureNameKey: "fixture-existing-parent", fixtureStatusKey: fixtureActive}
-		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath:
+		case r.Method == http.MethodPost && r.URL.Path == fixtureProDBsPath:
+			creates++
+			if exists || creates != 1 {
+				unexpected = true
+				http.Error(w, "duplicate create", http.StatusConflict)
+				return
+			}
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureProDBName || body[fixtureEvictionKey] != desiredEviction {
+				unexpected = true
+				http.Error(w, "bad create", http.StatusBadRequest)
+				return
+			}
+			exists = true
+			result = map[string]any{fixtureTaskKey: fixtureCreateTask}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
+			result = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
+		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && exists:
 			reads++
 			result = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: desiredEviction, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath+"/tags":
 			result = map[string]any{fixtureTagsKey: []any{}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
-			result = map[string]any{fixtureDatabasesKey: []any{map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureStatusKey: fixtureActive}}}
+			rows := []any{}
+			if exists {
+				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureStatusKey: fixtureActive})
+			}
+			result = map[string]any{fixtureDatabasesKey: rows}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath:
 			deletes++
-			if deletes != 1 {
+			if deletes != 1 || !exists {
 				unexpected = true
 			}
 			http.Error(w, "accepted with lost response", http.StatusServiceUnavailable)
@@ -124,19 +148,15 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 	item.Spec.ForProvider.Replication = &replication
 	item.Spec.ProviderConfigReference = &xpv2.Reference{Name: "fixture-config"}
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
-	meta.SetExternalName(item, fixtureProDBID)
 	kube := newProEnvtestClient(t, scheme, item)
 	uid := item.UID
-	if err := kube.Delete(context.Background(), item); err != nil {
-		t.Fatal(err)
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	pids := make([]int, 0, 2)
 	for _, role := range []string{fixtureFirst, "second"} {
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		cmd := exec.CommandContext(ctx, executable, "-test.run=^TestProductProHoldProcessWorker$", "-test.v")
 		cmd.Env = append(os.Environ(), "QA_RESTART_WORKER="+role)
 		var output bytes.Buffer
@@ -150,7 +170,10 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 		err = cmd.Wait()
 		cancel()
 		if err != nil {
-			t.Fatalf("%s worker failed: %v\n%s", role, err, output.String())
+			mu.Lock()
+			paths := append([]string(nil), trace...)
+			mu.Unlock()
+			t.Fatalf("%s worker failed: %v; fake paths=%v\n%s", role, err, paths, output.String())
 		}
 		if !strings.Contains(output.String(), fmt.Sprintf("PROCESS_RECEIPT %s %d", role, pid)) {
 			t.Fatalf("%s worker receipt missing", role)
@@ -164,7 +187,7 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 			t.Fatal("intent missing")
 		}
 		mu.Lock()
-		if deletes != 1 || reads == 0 || unexpected {
+		if deletes != 1 || creates != 1 || reads == 0 || !exists || unexpected {
 			mu.Unlock()
 			t.Fatal("fake request trace invalid")
 		}
@@ -224,36 +247,67 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}
-	for i := 0; i < 6; i++ {
-		if _, err := rec.Reconcile(context.Background(), req); err != nil {
-			t.Fatal(err)
-		}
-		if role == "second" {
-			if store.current != nil {
-				t.Fatal("held worker opened workspace")
-			}
-			continue
-		}
-		select {
-		case err := <-callback.done:
-			if err == nil {
-				t.Fatal("expected failed delete callback")
-			}
-			fmt.Printf("PROCESS_RECEIPT %s %d\n", role, os.Getpid())
-			return
-		case <-time.After(45 * time.Second):
-		}
-	}
 	if role == fixtureFirst {
-		t.Fatal("failed delete callback missing")
+		waitOperation := func(expectFailure bool) {
+			t.Helper()
+			for i := 0; i < 8; i++ {
+				if _, reconcileErr := rec.Reconcile(context.Background(), req); reconcileErr != nil {
+					t.Fatal(reconcileErr)
+				}
+				select {
+				case callbackErr := <-callback.done:
+					if (callbackErr != nil) != expectFailure {
+						t.Fatalf("unexpected callback failed=%v", callbackErr != nil)
+					}
+					return
+				case <-time.After(45 * time.Second):
+				}
+			}
+			current := &pro.Database{}
+			if getErr := kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current); getErr != nil {
+				t.Fatal("operation callback and CR missing")
+			}
+			t.Fatalf("operation callback missing; fake CR conditions=%+v", current.Status.Conditions)
+		}
+		waitOperation(false)
+		var current *pro.Database
+		for i := 0; i < 6; i++ {
+			if _, reconcileErr := rec.Reconcile(context.Background(), req); reconcileErr != nil {
+				t.Fatal(reconcileErr)
+			}
+			current = &pro.Database{}
+			if getErr := kube.Get(context.Background(), types.NamespacedName{Name: fixtureName}, current); getErr != nil {
+				t.Fatal(getErr)
+			}
+			if current.Status.AtProvider.ID != nil && *current.Status.AtProvider.ID == fixtureProDBID && meta.GetExternalName(current) == fixtureProDBID {
+				break
+			}
+		}
+		if current == nil || current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != fixtureProDBID || meta.GetExternalName(current) != fixtureProDBID {
+			t.Fatal("created fake identity missing")
+		}
+		if deleteErr := kube.Delete(context.Background(), current); deleteErr != nil {
+			t.Fatal(deleteErr)
+		}
+		waitOperation(true)
+		fmt.Printf("PROCESS_RECEIPT %s %d\n", role, os.Getpid())
+		return
+	}
+	for i := 0; i < 6; i++ {
+		if _, reconcileErr := rec.Reconcile(context.Background(), req); reconcileErr != nil {
+			t.Fatal(reconcileErr)
+		}
+		if store.current != nil {
+			t.Fatal("held worker opened workspace")
+		}
 	}
 	fmt.Printf("PROCESS_RECEIPT %s %s\n", role, strconv.Itoa(os.Getpid()))
 }
 
 // The worker cannot target an arbitrary origin even if its environment is altered.
-func validProcessLoopback(raw, scheme string) bool {
+func validProcessLoopback(raw, scheme string) bool { //nolint:gocyclo // Each origin boundary is checked explicitly.
 	parsed, err := url.Parse(raw)
-	if err != nil || strings.ContainsAny(raw, "?#") || parsed.Scheme != scheme || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") {
+	if err != nil || strings.ContainsAny(raw, "?#") || parsed.Scheme != scheme || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.User != nil || (parsed.Path != "" && !(scheme == "https" && parsed.Path == "/")) {
 		return false
 	}
 	port, err := strconv.Atoi(parsed.Port())
@@ -266,6 +320,7 @@ func TestProductProcessLoopbackValidation(t *testing.T) {
 		want        bool
 	}{
 		{"http://127.0.0.1:1234", fixtureHTTP, true},
+		{"http://127.0.0.1:1234/", fixtureHTTP, false},
 		{"https://127.0.0.1:1234", "https", true},
 		{"https://127.0.0.1:1234/", "https", true},
 		{"http://127.0.0.1:1@other-host:1234", fixtureHTTP, false},
