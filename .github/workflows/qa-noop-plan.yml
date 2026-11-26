@@ -76,7 +76,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProSubscriptionManagedLifecycleLoopback
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProSubscriptionManagedLifecycleLoopback TestProSubscriptionManagedLifecycleLoopback/gcp TestProSubscriptionManagedLifecycleLoopback/aws
   pro-combined-lifecycle:
     runs-on: ubuntu-24.04
     steps:
