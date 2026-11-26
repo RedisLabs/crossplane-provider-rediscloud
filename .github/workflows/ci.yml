@@ -246,7 +246,13 @@ jobs:
           echo '5e99f4eef3d6f9d4dd063730299f708c98da8801f2f14d8fc762cb354f30c332  '"$RUNNER_TEMP/envtest.tgz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/envtest"
           tar -xzf "$RUNNER_TEMP/envtest.tgz" --strip-components=2 -C "$RUNNER_TEMP/envtest" controller-tools/envtest/etcd controller-tools/envtest/kube-apiserver
-          KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest" QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl" go test -p 2 ./scripts/qa_envtest -run TestUIDPreconditionAgainstAPIServer -count=1 -v
+          export KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest" QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl"
+          python3 - <<'PY'
+          from acceptance.go_test_receipts import run_selected
+          names = ["TestUIDPreconditionAgainstAPIServer", "TestACLUserPasswordAdmission"]
+          names += [f"TestACLUserPasswordAdmission/{version}/{case}" for version in ("v1alpha1", "v1beta1") for case in ("observe", "create_no_secret", "update_no_secret", "default_no_secret", "create_partial_secret", "create_with_secret", "update_with_secret")]
+          run_selected("./scripts/qa_envtest", tuple(names))
+          PY
 
       - name: Run Unit Tests
         run: make -j2 test
