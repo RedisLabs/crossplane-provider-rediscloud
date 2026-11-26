@@ -31,7 +31,7 @@ import (
 // rollout. See docs/design/pro-delete-conservative-hold.md.
 const deleteIntentAnnotation = "rediscloud.crossplane.io/pro-database-delete-intent"
 
-var errDeleteHeld = errors.New("Pro database delete is held; administrator resolution is required")
+var errDeleteHeld = errors.New("pro database delete is held; administrator resolution is required")
 
 type deleteIntent struct {
 	Version  int    `json:"version"`
@@ -149,7 +149,7 @@ func (e *deleteHoldExternal) Delete(ctx context.Context, mg xpresource.Managed) 
 	return e.ExternalClient.Delete(ctx, mg)
 }
 
-func reserveDeleteIntent(ctx context.Context, reader client.Reader, writer client.Client, snapshot *dbv1.Database) (string, error) {
+func reserveDeleteIntent(ctx context.Context, reader client.Reader, writer client.Client, snapshot *dbv1.Database) (string, error) { //nolint:gocyclo // Reservation validates each independent safety condition before dispatch.
 	if !sameDeleteIdentity(snapshot, snapshot) {
 		return "", errDeleteHeld
 	}
