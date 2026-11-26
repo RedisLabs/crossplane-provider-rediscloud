@@ -44,7 +44,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 }
 
 func TestProDatabaseRestartPendingDelete(t *testing.T) {
-	t.Setenv("QA_TEST_ENVTEST_RESTART", "true")
+	t.Setenv("QA_TEST_ENVTEST_RESTART", fixtureEnvEnabled)
 	runProDatabaseFixture(t, fixtureDeleteDelayed)
 }
 
@@ -197,7 +197,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item.Spec.ForProvider.Replication = &replication
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
 	var kube client.Client
-	if os.Getenv("QA_TEST_ENVTEST_RESTART") == "true" {
+	if os.Getenv("QA_TEST_ENVTEST_RESTART") == fixtureEnvEnabled {
 		kube = newProEnvtestClient(t, scheme, item)
 	} else {
 		kube = cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
@@ -313,7 +313,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatal("failed delete lost the managed CR or finalizer before observation")
 		}
 		if mode == fixtureDeleteDelayed {
-			if os.Getenv("QA_TEST_ENVTEST_RESTART") == "true" {
+			if os.Getenv("QA_TEST_ENVTEST_RESTART") == fixtureEnvEnabled {
 				store = newTrackingNativeStore()
 				spy.tracked = store
 				callback = &fakeCallback{done: make(chan error, 1)}
@@ -339,7 +339,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			mu.Lock()
 			beforePendingReconcileReads := childPresentReads
 			mu.Unlock()
-			if store.current == nil && os.Getenv("QA_TEST_ENVTEST_RESTART") != "true" {
+			if store.current == nil && os.Getenv("QA_TEST_ENVTEST_RESTART") != fixtureEnvEnabled {
 				t.Fatal("failed delete operation was not tracked")
 			}
 			var originalStart time.Time
@@ -412,12 +412,12 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			break
 		}
 		if i == 29 {
-			item := &pro.Database{}
-			_ = kube.Get(context.Background(), types.NamespacedName{Name: name}, item)
+			remaining := &pro.Database{}
+			_ = kube.Get(context.Background(), types.NamespacedName{Name: name}, remaining)
 			mu.Lock()
 			t.Logf("fixture exists=%v unexpected=%v", exists, unexpected)
 			mu.Unlock()
-			t.Fatalf("Pro database CR remains: status=%#v finalizers=%v annotations=%v commands=%v", item.Status, item.Finalizers, item.Annotations, spy.snapshot())
+			t.Fatalf("Pro database CR remains: status=%#v finalizers=%v annotations=%v commands=%v", remaining.Status, remaining.Finalizers, remaining.Annotations, spy.snapshot())
 		}
 		time.Sleep(time.Second)
 	}

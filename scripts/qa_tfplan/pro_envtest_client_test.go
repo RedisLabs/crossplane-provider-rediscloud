@@ -17,9 +17,9 @@ import (
 
 // Run the real API server only on hosted Actions. The existing fake Cloud and
 // pinned provider remain loopback-only; no Kubernetes or Cloud credentials.
-func newProEnvtestClient(t *testing.T, scheme *runtime.Scheme, item *pro.Database) client.Client {
+func newProEnvtestClient(t *testing.T, scheme *runtime.Scheme, item *pro.Database) client.Client { //nolint:gocyclo // Hosted setup and conflict checks are deliberately kept together.
 	t.Helper()
-	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("KUBEBUILDER_ASSETS") == "" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureEnvEnabled || os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		t.Fatal("hosted envtest assets are required")
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -30,8 +30,8 @@ func newProEnvtestClient(t *testing.T, scheme *runtime.Scheme, item *pro.Databas
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "database.yaml"), crd, 0o600); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(filepath.Join(dir, "database.yaml"), crd, 0o600); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	environment := &envtest.Environment{CRDDirectoryPaths: []string{dir}, ErrorIfCRDPathMissing: true}
 	cfg, err := environment.Start()

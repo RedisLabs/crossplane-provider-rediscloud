@@ -93,9 +93,11 @@ const (
 	fixtureNoPersistence     = "none"
 )
 
+const fixtureEnvEnabled = "true"
+
 func requireHostedFixture(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureEnvEnabled {
 		t.Skip("provider fixture requires GitHub Actions")
 	}
 }
