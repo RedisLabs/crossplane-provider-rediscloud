@@ -37,6 +37,7 @@ import (
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 const fixtureSourceCIDRMode = "source_cidrs"
 const fixtureSourceCIDRDriftMode = "source_cidr_drift"
+const fixtureInitialSourceCIDR = "192.0.2.0/24"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
@@ -62,7 +63,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	rule := desiredEviction
 	sourceIPs := []any{}
 	if cidrMode {
-		sourceIPs = []any{"192.0.2.0/24"}
+		sourceIPs = []any{fixtureInitialSourceCIDR}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -118,7 +119,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				return
 			}
 			if cidrMode {
-				expected := []any{"192.0.2.0/24"}
+				expected := []any{fixtureInitialSourceCIDR}
 				finalUpdate := 1
 				if mode == fixtureSourceCIDRDriftMode {
 					finalUpdate = 2
@@ -212,7 +213,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item.Spec.ForProvider.Name = &resourceName
 	item.Spec.ForProvider.DataEviction = &value
 	if cidrMode {
-		cidr := "192.0.2.0/24"
+		cidr := fixtureInitialSourceCIDR
 		item.Spec.ForProvider.SourceIps = []*string{&cidr}
 	}
 	parent, memory, by, throughput, persistence, replication := float64(1), float64(1), fixtureThroughputBy, float64(1000), fixtureNoPersistence, false
@@ -308,7 +309,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	}
 	if cidrMode {
 		observed := item.Status.AtProvider.SourceIps
-		if len(observed) != 1 || observed[0] == nil || *observed[0] != "192.0.2.0/24" {
+		if len(observed) != 1 || observed[0] == nil || *observed[0] != fixtureInitialSourceCIDR {
 			t.Fatal("initial source CIDR not observed")
 		}
 	}
@@ -317,8 +318,8 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatal("initial asynchronous operation has not settled")
 		}
 		select {
-		case <-callback.done:
-			t.Fatal("unexpected prior callback before drift")
+		case err := <-callback.done:
+			t.Fatalf("unexpected prior callback before drift: %v", err)
 		default:
 		}
 		mu.Lock()
@@ -351,7 +352,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		// The desired CR remains unchanged; only the fake Cloud observation drifts.
 		verifyManagedDrift(t, rec, spy, callback, false)
 		mu.Lock()
-		if childPresentReads <= beforeDriftRead || cidrUpdates != 2 || !reflect.DeepEqual(sourceIPs, []any{"192.0.2.0/24"}) || unexpected {
+		if childPresentReads <= beforeDriftRead || cidrUpdates != 2 || !reflect.DeepEqual(sourceIPs, []any{fixtureInitialSourceCIDR}) || unexpected {
 			mu.Unlock()
 			t.Fatal("observed source CIDR drift was not corrected")
 		}
