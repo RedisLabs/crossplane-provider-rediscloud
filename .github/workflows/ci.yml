@@ -20,6 +20,22 @@ env:
   UPBOUND_MARKETPLACE_PUSH_ROBOT_USR: ${{ secrets.UPBOUND_MARKETPLACE_PUSH_ROBOT_USR }}
 
 jobs:
+  qa-origin-candidates:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/qa-origin-candidates' && github.actor == 'shay-berman'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          persist-credentials: false
+      - name: Compare protected candidates without network access
+        env:
+          UPTEST_CLOUD_CREDENTIALS: ${{ secrets.UPTEST_CLOUD_CREDENTIALS }}
+          QA_ORIGIN_CANDIDATES: ${{ secrets.QA_ORIGIN_CANDIDATES }}
+        run: python3 scripts/qa_origin_candidates.py
+
   qa-origin-binding:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/qa-origin-binding' && github.actor == 'shay-berman'
     runs-on: ubuntu-24.04
@@ -242,6 +258,9 @@ jobs:
 
       - name: Test no-network origin comparison with dummy values
         run: python3 -m unittest discover -s scripts -p 'test_qa_origin_binding.py' -v
+
+      - name: Test bounded candidate selection with dummy values
+        run: python3 -m unittest discover -s scripts -p 'test_qa_origin_candidates.py' -v
 
       - name: Rehearse UID delete preconditions against local HTTP with pinned kubectl
         run: |

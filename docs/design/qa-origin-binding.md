@@ -17,3 +17,7 @@ Credential-free CI tests canonical matching, mismatch and malformed inputs; no C
 ## Open questions
 
 How to independently bind observed tag to running image digest and protect the expected target digest; how to establish account-bound Pro identity and complete unique ACL selectors; and whether a version-specific API contract is acceptable to the responsible owner.
+
+## Proposed bounded candidate comparison
+
+When multiple independently observed origins need comparison, a separate no-network job may read at most 16 protected entries, each with a unique SHA-256 origin digest and a fresh opaque 128-bit random token. It refuses malformed/duplicate inputs and zero or multiple matches. It prints only the winning opaque token; the private token-to-origin mapping must remain outside the repository and public Actions logs. A token is pseudonymous, not encryption: anyone holding its map can infer the corresponding origin. Candidate identities must be independently observed and reviewed before configuring the secret or running the job. A matched candidate proves only URL-origin equality, not account ownership, live deployment, inventory completeness, or QA authorization. No candidate list or secret is configured by this proposal.
