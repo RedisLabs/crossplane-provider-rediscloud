@@ -35,6 +35,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	fixtureFirst = "first"
+	fixtureHTTP  = "http"
+)
+
 // The supervisor retains a loopback fake API and API server while two distinct
 // controller test processes run sequentially. It is not a Kubernetes pod test.
 func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordered process and resource receipts are all required.
@@ -129,17 +134,17 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pids []int
-	for _, role := range []string{"first", "second"} {
+	pids := make([]int, 0, 2)
+	for _, role := range []string{fixtureFirst, "second"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 		cmd := exec.CommandContext(ctx, executable, "-test.run=^TestProductProHoldProcessWorker$", "-test.v")
 		cmd.Env = append(os.Environ(), "QA_RESTART_WORKER="+role)
 		var output bytes.Buffer
 		cmd.Stdout = &output
 		cmd.Stderr = &output
-		if err := cmd.Start(); err != nil {
+		if startErr := cmd.Start(); startErr != nil {
 			cancel()
-			t.Fatal(err)
+			t.Fatal(startErr)
 		}
 		pid := cmd.Process.Pid
 		err = cmd.Wait()
@@ -179,11 +184,11 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 	if role == "" {
 		t.Skip("only launched by hosted supervisor")
 	}
-	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue || (role != "first" && role != "second") {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue || (role != fixtureFirst && role != "second") {
 		t.Fatal("invalid worker context")
 	}
 	url := os.Getenv("QA_RESTART_FIXTURE_URL")
-	if !validProcessLoopback(url, "http") {
+	if !validProcessLoopback(url, fixtureHTTP) {
 		t.Fatal("fixture must be loopback")
 	}
 	data, err := os.ReadFile(os.Getenv("QA_RESTART_CONFIG_OUT"))
@@ -194,16 +199,16 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 		Host            string
 		TLSClientConfig rest.TLSClientConfig
 	}{}
-	if err := json.Unmarshal(data, &saved); err != nil {
-		t.Fatal(err)
+	if decodeErr := json.Unmarshal(data, &saved); decodeErr != nil {
+		t.Fatal(decodeErr)
 	}
 	if !validProcessLoopback(saved.Host, "https") {
 		t.Fatal("API server must be loopback")
 	}
 	cfg := &rest.Config{Host: saved.Host, TLSClientConfig: saved.TLSClientConfig}
 	scheme := runtime.NewScheme()
-	if err := pro.AddToScheme(scheme); err != nil {
-		t.Fatal(err)
+	if schemeErr := pro.AddToScheme(scheme); schemeErr != nil {
+		t.Fatal(schemeErr)
 	}
 	kube, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
@@ -215,7 +220,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: url + "/v1"}}, nil
 	}
 	inner := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
-	connector := procontroller.NewDeleteHoldConnector(kube, kube, inner, role == "first")
+	connector := procontroller.NewDeleteHoldConnector(kube, kube, inner, role == fixtureFirst)
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: fixtureName}}
@@ -239,7 +244,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 		case <-time.After(45 * time.Second):
 		}
 	}
-	if role == "first" {
+	if role == fixtureFirst {
 		t.Fatal("failed delete callback missing")
 	}
 	fmt.Printf("PROCESS_RECEIPT %s %s\n", role, strconv.Itoa(os.Getpid()))
@@ -248,7 +253,7 @@ func TestProductProHoldProcessWorker(t *testing.T) { //nolint:gocyclo // Worker 
 // The worker cannot target an arbitrary origin even if its environment is altered.
 func validProcessLoopback(raw, scheme string) bool {
 	parsed, err := url.Parse(raw)
-	if err != nil || strings.ContainsAny(raw, "?#") || parsed.Scheme != scheme || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.User != nil || parsed.Path != "" {
+	if err != nil || strings.ContainsAny(raw, "?#") || parsed.Scheme != scheme || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") {
 		return false
 	}
 	port, err := strconv.Atoi(parsed.Port())
@@ -260,13 +265,14 @@ func TestProductProcessLoopbackValidation(t *testing.T) {
 		raw, scheme string
 		want        bool
 	}{
-		{"http://127.0.0.1:1234", "http", true},
+		{"http://127.0.0.1:1234", fixtureHTTP, true},
 		{"https://127.0.0.1:1234", "https", true},
-		{"http://127.0.0.1:1@other-host:1234", "http", false},
-		{"http://127.0.0.1:1234/path", "http", false},
-		{"http://127.0.0.1:1234?", "http", false},
-		{"http://127.0.0.1:99999", "http", false},
-		{"https://127.0.0.1:1234", "http", false},
+		{"https://127.0.0.1:1234/", "https", true},
+		{"http://127.0.0.1:1@other-host:1234", fixtureHTTP, false},
+		{"http://127.0.0.1:1234/path", fixtureHTTP, false},
+		{"http://127.0.0.1:1234?", fixtureHTTP, false},
+		{"http://127.0.0.1:99999", fixtureHTTP, false},
+		{"https://127.0.0.1:1234", fixtureHTTP, false},
 	} {
 		if got := validProcessLoopback(tc.raw, tc.scheme); got != tc.want {
 			t.Fatalf("unexpected origin validation: %q", tc.raw)

@@ -80,7 +80,7 @@ func newProEnvtestClient(t *testing.T, scheme *runtime.Scheme, item *pro.Databas
 	if firstAnnotations == nil {
 		firstAnnotations = map[string]string{}
 	}
-	firstAnnotations["fixture.test/cas"] = "first"
+	firstAnnotations["fixture.test/cas"] = fixtureFirst
 	first.SetAnnotations(firstAnnotations)
 	if err := kube.Update(context.Background(), first); err != nil {
 		t.Fatal(err)
