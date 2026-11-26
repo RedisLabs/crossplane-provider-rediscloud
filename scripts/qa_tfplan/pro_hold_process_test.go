@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -43,12 +45,26 @@ const (
 // The supervisor retains a loopback fake API and API server while two distinct
 // controller test processes run sequentially. It is not a Kubernetes pod test.
 func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordered process and resource receipts are all required.
+	runProductProHoldProcesses(t, false)
+}
+
+func TestProductProHoldAbruptKill(t *testing.T) {
+	runProductProHoldProcesses(t, true)
+}
+
+func runProductProHoldProcesses(t *testing.T, abrupt bool) { //nolint:gocyclo // Ordered process and resource receipts are all required.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
 		t.Fatal("pinned provider and Terraform required")
 	}
 	var mu sync.Mutex
+	accepted := make(chan struct{}, 1)
+	releaseResponse := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseResponse) }) }
+	// On every failure, unblock the handler before httptest.Server closes.
+	defer release()
 	deletes, reads, creates := 0, 0, 0
 	exists := false
 	var trace []string
@@ -117,6 +133,10 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 			if deletes != 1 || !exists {
 				unexpected = true
 			}
+			if abrupt && deletes == 1 {
+				accepted <- struct{}{}
+				<-releaseResponse // No HTTP response can be sent until supervisor kills the worker.
+			}
 			http.Error(w, "accepted with lost response", http.StatusServiceUnavailable)
 			return
 		default:
@@ -126,7 +146,7 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
-	defer server.Close()
+	defer func() { release(); server.Close() }()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("TMPDIR", dir)
@@ -175,6 +195,8 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 	for _, role := range []string{fixtureFirst, "second"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 		cmd := exec.CommandContext(ctx, executable, "-test.run=^TestProductProHoldProcessWorker$", "-test.v")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.WaitDelay = 30 * time.Second
 		cmd.Env = append(os.Environ(), "QA_RESTART_WORKER="+role)
 		var output bytes.Buffer
 		cmd.Stdout = &output
@@ -184,16 +206,69 @@ func TestProductProHoldProcessRestart(t *testing.T) { //nolint:gocyclo // Ordere
 			t.Fatal(startErr)
 		}
 		pid := cmd.Process.Pid
-		err = cmd.Wait()
-		cancel()
-		if err != nil {
-			mu.Lock()
-			paths := append([]string(nil), trace...)
-			mu.Unlock()
-			t.Fatalf("%s worker failed: %v; fake paths=%v\n%s", role, err, paths, output.String())
-		}
-		if !strings.Contains(output.String(), fmt.Sprintf("PROCESS_RECEIPT %s %d", role, pid)) {
-			t.Fatalf("%s worker receipt missing", role)
+		if abrupt && role == fixtureFirst {
+			finished := make(chan error, 1)
+			go func() { finished <- cmd.Wait() }()
+			select {
+			case <-accepted:
+				if killErr := syscall.Kill(-pid, syscall.SIGKILL); killErr != nil {
+					release()
+					cancel()
+					t.Fatalf("cannot kill worker group: %v", killErr)
+				}
+				select {
+				case err = <-finished:
+				case <-time.After(30 * time.Second):
+					release()
+					cancel()
+					t.Fatal("worker process group did not terminate")
+				}
+				waitStatus, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
+				if err == nil || !ok || !waitStatus.Signaled() || waitStatus.Signal() != syscall.SIGKILL {
+					release()
+					cancel()
+					t.Fatalf("worker did not exit via SIGKILL: %v", err)
+				}
+				if !waitProcessGroupGone(pid) {
+					release()
+					cancel()
+					t.Fatal("worker process group still exists")
+				}
+				if strings.Contains(output.String(), "PROCESS_RECEIPT first ") {
+					release()
+					cancel()
+					t.Fatal("first worker reported callback before kill")
+				}
+				release()
+			case err = <-finished:
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
+				release()
+				cancel()
+				t.Fatalf("worker exited before accepted fake delete: %v; %s", err, output.String())
+			case <-ctx.Done():
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
+				release()
+				select {
+				case <-finished:
+				case <-time.After(30 * time.Second):
+				}
+				cancel()
+				t.Fatal("fake delete did not arrive")
+			}
+			cancel()
+		} else {
+			err = cmd.Wait()
+			cancel()
+			if err != nil {
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
+				mu.Lock()
+				paths := append([]string(nil), trace...)
+				mu.Unlock()
+				t.Fatalf("%s worker failed: %v; fake paths=%v\n%s", role, err, paths, output.String())
+			}
+			if !strings.Contains(output.String(), fmt.Sprintf("PROCESS_RECEIPT %s %d", role, pid)) {
+				t.Fatalf("%s worker receipt missing", role)
+			}
 		}
 		pids = append(pids, pid)
 		current := &pro.Database{}
@@ -400,4 +475,19 @@ func TestProductProcessCallbackAttribution(t *testing.T) {
 	if matched, err := checkProcessCallback(processCallbackEvent{kind: "destroy", err: fakeError}, "destroy", true); !matched || err != nil {
 		t.Fatal("expected failed destroy missing")
 	}
+}
+
+// Ensure process-group descendants have exited before the held response is released.
+func waitProcessGroupGone(pid int) bool {
+	for i := 0; i < 50; i++ {
+		err := syscall.Kill(-pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return true
+		}
+		if err != nil {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
 }
