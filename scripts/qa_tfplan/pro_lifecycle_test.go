@@ -15,6 +15,7 @@ import (
 
 	pro "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1beta1"
 	providerconfig "github.com/RedisLabs/provider-rediscloud/config"
+	procontroller "github.com/RedisLabs/provider-rediscloud/internal/controller/subscription/database"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	xpresource "github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	xpfake "github.com/crossplane/crossplane-runtime/v2/pkg/resource/fake"
@@ -36,9 +37,24 @@ import (
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
-	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
+	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, fixtureCaseSuccess) })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
+}
+
+func TestProductProDeleteHold(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode string
+		enabled    bool
+	}{{"default_off", fixtureCaseSuccess, false}, {fixtureCaseSuccess, fixtureCaseSuccess, true}, {"accepted_503", "delete_delayed", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("QA_PRODUCT_HOLD_ENVTEST", fixtureStringTrue)
+			if tc.enabled {
+				t.Setenv("QA_PRODUCT_HOLD_TEST", fixtureStringTrue)
+			}
+			runProDatabaseFixture(t, tc.mode)
+		})
+	}
 }
 
 func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
@@ -112,6 +128,13 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath:
 			deleteRequests++
+			if mode == "delete_delayed" {
+				if deleteRequests != 1 {
+					unexpected = true
+				}
+				http.Error(w, "injected pending delete", http.StatusServiceUnavailable)
+				return
+			}
 			if !exists {
 				unexpected = true
 				http.NotFound(w, r)
@@ -179,7 +202,13 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item.Spec.ForProvider.DataPersistence = &persistence
 	item.Spec.ForProvider.Replication = &replication
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
-	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	item.Spec.ProviderConfigReference = &xpv2.Reference{Name: "fixture-config"}
+	var kube client.Client
+	if os.Getenv("QA_PRODUCT_HOLD_ENVTEST") == fixtureStringTrue {
+		kube = newProEnvtestClient(t, scheme, item)
+	} else {
+		kube = cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	}
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	store := newTrackingNativeStore()
 	spy := &spyExecutor{Interface: kexec.New(), tracked: store}
@@ -187,7 +216,11 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
+	buildConnector := func(store *trackingNativeStore, callback *fakeCallback, enabled bool) managed.ExternalConnector {
+		inner := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
+		return procontroller.NewDeleteHoldConnector(kube, kube, inner, enabled)
+	}
+	connector := buildConnector(store, callback, os.Getenv("QA_PRODUCT_HOLD_TEST") == fixtureStringTrue)
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	await := func(command string, expectFailure bool) {
 		t.Helper()
@@ -284,7 +317,72 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
 	}
-	await("terraform destroy ", mode == "delete_unknown")
+	await("terraform destroy ", mode == "delete_unknown" || mode == "delete_delayed")
+	if os.Getenv("QA_PRODUCT_HOLD_TEST") == fixtureStringTrue {
+		// Reconstruct the managed reconciler and connector around the persisted CR.
+		// This is not a process restart and proves only this fake Cloud fixture.
+		store = newTrackingNativeStore()
+		spy.tracked = store
+		callback = &fakeCallback{done: make(chan error, 1)}
+		connector = buildConnector(store, callback, false)
+		rec = managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
+		for i := 0; i < 3; i++ {
+			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+				t.Fatal(err)
+			}
+			retained := &pro.Database{}
+			if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
+				t.Fatal("held CR or finalizer lost")
+			}
+			if _, ok := retained.Annotations["rediscloud.crossplane.io/pro-database-delete-intent"]; !ok {
+				t.Fatal("intent lost")
+			}
+			if store.current != nil {
+				t.Fatal("held reconcile opened an upstream workspace")
+			}
+		}
+		mu.Lock()
+		if unexpected || deleteRequests != 1 || (mode == "delete_delayed" && !exists) || (mode == fixtureCaseSuccess && exists) {
+			mu.Unlock()
+			t.Fatal("unexpected held fake state after initial reconciles")
+		}
+		// Model delayed fake disappearance while retaining the parent.
+		exists = false
+		mu.Unlock()
+		for path, want := range map[string]int{fixtureProDatabasePath: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
+			req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("X-Api-Key", dummyCredential)
+			req.Header.Set("X-Api-Secret-Key", dummyCredential)
+			response, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != want {
+				t.Fatalf("fake read %s status %d", path, response.StatusCode)
+			}
+		}
+		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+			t.Fatal(err)
+		}
+		if store.current != nil {
+			t.Fatal("held reconcile opened an upstream workspace after fake absence")
+		}
+		held := &pro.Database{}
+		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, held); err != nil || len(held.Finalizers) == 0 {
+			t.Fatal("held finalizer lost after fake absence")
+		}
+		mu.Lock()
+		if unexpected || deleteRequests != 1 {
+			mu.Unlock()
+			t.Fatal("delete replayed after fake absence")
+		}
+		mu.Unlock()
+		return
+	}
 	if mode == "delete_unknown" {
 		retained := &pro.Database{}
 		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
