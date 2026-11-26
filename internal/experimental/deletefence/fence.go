@@ -40,7 +40,7 @@ type intent struct {
 // reader, and the client update must use resourceVersion optimistic concurrency.
 // Any update error, including an ambiguous response after commit, forbids dispatch.
 // No automatic clearing or success transition is provided by this experiment.
-func Acquire(ctx context.Context, reader client.Reader, writer client.Client, snapshot *dbv1.Database) (string, error) {
+func Acquire(ctx context.Context, reader client.Reader, writer client.Client, snapshot *dbv1.Database) (string, error) { //nolint:gocyclo // Each failure boundary must refuse acquisition.
 	if snapshot == nil || snapshot.UID == "" || snapshot.GetDeletionTimestamp().IsZero() || meta.GetExternalName(snapshot) == "" {
 		return "", ErrHold
 	}
