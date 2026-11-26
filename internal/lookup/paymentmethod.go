@@ -44,6 +44,10 @@ func MatchPaymentMethod(methods []*account.PaymentMethod, query PaymentMethodQue
 		}
 		matched = append(matched, method)
 	}
+	return selectedPaymentMethod(matched)
+}
+
+func selectedPaymentMethod(matched []*account.PaymentMethod) (*account.PaymentMethod, error) {
 	selected, err := SelectOne(matched)
 	if err != nil {
 		return nil, err
