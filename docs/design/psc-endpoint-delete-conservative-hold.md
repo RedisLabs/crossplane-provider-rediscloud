@@ -1,0 +1,20 @@
+# PSC endpoint opt-in delete hold
+
+**TLDR:** Default-off per-CR guard records intent before invoking Terraform destroy and holds after any outcome. This is a draft, not deployed or a shared-account fence.
+
+**Date:** 2026-11-26  
+**Ticket:** [RED-225344](https://redislabs.atlassian.net/browse/RED-225344)
+
+## Problem and design
+
+[#124](https://github.com/RedisLabs/crossplane-provider-rediscloud/pull/124) demonstrates a repeat fake DELETE after an accepted-then-503 response while the endpoint remains listed. The default-off `--enable-psc-endpoint-delete-hold` persists intent with API-server resourceVersion CAS before the managed connector invokes destroy, requires matching CR UID, finalizer, full spec, provider reference and `subscription/service/endpoint` identity, then rechecks. The ID components use the same `strconv.Atoi` grammar as provider v2.20.0. Declared subscription and integral exactly representable service must match. Unverifiable identity or persistence holds; the guard does not reinterpret IDs. Existing intent blocks guard-aware binaries even after the flag is disabled. A fixed sanitized message requests preservation and administrator help; no token or API response is printed.
+
+All outcomes remain held including nil before dispatch and success. This applies even when Terraform would not issue a DELETE: noninitialized endpoints normally wait for customer GCP resources to be removed, so enabling the flag substantially changes availability and requires manual adjudication for ordinary deletion. Do not infer any DELETE from a marker. No automatic clearing or resolution is offered. Orphan/no-Delete policies may bypass the connector and finalizer, not prove Cloud cleanup.
+
+## Trust and recovery
+
+The CR annotation is not an authorization boundary. This requires trusted CR metadata/spec/finalizer writers, protected ProviderConfig and Secret, an independently confirmed account and a fully drained rollout including older and differently configured controllers. ProviderConfig name does not establish account or credential version. Concurrent other CRs, Terraform/direct API writers, changes after reread and in-flight older binaries remain unfenced. Never enable as complete replay protection. Resolve uncertainty with authorized expert review of exact authenticated account, subscription, service and complete endpoint collection plus authoritative task state. Missing parent, incomplete data, loss of task ID or task processing-completed is not proof of terminal deletion. GCP-side resources and their deletion are independently unverified. Do not remove intent simply to retry.
+
+## Verification and rollout
+
+Hosted fake-only tests must cover real managed reconciliation and API-server CAS, default-off lifecycle, initialized accepted-503, noninitialized wait, restart and concurrent reservations, stale and replaced identities, flag-off marker, orphan behavior and sanitized diagnostics. Independent security review and exact-head CI are required. No live Cloud test or deployment is authorized here. Disable the flag to prevent new reservations; this does not clear prior holds. Rolling back to an old binary may bypass them. Existing [Pro design](pro-delete-conservative-hold.md) documents the broader unresolved trust model; no business decision is made.
