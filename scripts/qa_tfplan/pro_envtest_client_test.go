@@ -2,6 +2,7 @@ package qatfplan
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
@@ -43,6 +45,18 @@ func newProEnvtestClient(t *testing.T, scheme *runtime.Scheme, item *pro.Databas
 			t.Errorf("stop API server: %v", stopErr)
 		}
 	})
+	if configPath := os.Getenv("QA_RESTART_CONFIG_OUT"); configPath != "" {
+		data, encodeErr := json.Marshal(struct {
+			Host            string
+			TLSClientConfig rest.TLSClientConfig
+		}{Host: cfg.Host, TLSClientConfig: cfg.TLSClientConfig})
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		if writeErr := os.WriteFile(configPath, data, 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
 	kube, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)

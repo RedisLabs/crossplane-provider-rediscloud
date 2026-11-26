@@ -86,6 +86,38 @@ jobs:
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
           python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProductProDeleteHold TestProductProDeleteHold/default_off TestProductProDeleteHold/success TestProductProDeleteHold/accepted_503 TestProductProHoldConcurrentReservation
+  pro-product-hold-process-restart:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.26.11'
+      - name: Install pinned Terraform and provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qa-plan/bin" "$RUNNER_TEMP/qa-plan/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64"
+          curl -fsSL https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip -o "$RUNNER_TEMP/qa-plan/terraform.zip"
+          echo 'c0ed7bc32ee52ae255af9982c8c88a7a4c610485cf1d55feeb037eab75fa082c  '"$RUNNER_TEMP/qa-plan/terraform.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/qa-plan/terraform.zip" -d "$RUNNER_TEMP/qa-plan/bin"
+          curl -fsSL https://github.com/RedisLabs/terraform-provider-rediscloud/releases/download/v2.20.0/terraform-provider-rediscloud_2.20.0_linux_amd64.zip -o "$RUNNER_TEMP/qa-plan/provider.zip"
+          echo 'a8642d27a521ebac0a08392bc2cce35b53d8e6a3a6e8b37a3895d83ad2e2c998  '"$RUNNER_TEMP/qa-plan/provider.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/qa-plan/provider.zip" 'terraform-provider-rediscloud_v2.20.0' -d "$RUNNER_TEMP/qa-plan/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64"
+      - name: Install pinned API server and etcd
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$RUNNER_TEMP/envtest.tgz" https://github.com/kubernetes-sigs/controller-tools/releases/download/envtest-v1.36.2/envtest-v1.36.2-linux-amd64.tar.gz
+          echo '5e99f4eef3d6f9d4dd063730299f708c98da8801f2f14d8fc762cb354f30c332  '"$RUNNER_TEMP/envtest.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/envtest"
+          tar -xzf "$RUNNER_TEMP/envtest.tgz" --strip-components=2 -C "$RUNNER_TEMP/envtest" controller-tools/envtest/etcd controller-tools/envtest/kube-apiserver
+      - name: Exercise guard across distinct processes
+        run: |
+          export KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest"
+          export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
+          export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProductProHoldProcessRestart TestProductProcessLoopbackValidation
   pro-subscription-lifecycle:
     runs-on: ubuntu-24.04
     steps:
