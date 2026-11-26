@@ -43,6 +43,11 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("delete_delayed_then_503", func(t *testing.T) { runProDatabaseFixture(t, fixtureDeleteDelayed) })
 }
 
+func TestProDatabaseRestartPendingDelete(t *testing.T) {
+	t.Setenv("QA_TEST_ENVTEST_RESTART", "true")
+	runProDatabaseFixture(t, fixtureDeleteDelayed)
+}
+
 func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
@@ -191,7 +196,12 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item.Spec.ForProvider.DataPersistence = &persistence
 	item.Spec.ForProvider.Replication = &replication
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
-	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	var kube client.Client
+	if os.Getenv("QA_TEST_ENVTEST_RESTART") == "true" {
+		kube = newProEnvtestClient(t, scheme, item)
+	} else {
+		kube = cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	}
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	store := newTrackingNativeStore()
 	spy := &spyExecutor{Interface: kexec.New(), tracked: store}
@@ -303,6 +313,13 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatal("failed delete lost the managed CR or finalizer before observation")
 		}
 		if mode == fixtureDeleteDelayed {
+			if os.Getenv("QA_TEST_ENVTEST_RESTART") == "true" {
+				store = newTrackingNativeStore()
+				spy.tracked = store
+				callback = &fakeCallback{done: make(chan error, 1)}
+				connector = ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
+				rec = managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
+			}
 			for _, path := range []string{fixtureProDatabasePath, fixtureProParentPath} {
 				req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
 				if err != nil {
@@ -322,13 +339,19 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			mu.Lock()
 			beforePendingReconcileReads := childPresentReads
 			mu.Unlock()
-			if store.current == nil {
+			if store.current == nil && os.Getenv("QA_TEST_ENVTEST_RESTART") != "true" {
 				t.Fatal("failed delete operation was not tracked")
 			}
-			originalStart := store.current.LastOperation.StartTime()
+			var originalStart time.Time
+			if store.current != nil {
+				originalStart = store.current.LastOperation.StartTime()
+			}
 			for i := 0; i < 3; i++ {
 				if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 					t.Fatal(err)
+				}
+				if store.current == nil {
+					t.Fatal("reconciler did not open a workspace")
 				}
 				op := store.current.LastOperation
 				if op.IsRunning() || (op.IsEnded() && !op.StartTime().Equal(originalStart)) {
@@ -420,7 +443,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			t.Fatalf("fake read %s: %d", path, res.StatusCode)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "fixture-pro-db-uid")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, string(item.UID))); !os.IsNotExist(err) {
 		t.Fatal("workspace remains")
 	}
 }
