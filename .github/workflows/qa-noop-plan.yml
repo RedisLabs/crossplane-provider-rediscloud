@@ -53,7 +53,7 @@ jobs:
         run: |
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProDatabaseManagedLifecycleLoopback
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProDatabaseManagedLifecycleLoopback TestProDatabaseManagedLifecycleLoopback/lifecycle TestProDatabaseManagedLifecycleLoopback/accepted_then_503
   pro-subscription-lifecycle:
     runs-on: ubuntu-24.04
     steps:
