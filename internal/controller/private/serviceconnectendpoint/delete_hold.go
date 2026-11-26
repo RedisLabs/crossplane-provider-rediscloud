@@ -206,7 +206,7 @@ func sameDeleteIdentity(current, snapshot *pscv1.ServiceConnectEndpoint) bool { 
 	if err != nil {
 		return false
 	}
-	if _, err := strconv.Atoi(parts[2]); err != nil {
+	if _, parseErr := strconv.Atoi(parts[2]); parseErr != nil {
 		return false
 	}
 	declaredSub, err := strconv.Atoi(*current.Spec.ForProvider.SubscriptionID)
