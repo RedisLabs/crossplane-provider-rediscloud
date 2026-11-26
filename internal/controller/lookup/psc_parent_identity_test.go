@@ -68,6 +68,12 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 				wantScript     bool
 			}{
 				{fixtureLookupInitial, `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{"nil_endpoint", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"},null]}`, corev1.ConditionFalse, false},
+				{"after_nil", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{"duplicate_endpoint", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"},{"id":3,"status":"active"}]}`, corev1.ConditionFalse, false},
+				{"after_duplicate", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
+				{"missing_endpoint_id", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"},{"status":"active"}]}`, corev1.ConditionFalse, false},
+				{"after_missing_id", `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
 				{"mismatch", `{"pscServiceId":10,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionFalse, false},
 				{"missing_optional_id", `{"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
 				{fixtureLookupRecovery, `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`, corev1.ConditionTrue, true},
