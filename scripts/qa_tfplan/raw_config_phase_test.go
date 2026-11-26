@@ -36,7 +36,7 @@ func markRawConfigPhase(t *testing.T, phase string, kube client.Client, name str
 	if err != nil {
 		t.Fatal("cannot open phase trace")
 	}
-	if _, err := fmt.Fprintf(f, "phase %s %s\n", phase, presence); err != nil {
+	if _, writeErr := fmt.Fprintf(f, "phase %s %s\n", phase, presence); writeErr != nil {
 		_ = f.Close()
 		t.Fatal("cannot write phase trace")
 	}
