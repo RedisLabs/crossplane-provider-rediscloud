@@ -34,17 +34,33 @@ func MatchPaymentMethod(methods []*account.PaymentMethod, query PaymentMethodQue
 		if query.CardType != "" && redis.StringValue(method.Type) != query.CardType {
 			continue
 		}
-		if query.LastFourNumbers != "" && LastFour(method) != query.LastFourNumbers {
-			continue
+		if query.LastFourNumbers != "" {
+			if method.CreditCardEndsWith == nil {
+				return nil, fmt.Errorf("payment method card ending is missing")
+			}
+			if LastFour(method) != query.LastFourNumbers {
+				continue
+			}
 		}
 		matched = append(matched, method)
 	}
-	return SelectOne(matched)
+	return selectedPaymentMethod(matched)
+}
+
+func selectedPaymentMethod(matched []*account.PaymentMethod) (*account.PaymentMethod, error) {
+	selected, err := SelectOne(matched)
+	if err != nil {
+		return nil, err
+	}
+	if selected.ID == nil {
+		return nil, fmt.Errorf("payment method id is missing")
+	}
+	return selected, nil
 }
 
 // LastFour formats the card ending as four digits, matching the Terraform provider.
 func LastFour(method *account.PaymentMethod) string {
-	if method == nil {
+	if method == nil || method.CreditCardEndsWith == nil {
 		return ""
 	}
 	return fmt.Sprintf("%04d", redis.IntValue(method.CreditCardEndsWith))

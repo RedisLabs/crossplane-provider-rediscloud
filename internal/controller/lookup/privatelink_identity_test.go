@@ -24,7 +24,7 @@ import (
 const identityLinkTask = "identity-link"
 
 func TestPrivateLinkIdentityReconcile(t *testing.T) { //nolint:gocyclo // Both resource paths and each transition are checked.
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
 	const name = "fixture"
@@ -104,7 +104,7 @@ func onlyGET(t *testing.T, next http.Handler) http.Handler {
 }
 
 func TestPrivateLinkScriptParentIdentity(t *testing.T) { //nolint:gocyclo // Verify each lookup and no downstream request on contradiction.
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
 	const name = "fixture"
