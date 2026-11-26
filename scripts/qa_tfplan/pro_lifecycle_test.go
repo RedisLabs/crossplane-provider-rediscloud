@@ -36,10 +36,13 @@ import (
 // against loopback fake Cloud, with a pre-existing fake parent; it never contacts Cloud.
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 const fixtureSourceCIDRMode = "source_cidrs"
+const fixtureSourceCIDRDriftMode = "source_cidr_drift"
+const fixtureInitialSourceCIDR = "192.0.2.0/24"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
 	t.Run(fixtureSourceCIDRMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRMode) })
+	t.Run(fixtureSourceCIDRDriftMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRDriftMode) })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
 }
@@ -51,6 +54,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		t.Skip("pinned Terraform and provider required")
 	}
 	var mu sync.Mutex
+	cidrMode := mode == fixtureSourceCIDRMode || mode == fixtureSourceCIDRDriftMode
 	exists, unexpected := false, false
 	createRequests, deleteRequests, childAbsentReads := 0, 0, 0
 	childPresentReads := 0
@@ -58,8 +62,8 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	beforeDeleteReconcileReads := 0
 	rule := desiredEviction
 	sourceIPs := []any{}
-	if mode == fixtureSourceCIDRMode {
-		sourceIPs = []any{"192.0.2.0/24"}
+	if cidrMode {
+		sourceIPs = []any{fixtureInitialSourceCIDR}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -87,7 +91,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				http.Error(w, "bad create", http.StatusBadRequest)
 				return
 			}
-			if mode == fixtureSourceCIDRMode && !reflect.DeepEqual(body["sourceIp"], sourceIPs) {
+			if cidrMode && !reflect.DeepEqual(body["sourceIp"], sourceIPs) {
 				unexpected = true
 				http.Error(w, "incorrect source CIDRs", http.StatusBadRequest)
 				return
@@ -114,12 +118,16 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				http.Error(w, "malformed update", http.StatusBadRequest)
 				return
 			}
-			if mode == fixtureSourceCIDRMode {
-				expected := []any{"192.0.2.0/24"}
-				if cidrUpdates == 1 {
+			if cidrMode {
+				expected := []any{fixtureInitialSourceCIDR}
+				finalUpdate := 1
+				if mode == fixtureSourceCIDRDriftMode {
+					finalUpdate = 2
+				}
+				if cidrUpdates == finalUpdate {
 					expected = []any{"198.51.100.0/24"}
 				}
-				if cidrUpdates > 1 {
+				if cidrUpdates > finalUpdate {
 					unexpected = true
 					http.Error(w, "unexpected additional CIDR update", http.StatusBadRequest)
 					return
@@ -204,8 +212,8 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item := &pro.Database{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-pro-db-uid")}}
 	item.Spec.ForProvider.Name = &resourceName
 	item.Spec.ForProvider.DataEviction = &value
-	if mode == fixtureSourceCIDRMode {
-		cidr := "192.0.2.0/24"
+	if cidrMode {
+		cidr := fixtureInitialSourceCIDR
 		item.Spec.ForProvider.SourceIps = []*string{&cidr}
 	}
 	parent, memory, by, throughput, persistence, replication := float64(1), float64(1), fixtureThroughputBy, float64(1000), fixtureNoPersistence, false
@@ -299,15 +307,63 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database identity missing")
 	}
-	if mode == fixtureSourceCIDRMode {
+	if cidrMode {
 		observed := item.Status.AtProvider.SourceIps
-		if len(observed) != 1 || observed[0] == nil || *observed[0] != "192.0.2.0/24" {
+		if len(observed) != 1 || observed[0] == nil || *observed[0] != fixtureInitialSourceCIDR {
 			t.Fatal("initial source CIDR not observed")
+		}
+	}
+	if mode == fixtureSourceCIDRDriftMode {
+		if store.current == nil || store.current.LastOperation.IsRunning() {
+			t.Fatal("initial asynchronous operation has not settled")
+		}
+		select {
+		case err := <-callback.done:
+			t.Fatalf("unexpected prior callback before drift: %v", err)
+		default:
+		}
+		mu.Lock()
+		if cidrUpdates != 1 {
+			mu.Unlock()
+			t.Fatal("initial CIDR update was not observed")
+		}
+		beforeDriftRead := childPresentReads
+		sourceIPs = []any{"0.0.0.0/0"}
+		mu.Unlock()
+		// Refresh and plan are synchronous Upjet workspace operations. Requiring
+		// their successful results distinguishes masked drift from no observation.
+		refresh, err := store.current.Refresh(context.Background())
+		if err != nil || !refresh.Exists {
+			t.Fatalf("drift refresh did not complete: %v", err)
+		}
+		plan, err := store.current.Plan(context.Background())
+		if err != nil || !plan.Exists {
+			t.Fatalf("drift plan did not complete: %v", err)
+		}
+		mu.Lock()
+		observedDrift := childPresentReads > beforeDriftRead && cidrUpdates == 1 && reflect.DeepEqual(sourceIPs, []any{"0.0.0.0/0"}) && !unexpected
+		mu.Unlock()
+		if !observedDrift {
+			t.Fatal("fake drift was not read without a mutation")
+		}
+		if plan.UpToDate {
+			t.Fatal("observed CIDR drift produced an up-to-date plan")
+		}
+		// The desired CR remains unchanged; only the fake Cloud observation drifts.
+		verifyManagedDrift(t, rec, spy, callback, false)
+		mu.Lock()
+		if childPresentReads <= beforeDriftRead || cidrUpdates != 2 || !reflect.DeepEqual(sourceIPs, []any{fixtureInitialSourceCIDR}) || unexpected {
+			mu.Unlock()
+			t.Fatal("observed source CIDR drift was not corrected")
+		}
+		mu.Unlock()
+		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, item); err != nil {
+			t.Fatal(err)
 		}
 	}
 	updated := fixtureVolatileLRU
 	item.Spec.ForProvider.DataEviction = &updated
-	if mode == fixtureSourceCIDRMode {
+	if cidrMode {
 		cidr := "198.51.100.0/24"
 		item.Spec.ForProvider.SourceIps = []*string{&cidr}
 	}
@@ -328,10 +384,14 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database ID changed")
 	}
-	if mode == fixtureSourceCIDRMode {
+	if cidrMode {
 		mu.Lock()
 		readsBeforeObservation := childPresentReads
-		if cidrUpdates != 2 {
+		wantCIDRUpdates := 2
+		if mode == fixtureSourceCIDRDriftMode {
+			wantCIDRUpdates = 3
+		}
+		if cidrUpdates != wantCIDRUpdates {
 			mu.Unlock()
 			t.Fatal("initial and changed source CIDR updates were not sent")
 		}
