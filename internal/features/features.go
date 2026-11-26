@@ -17,4 +17,6 @@ const (
 	EnableBetaManagementPolicies xpfeature.Flag = xpfeature.EnableBetaManagementPolicies
 	// EnableProDatabaseDeleteHold is a conservative, opt-in administrative hold.
 	EnableProDatabaseDeleteHold xpfeature.Flag = "pro-database-delete-hold"
+	// EnablePSCEndpointDeleteHold opts into a conservative administrative hold.
+	EnablePSCEndpointDeleteHold xpfeature.Flag = "psc-endpoint-delete-hold"
 )

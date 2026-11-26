@@ -62,6 +62,7 @@ func main() {
 		providerVersion  = app.Flag("terraform-provider-version", "Terraform provider version.").Required().Envar("TERRAFORM_PROVIDER_VERSION").String()
 
 		enableManagementPolicies    = app.Flag("enable-management-policies", "Enable support for Management Policies.").Default("true").Envar("ENABLE_MANAGEMENT_POLICIES").Bool()
+		enablePSCEndpointDeleteHold = app.Flag("enable-psc-endpoint-delete-hold", "Opt in to administrative hold before PSC endpoint deletion.").Default("false").Envar("ENABLE_PSC_ENDPOINT_DELETE_HOLD").Bool()
 		enableProDatabaseDeleteHold = app.Flag("enable-pro-database-delete-hold", "Opt in to administrative hold after Pro database delete dispatch.").Default("false").Envar("ENABLE_PRO_DATABASE_DELETE_HOLD").Bool()
 	)
 
@@ -119,6 +120,11 @@ func main() {
 	if *enableProDatabaseDeleteHold {
 		o.Features.Enable(features.EnableProDatabaseDeleteHold)
 		log.Info("Pro database delete administrative hold enabled")
+	}
+
+	if *enablePSCEndpointDeleteHold {
+		o.Features.Enable(features.EnablePSCEndpointDeleteHold)
+		log.Info("PSC endpoint delete administrative hold enabled")
 	}
 
 	kingpin.FatalIfError(setupControllers(mgr, o, log), "Cannot setup RedisCloud controllers")
