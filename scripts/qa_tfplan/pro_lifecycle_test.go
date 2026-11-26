@@ -35,9 +35,10 @@ import (
 // against loopback fake Cloud, with a pre-existing fake parent; it never contacts Cloud.
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 const fixtureDeleteDelayed = "delete_delayed"
+const fixtureProSuccess = "success"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
-	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
+	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, fixtureProSuccess) })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
 	t.Run("delete_delayed_then_503", func(t *testing.T) { runProDatabaseFixture(t, fixtureDeleteDelayed) })
@@ -51,7 +52,7 @@ func TestProDatabaseRestartPendingDelete(t *testing.T) {
 func TestExperimentalFencedProDeleteSuccess(t *testing.T) {
 	t.Setenv("QA_TEST_ENVTEST_RESTART", fixtureEnvEnabled)
 	t.Setenv("QA_TEST_EXPERIMENTAL_FENCE", fixtureEnvEnabled)
-	runProDatabaseFixture(t, "success")
+	runProDatabaseFixture(t, fixtureProSuccess)
 }
 
 func TestExperimentalFencedProDeleteUnknown(t *testing.T) {
@@ -225,7 +226,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		if os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled {
 			fencedCallback := &experimentalCallback{base: cb, kube: kube}
 			inner := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(fencedCallback))
-			return &experimentalConnector{inner: inner, kube: kube, callback: fencedCallback}
+			return &experimentalConnector{inner: inner, kube: kube, callback: fencedCallback, fakeURL: server.URL}
 		}
 		return ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(cb))
 	}
@@ -327,7 +328,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		t.Fatal(err)
 	}
 	await("terraform destroy ", mode == "delete_unknown" || mode == fixtureDeleteDelayed)
-	if os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled && mode == "success" {
+	if os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled && mode == fixtureProSuccess {
 		mu.Lock()
 		beforeDeleteReconcileReads = childAbsentReads
 		mu.Unlock()
@@ -506,7 +507,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || ((mode == "delete_unknown" || mode == fixtureDeleteDelayed || (os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled && mode == "success")) && childAbsentReads <= beforeDeleteReconcileReads) {
+	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || ((mode == "delete_unknown" || mode == fixtureDeleteDelayed || (os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled && mode == fixtureProSuccess)) && childAbsentReads <= beforeDeleteReconcileReads) {
 		mu.Unlock()
 		t.Fatal("fake Pro database residue or unexpected request")
 	}

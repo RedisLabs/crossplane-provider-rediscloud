@@ -10,9 +10,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 
 	pro "github.com/RedisLabs/provider-rediscloud/apis/subscription/v1beta1"
 	"github.com/RedisLabs/provider-rediscloud/internal/experimental/deletefence"
@@ -40,7 +44,7 @@ type experimentalBinding struct {
 
 // This is deliberately constrained to the single fake fixture identity, not a
 // production identity validator. API writers can still alter annotations.
-func fixtureSameIdentity(current, snapshot *pro.Database) bool {
+func fixtureSameIdentity(current, snapshot *pro.Database) bool { //nolint:gocyclo // Fail closed on each identity boundary.
 	return current != nil && snapshot != nil && current.UID == snapshot.UID && current.UID != "" && !current.GetDeletionTimestamp().IsZero() && slices.Contains(current.Finalizers, managed.FinalizerName) && meta.GetExternalName(current) == fixtureProDBID && meta.GetExternalName(snapshot) == fixtureProDBID && current.Spec.ForProvider.SubscriptionID != nil && *current.Spec.ForProvider.SubscriptionID == 1 && reflect.DeepEqual(current.Spec, snapshot.Spec)
 }
 func matchingIntent(current *pro.Database, b experimentalBinding, completed bool) bool {
@@ -109,6 +113,7 @@ type experimentalConnector struct {
 	inner    managed.ExternalConnector
 	kube     client.Client
 	callback *experimentalCallback
+	fakeURL  string
 }
 
 func (c *experimentalConnector) Connect(ctx context.Context, mg xpresource.Managed) (managed.ExternalClient, error) {
@@ -116,16 +121,17 @@ func (c *experimentalConnector) Connect(ctx context.Context, mg xpresource.Manag
 	if err != nil {
 		return nil, err
 	}
-	return &experimentalExternal{ExternalClient: inner, kube: c.kube, callback: c.callback}, nil
+	return &experimentalExternal{ExternalClient: inner, kube: c.kube, callback: c.callback, fakeURL: c.fakeURL}, nil
 }
 
 type experimentalExternal struct {
 	managed.ExternalClient
 	kube     client.Client
 	callback *experimentalCallback
+	fakeURL  string
 }
 
-func (e *experimentalExternal) Observe(ctx context.Context, mg xpresource.Managed) (managed.ExternalObservation, error) {
+func (e *experimentalExternal) Observe(ctx context.Context, mg xpresource.Managed) (managed.ExternalObservation, error) { //nolint:gocyclo // Validate every experimental marker field.
 	snapshot, ok := mg.(*pro.Database)
 	if !ok {
 		return managed.ExternalObservation{}, errExperimentalHold
@@ -140,8 +146,37 @@ func (e *experimentalExternal) Observe(ctx context.Context, mg xpresource.Manage
 		if json.Unmarshal([]byte(raw), &data) != nil || data.Version != 1 || data.UID != string(current.UID) || data.ExternalName != meta.GetExternalName(current) || data.Token == "" || !data.TestCompleted || !fixtureSameIdentity(current, snapshot) {
 			return managed.ExternalObservation{}, errExperimentalHold
 		}
+		if err := verifyExperimentalFakeAbsence(ctx, e.fakeURL); err != nil {
+			return managed.ExternalObservation{}, errExperimentalHold
+		}
 	}
 	return e.ExternalClient.Observe(ctx, mg)
+}
+
+// This performs a fixture-only authenticated read itself before allowing
+// observation. It is deliberately incapable of addressing Redis Cloud.
+func verifyExperimentalFakeAbsence(ctx context.Context, rawURL string) error { //nolint:gocyclo // Reject every non-fixture origin and response.
+	base, err := url.Parse(rawURL)
+	if err != nil || strings.ContainsAny(rawURL, "?#") || base.Scheme != "http" || base.Hostname() != "127.0.0.1" || base.Port() == "" || base.User != nil || base.Path != "" || base.RawQuery != "" || base.Fragment != "" {
+		return errExperimentalHold
+	}
+	base.Path = fixtureProDatabasePath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	if err != nil {
+		return errExperimentalHold
+	}
+	req.Header.Set("X-Api-Key", dummyCredential)
+	req.Header.Set("X-Api-Secret-Key", dummyCredential)
+	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(req)
+	if err != nil {
+		return errExperimentalHold
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		return errExperimentalHold
+	}
+	return nil
 }
 func (e *experimentalExternal) Delete(ctx context.Context, mg xpresource.Managed) (managed.ExternalDelete, error) {
 	snapshot, ok := mg.(*pro.Database)

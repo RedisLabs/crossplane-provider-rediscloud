@@ -7,7 +7,10 @@ package qatfplan
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -202,7 +205,7 @@ func (c *afterReservation) Get(ctx context.Context, key client.ObjectKey, obj cl
 	case "finalizer":
 		current.Finalizers = nil
 	}
-	if err := c.Client.Update(ctx, current); err != nil {
+	if err := c.Update(ctx, current); err != nil {
 		return err
 	}
 	c.mutated = true
@@ -257,5 +260,70 @@ func TestExperimentalFencePostReservationMutation(t *testing.T) { //nolint:gocyc
 				t.Fatal("post-reservation mutation allowed underlying delete")
 			}
 		})
+	}
+}
+
+func TestExperimentalFakeAbsenceGuard(t *testing.T) {
+	requireHostedFixture(t)
+	var mu sync.Mutex
+	status := http.StatusNotFound
+	calls := 0
+	targetCalls := 0
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		targetCalls++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer target.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if r.Method != http.MethodGet || r.URL.Path != fixtureProDatabasePath || r.Header.Get("X-Api-Key") != dummyCredential || r.Header.Get("X-Api-Secret-Key") != dummyCredential {
+			t.Error("incorrect fake absence request")
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if status == http.StatusFound {
+			w.Header().Set("Location", target.URL)
+		}
+		w.WriteHeader(status)
+	}))
+	defer server.Close()
+	for _, tc := range []struct {
+		name   string
+		status int
+		ok     bool
+	}{
+		{"absent", http.StatusNotFound, true}, {"present", http.StatusOK, false}, {"forbidden", http.StatusForbidden, false}, {"unavailable", http.StatusServiceUnavailable, false}, {"redirect", http.StatusFound, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mu.Lock()
+			status = tc.status
+			before := calls
+			mu.Unlock()
+			err := verifyExperimentalFakeAbsence(context.Background(), server.URL)
+			mu.Lock()
+			defer mu.Unlock()
+			if (err == nil) != tc.ok || calls != before+1 {
+				t.Fatalf("unexpected fake absence result: err=%v calls=%d", err, calls-before)
+			}
+			if targetCalls != 0 {
+				t.Fatal("redirect target was contacted")
+			}
+		})
+	}
+	for _, raw := range []string{"https://127.0.0.1:1", "http://localhost:1", "http://127.0.0.1:1/path", "http://127.0.0.1:1/?a=b", server.URL + "?", server.URL + "#"} {
+		mu.Lock()
+		before := calls
+		mu.Unlock()
+		err := verifyExperimentalFakeAbsence(context.Background(), raw)
+		mu.Lock()
+		after := calls
+		mu.Unlock()
+		if err == nil || after != before {
+			t.Fatal("unsafe fixture origin accepted")
+		}
 	}
 }
