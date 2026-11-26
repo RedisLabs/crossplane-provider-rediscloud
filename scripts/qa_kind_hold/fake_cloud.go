@@ -9,6 +9,8 @@ import (
 	"sync"
 )
 
+const statusKey = "status"
+
 type state struct {
 	mu                                    sync.Mutex
 	exists                                bool
@@ -18,7 +20,7 @@ type state struct {
 	once                                  sync.Once
 }
 
-func (s *state) serve(w http.ResponseWriter, r *http.Request) {
+func (s *state) serve(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // The fixture rejects every unexpected route explicitly.
 	if r.URL.Path == "/fixture/state" && r.Method == http.MethodGet && r.Header.Get("X-Fixture-Control") == "fixture-control" {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -42,7 +44,7 @@ func (s *state) serve(w http.ResponseWriter, r *http.Request) {
 	var result any
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1":
-		result = map[string]any{"id": 1, "name": "fake-parent", "status": "active"}
+		result = map[string]any{"id": 1, "name": "fake-parent", statusKey: "active"}
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/subscriptions/1/databases":
 		s.creates++
 		var body map[string]any
@@ -55,22 +57,22 @@ func (s *state) serve(w http.ResponseWriter, r *http.Request) {
 		s.exists = true
 		result = map[string]any{"taskId": "create"}
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create":
-		result = map[string]any{"status": "processing-completed", "response": map[string]any{"resourceId": 42}}
+		result = map[string]any{statusKey: "processing-completed", "response": map[string]any{"resourceId": 42}}
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42" && s.exists:
 		s.childReads++
-		result = map[string]any{"databaseId": 42, "name": "fake-database", "dataEvictionPolicy": "allkeys-lru", "status": "active", "protocol": "redis", "dataPersistence": "none", "replication": false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}, "clustering": map[string]any{"regexRules": []any{}}}
+		result = map[string]any{"databaseId": 42, "name": "fake-database", "dataEvictionPolicy": "allkeys-lru", statusKey: "active", "protocol": "redis", "dataPersistence": "none", "replication": false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": "operations-per-second", "value": 1000}, "security": map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, "sourceIps": []any{}}, "modules": []any{}, "alerts": []any{}, "clustering": map[string]any{"regexRules": []any{}}}
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 		result = map[string]any{"tags": []any{}}
 	case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42" && s.exists:
 		result = map[string]any{"taskId": "update"}
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/update":
-		result = map[string]any{"status": "processing-completed"}
+		result = map[string]any{statusKey: "processing-completed"}
 	case r.Method == http.MethodPut && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 		result = map[string]any{"tags": []any{}}
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases":
 		rows := []any{}
 		if s.exists {
-			rows = append(rows, map[string]any{"databaseId": 42, "name": "fake-database", "status": "active"})
+			rows = append(rows, map[string]any{"databaseId": 42, "name": "fake-database", statusKey: "active"})
 		}
 		result = map[string]any{"databases": rows}
 	case r.Method == http.MethodDelete && r.URL.Path == "/v1/subscriptions/1/databases/42":

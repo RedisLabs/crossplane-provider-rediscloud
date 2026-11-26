@@ -30,7 +30,7 @@ cleanup(){
  for chain in INPUT FORWARD; do docker exec "$node" iptables -D "$chain" -j CODEX-HOLD 2>/dev/null || true; done
  docker exec "$node" iptables -F CODEX-HOLD 2>/dev/null || true
  docker exec "$node" iptables -X CODEX-HOLD 2>/dev/null || true
- docker rm -f hold-fake hold-denied hold-external >/dev/null 2>&1 || true
+ docker rm -f hold-fake hold-denied hold-external hold-registry >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 CGO_ENABLED=0 go build -o "$RUNNER_TEMP/hold-fake" ./fixture-src/scripts/qa_kind_hold/fake_cloud.go
@@ -50,6 +50,28 @@ done
 node_wget -q -T 2 -O /dev/null --header='X-Fixture-Control: fixture-control' http://127.0.0.1:5556/fixture/state
 node_wget -q -T 2 -O /dev/null http://127.0.0.1:5555/v2/
 node_wget -q -T 2 -O /dev/null "http://$external_ip:5555/v2/"
+# Kubelet pulls the replacement from a node-local copy of the same ephemeral
+# registry; pod-CIDR deny otherwise blocks the registry Pod's return traffic.
+"$kubectl" -n upbound-system get pods -l app=crossplane -o json > "$RUNNER_TEMP/hold-crossplane-pods.json"
+registry_pod=$(python3 - "$RUNNER_TEMP/hold-crossplane-pods.json" <<'PYREG'
+import json,sys
+pods=json.load(open(sys.argv[1]))['items']
+ready=[p['metadata']['name'] for p in pods if not p['metadata'].get('deletionTimestamp') and any(c['name']=='ephemeral-registry' and c.get('ready') for c in p.get('status',{}).get('containerStatuses',[]))]
+assert len(ready)==1
+print(ready[0])
+PYREG
+)
+mkdir -p "$RUNNER_TEMP/hold-registry-data"
+"$kubectl" -n upbound-system cp -c ephemeral-registry "$registry_pod:/tmp/registry/." "$RUNNER_TEMP/hold-registry-data"
+docker run -d --name hold-registry --network "container:$node" -v "$RUNNER_TEMP/hold-registry-data:/var/lib/registry" -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 "$image" >/dev/null
+for attempt in $(seq 1 60); do
+ if node_wget -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/; then break; fi
+ sleep 1
+done
+node_wget -q -T 2 -O /dev/null http://127.0.0.1:5000/v2/
+curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' "http://$node_ip:5000/v2/provider-rediscloud/manifests/$digest" -o "$RUNNER_TEMP/hold-registry-manifest.json"
+echo "${digest#sha256:}  $RUNNER_TEMP/hold-registry-manifest.json" | sha256sum -c -
+docker exec "$node" sh -c 'printf "[host.\"http://127.0.0.1:5000\"]\n" > /etc/containerd/certs.d/registry.localhost:5000/hosts.toml'
 # Source-wide default deny, two explicit node destinations. Applies to original
 # and replacement pod IPs; disposable single-stack Kind node only.
 docker exec "$node" iptables -N CODEX-HOLD
@@ -176,7 +198,16 @@ PY
  [[ -n "$replacement" ]] && break
  sleep 2
 done
-[[ -n "$replacement" ]]
+if [[ -z "$replacement" ]]; then
+ python3 - "$RUNNER_TEMP/hold-pods.json" <<'PYDIAG'
+import json,sys
+for p in json.load(open(sys.argv[1]))['items']:
+ if p['metadata']['name'].startswith('provider-rediscloud-'):
+  states=[{'name':c['name'],'ready':c.get('ready',False),'reason':c.get('state',{}).get('waiting',{}).get('reason','')} for c in p.get('status',{}).get('containerStatuses',[])]
+  print({'phase':p.get('status',{}).get('phase'),'containers':states})
+PYDIAG
+ echo 'replacement provider did not become ready' >&2; exit 1
+fi
 probe "$replacement"
 # Require the replacement controller to observe a fresh explicit reconcile token
 # and report the hold; a merely ready but idle replacement is not sufficient.
