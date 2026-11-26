@@ -44,7 +44,7 @@ func TestProductProHeldPolicyTransition(t *testing.T) { //nolint:gocyclo // Each
 			item.Spec.ForProvider.ThroughputMeasurementValue = &throughput
 			item.Spec.ForProvider.DataPersistence = &persistence
 			item.Spec.ForProvider.Replication = &replication
-			item.Spec.ProviderConfigReference = &xpv2.Reference{Name: "fixture-config"}
+			item.Spec.ProviderConfigReference = &xpv2.Reference{Name: fixtureName + "-config"}
 			item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
 			meta.SetExternalName(item, fixtureProDBID)
 			item.Annotations["rediscloud.crossplane.io/pro-database-delete-intent"] = "held"
