@@ -56,9 +56,10 @@ jobs:
           python3 scripts/qa_raw_config/run_case.py "$FIXTURE_CASE"
           sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
           python3 scripts/qa_raw_config/report.py "$FIXTURE_CASE" "$QA_RAW_CONFIG_TRACE"
-      - name: Compare omitted-spec late-initialization behavior and fake update payloads
-        if: matrix.case == 'lifecycle'
+      - name: Compare late-initialization behavior and fake update payloads
         shell: bash
+        env:
+          FIXTURE_CASE: ${{ matrix.case }}
         run: |
           set -euo pipefail
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/cidr/bin/terraform"
@@ -67,7 +68,7 @@ jobs:
           export QA_SOURCE_PAYLOAD_TRACE="$RUNNER_TEMP/cidr/ignored-payloads"
           python3 scripts/qa_raw_config/compare_late_init.py prepare
           sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
-          python3 scripts/qa_raw_config/run_case.py lifecycle
+          python3 scripts/qa_raw_config/run_case.py "$FIXTURE_CASE"
           sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
-          python3 scripts/qa_raw_config/report.py lifecycle "$QA_RAW_CONFIG_TRACE"
-          python3 scripts/qa_raw_config/compare_late_init.py verify "$RUNNER_TEMP/cidr/raw-config-trace" "$QA_RAW_CONFIG_TRACE" "$RUNNER_TEMP/cidr/baseline-payloads" "$QA_SOURCE_PAYLOAD_TRACE"
+          python3 scripts/qa_raw_config/report.py "$FIXTURE_CASE" "$QA_RAW_CONFIG_TRACE"
+          python3 scripts/qa_raw_config/compare_late_init.py verify "$FIXTURE_CASE" "$RUNNER_TEMP/cidr/raw-config-trace" "$QA_RAW_CONFIG_TRACE" "$RUNNER_TEMP/cidr/baseline-payloads" "$QA_SOURCE_PAYLOAD_TRACE"
