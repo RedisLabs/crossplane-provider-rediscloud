@@ -1,0 +1,44 @@
+name: Credential-free Pro source CIDR candidate
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          repository: RedisLabs/terraform-provider-rediscloud
+          ref: 29d573bb5287383835fc4a0513e5f3d8459d4b92
+          path: candidate-provider
+          persist-credentials: false
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5
+        with:
+          go-version: '1.26.11'
+      - name: Build exact candidate and bind binary digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate-provider rev-parse HEAD)" = '29d573bb5287383835fc4a0513e5f3d8459d4b92'
+          mkdir -p "$RUNNER_TEMP/cidr/bin" "$RUNNER_TEMP/cidr/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64"
+          curl -fsSL https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip -o "$RUNNER_TEMP/cidr/terraform.zip"
+          echo 'c0ed7bc32ee52ae255af9982c8c88a7a4c610485cf1d55feeb037eab75fa082c  '"$RUNNER_TEMP/cidr/terraform.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/cidr/terraform.zip" -d "$RUNNER_TEMP/cidr/bin"
+          cd candidate-provider
+          go build -o "$RUNNER_TEMP/cidr/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64/terraform-provider-rediscloud_v2.20.0" .
+          sha256sum "$RUNNER_TEMP/cidr/plugins/registry.terraform.io/redislabs/rediscloud/2.20.0/linux_amd64/terraform-provider-rediscloud_v2.20.0" | tee "$RUNNER_TEMP/cidr/provider.sha256"
+      - name: Exercise candidate with actual managed reconciler and fake Cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
+          export QA_TEST_TERRAFORM="$RUNNER_TEMP/cidr/bin/terraform"
+          export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/cidr/plugins"
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProDatabaseManagedLifecycleLoopback TestProDatabaseManagedLifecycleLoopback/source_cidrs
+          sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
