@@ -34,12 +34,13 @@ import (
 // TestProDatabaseManagedLifecycleLoopback uses actual reconciliation and Terraform
 // against loopback fake Cloud, with a pre-existing fake parent; it never contacts Cloud.
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
+const fixtureDeleteDelayed = "delete_delayed"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
-	t.Run("delete_delayed_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_delayed") })
+	t.Run("delete_delayed_then_503", func(t *testing.T) { runProDatabaseFixture(t, fixtureDeleteDelayed) })
 }
 
 func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
@@ -114,11 +115,11 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath:
 			deleteRequests++
-			if mode == "delete_delayed" && deleteRequests == 1 {
+			if mode == fixtureDeleteDelayed && deleteRequests == 1 {
 				http.Error(w, "injected accepted pending delete with unavailable response", http.StatusServiceUnavailable)
 				return
 			}
-			if mode == "delete_delayed" {
+			if mode == fixtureDeleteDelayed {
 				unexpected = true
 				http.Error(w, "duplicate pending delete", http.StatusConflict)
 				return
@@ -295,13 +296,13 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
 	}
-	await("terraform destroy ", mode == "delete_unknown" || mode == "delete_delayed")
-	if mode == "delete_unknown" || mode == "delete_delayed" {
+	await("terraform destroy ", mode == "delete_unknown" || mode == fixtureDeleteDelayed)
+	if mode == "delete_unknown" || mode == fixtureDeleteDelayed {
 		retained := &pro.Database{}
 		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
 			t.Fatal("failed delete lost the managed CR or finalizer before observation")
 		}
-		if mode == "delete_delayed" {
+		if mode == fixtureDeleteDelayed {
 			for _, path := range []string{fixtureProDatabasePath, fixtureProParentPath} {
 				req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
 				if err != nil {
@@ -321,10 +322,35 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			mu.Lock()
 			beforePendingReconcileReads := childPresentReads
 			mu.Unlock()
-			verifyNoACLCreateReplay(t, rec, store, callback, name)
-			retained = &pro.Database{}
-			if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
-				t.Fatal("pending delete lost the managed CR or finalizer")
+			if store.current == nil {
+				t.Fatal("failed delete operation was not tracked")
+			}
+			originalStart := store.current.LastOperation.StartTime()
+			for i := 0; i < 3; i++ {
+				if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+					t.Fatal(err)
+				}
+				op := store.current.LastOperation
+				if op.IsRunning() || (op.IsEnded() && !op.StartTime().Equal(originalStart)) {
+					select {
+					case operationErr := <-callback.done:
+						t.Logf("pending async operation completed; failed=%v", operationErr != nil)
+					case <-time.After(90 * time.Second):
+						t.Fatal("pending async operation did not finish")
+					}
+					originalStart = op.StartTime()
+				}
+				retained = &pro.Database{}
+				if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
+					t.Fatal("pending delete lost the managed CR or finalizer")
+				}
+				mu.Lock()
+				if !exists || unexpected || deleteRequests != 1 {
+					gotDeletes := deleteRequests
+					mu.Unlock()
+					t.Fatalf("pending fake delete was replayed or completed prematurely: deletes=%d", gotDeletes)
+				}
+				mu.Unlock()
 			}
 			mu.Lock()
 			if !exists || unexpected || deleteRequests != 1 || childPresentReads <= beforePendingReconcileReads {
@@ -373,7 +399,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || ((mode == "delete_unknown" || mode == "delete_delayed") && childAbsentReads <= beforeDeleteReconcileReads) {
+	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || ((mode == "delete_unknown" || mode == fixtureDeleteDelayed) && childAbsentReads <= beforeDeleteReconcileReads) {
 		mu.Unlock()
 		t.Fatal("fake Pro database residue or unexpected request")
 	}
