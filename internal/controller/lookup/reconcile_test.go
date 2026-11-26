@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -28,13 +29,22 @@ import (
 )
 
 const exampleProviderConfig = "default"
+const exampleAPIKey = "key"
+const exampleAPISecret = "secret"
 
-func TestPaymentMethodReconcileWritesID(t *testing.T) {
+func TestPaymentMethodReconcileWritesID(t *testing.T) { //nolint:gocyclo // Keep the request and reconciler assertions together.
+	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected Cloud method %s", r.Method)
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
 		if r.URL.Path != "/payment-methods" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		if r.Header.Get("X-Api-Key") != "key" || r.Header.Get("X-Api-Secret-Key") != "secret" {
+		if r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
 			t.Error("credentials were not sent")
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -57,6 +67,9 @@ func TestPaymentMethodReconcileWritesID(t *testing.T) {
 	}
 	if result.RequeueAfter == 0 {
 		t.Fatal("successful lookup did not requeue")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected exactly one GET, got %d requests", got)
 	}
 	got := &lookupv1alpha1.PaymentMethod{}
 	if err := kube.Get(context.Background(), types.NamespacedName{Name: "example-payment-method"}, got); err != nil {

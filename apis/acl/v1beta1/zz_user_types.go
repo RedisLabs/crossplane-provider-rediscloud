@@ -23,7 +23,7 @@ type UserInitParameters struct {
 	// upper-case letter, a
 	// number and a special character.
 	// The user's password
-	PasswordSecretRef v2.SecretKeySelector `json:"passwordSecretRef" tf:"-"`
+	PasswordSecretRef *v2.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
 
 	// The name of the Role held by the User.
 	// The role which the user has
@@ -56,7 +56,7 @@ type UserParameters struct {
 	// number and a special character.
 	// The user's password
 	// +kubebuilder:validation:Optional
-	PasswordSecretRef v2.SecretKeySelector `json:"passwordSecretRef" tf:"-"`
+	PasswordSecretRef *v2.SecretKeySelector `json:"passwordSecretRef,omitempty" tf:"-"`
 
 	// The name of the Role held by the User.
 	// The role which the user has

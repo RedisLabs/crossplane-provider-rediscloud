@@ -58,6 +58,9 @@ func readPrivateLink(ctx context.Context, api *rediscloud.Client, obj *lookupv1a
 	if item == nil {
 		return lookupv1alpha1.PrivateLinkObservation{}, fmt.Errorf("private link was not found")
 	}
+	if identityErr := validatePrivateLinkIdentity(item, id, nil); identityErr != nil {
+		return lookupv1alpha1.PrivateLinkObservation{}, identityErr
+	}
 	return lookup.ObservePrivateLink(item), nil
 }
 
@@ -95,6 +98,9 @@ func readActiveActivePrivateLink(ctx context.Context, api *rediscloud.Client, ob
 	}
 	if item == nil {
 		return lookupv1alpha1.PrivateLinkObservation{}, fmt.Errorf("private link was not found")
+	}
+	if identityErr := validatePrivateLinkIdentity(item, subID, &regionID); identityErr != nil {
+		return lookupv1alpha1.PrivateLinkObservation{}, identityErr
 	}
 	return lookup.ObservePrivateLink(item), nil
 }
@@ -134,12 +140,18 @@ func readPrivateLinkEndpointScript(ctx context.Context, api *rediscloud.Client, 
 	if subscription == nil {
 		return lookupv1alpha1.PrivateLinkEndpointScriptObservation{}, fmt.Errorf("subscription was not found")
 	}
+	if subscription.ID != nil && *subscription.ID != id {
+		return lookupv1alpha1.PrivateLinkEndpointScriptObservation{}, fmt.Errorf("subscription response identity does not match request")
+	}
 	link, err := api.PrivateLink.GetPrivateLink(ctx, id)
 	if err != nil {
 		return lookupv1alpha1.PrivateLinkEndpointScriptObservation{}, errors.Wrap(err, "cannot get private link")
 	}
 	if link == nil {
 		return lookupv1alpha1.PrivateLinkEndpointScriptObservation{}, fmt.Errorf("private link was not found")
+	}
+	if identityErr := validatePrivateLinkIdentity(link, id, nil); identityErr != nil {
+		return lookupv1alpha1.PrivateLinkEndpointScriptObservation{}, identityErr
 	}
 	script, err := api.PrivateLink.GetPrivateLinkEndpointScript(ctx, id)
 	if err != nil {
@@ -149,6 +161,16 @@ func readPrivateLinkEndpointScript(ctx context.Context, api *rediscloud.Client, 
 		ID:             strconv.Itoa(id),
 		EndpointScript: scriptText(script),
 	}, nil
+}
+
+func validatePrivateLinkIdentity(link *privatelink.PrivateLink, subID int, regionID *int) error {
+	if link.SubscriptionId != nil && *link.SubscriptionId != subID {
+		return fmt.Errorf("private link response subscription does not match request")
+	}
+	if regionID != nil && link.RegionId != nil && *link.RegionId != *regionID {
+		return fmt.Errorf("private link response region does not match request")
+	}
+	return nil
 }
 
 // ActiveActivePrivateLinkEndpointScriptReconciler looks up one Active-Active script.
@@ -302,6 +324,9 @@ func readPrivateServiceConnectEndpoints(ctx context.Context, api *rediscloud.Cli
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get private service connect endpoints")
 	}
+	if identityErr := validatePSCServiceIdentity(got, serviceID); identityErr != nil {
+		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
+	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
 		return api.PrivateServiceConnect.GetEndpointCreationScripts(ctx, subID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
 	})
@@ -354,6 +379,9 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get active-active private service connect endpoints")
 	}
+	if identityErr := validatePSCServiceIdentity(got, serviceID); identityErr != nil {
+		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
+	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
 		return api.PrivateServiceConnect.GetActiveActiveEndpointCreationScripts(ctx, subID, regionID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
 	})
@@ -364,6 +392,13 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 		ID:        fmt.Sprintf("%d/%d", subID, serviceID),
 		Endpoints: endpoints,
 	}, nil
+}
+
+func validatePSCServiceIdentity(got *psc.PrivateServiceConnectEndpoints, requested int) error {
+	if got != nil && got.PSCServiceID != nil && *got.PSCServiceID != requested {
+		return fmt.Errorf("private service connect response identity does not match request")
+	}
+	return nil
 }
 
 func observeEndpoints(got *psc.PrivateServiceConnectEndpoints, script func(int) (*psc.CreationScript, error)) ([]lookupv1alpha1.PrivateServiceConnectEndpointObservation, error) {

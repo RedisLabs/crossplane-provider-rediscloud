@@ -148,8 +148,6 @@ spec:
                       The name of the Role held by the User.
                       The role which the user has
                     type: string
-                required:
-                - passwordSecretRef
                 type: object
               managementPolicies:
                 default:
@@ -466,8 +464,6 @@ spec:
                       The name of the Role held by the User.
                       The role which the user has
                     type: string
-                required:
-                - passwordSecretRef
                 type: object
               managementPolicies:
                 default:
