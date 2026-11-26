@@ -49,7 +49,8 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
-	createRequests, deleteRequests := 0, 0
+	createRequests, deleteRequests, childAbsentReads := 0, 0, 0
+	beforeDeleteReconcileReads := 0
 	rule := desiredEviction
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -125,6 +126,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && !exists:
+			childAbsentReads++
 			http.NotFound(w, r)
 			return
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
@@ -304,6 +306,9 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				t.Fatalf("fake delete read %s: %d", path, res.StatusCode)
 			}
 		}
+		mu.Lock()
+		beforeDeleteReconcileReads = childAbsentReads
+		mu.Unlock()
 		verifyNoACLCreateReplay(t, rec, store, callback, name)
 	}
 	for i := 0; i < 30; i++ {
@@ -324,7 +329,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	if exists || unexpected || createRequests != 1 || deleteRequests != 1 {
+	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || (mode == "delete_unknown" && childAbsentReads <= beforeDeleteReconcileReads) {
 		mu.Unlock()
 		t.Fatal("fake Pro database residue or unexpected request")
 	}
