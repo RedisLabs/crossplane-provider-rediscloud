@@ -39,7 +39,12 @@ const (
 	fixtureSubscriptionsPath = "/v1/subscriptions"
 )
 
-func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
+func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) {
+	t.Run("gcp", func(t *testing.T) { runProSubscriptionCloudFixture(t, fixtureGCP, fixtureRegion) })
+	t.Run("aws", func(t *testing.T) { runProSubscriptionCloudFixture(t, "AWS", "us-east-1") })
+}
+
+func runProSubscriptionCloudFixture(t *testing.T, cloud, region string) { //nolint:gocyclo // Ordered fake lifecycle is deliberately kept together.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
@@ -67,8 +72,16 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 			}
 			response = map[string]any{"subscriptions": rows}
 		case r.Method == http.MethodPost && r.URL.Path == fixtureSubscriptionsPath && !parent:
-			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureProParentName {
+			var body struct {
+				Name           string `json:"name"`
+				CloudProviders []struct {
+					Provider string `json:"provider"`
+					Regions  []struct {
+						Region string `json:"region"`
+					} `json:"regions"`
+				} `json:"cloudProviders"`
+			}
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body.Name != fixtureProParentName || len(body.CloudProviders) != 1 || body.CloudProviders[0].Provider != cloud || len(body.CloudProviders[0].Regions) != 1 || body.CloudProviders[0].Regions[0].Region != region {
 				unexpected = true
 				http.Error(w, "bad parent create", http.StatusBadRequest)
 				return
@@ -78,7 +91,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/parent-create":
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 1}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath && parent:
-			response = map[string]any{"id": 1, fixtureNameKey: fixtureProParentName, fixtureStatusKey: fixtureActive, "paymentMethodType": fixturePaymentType, "paymentMethodId": 3, "memoryStorage": "ram", "publicEndpointAccess": true, "cloudDetails": []any{map[string]any{"provider": fixtureGCP, "cloudAccountId": 1, "regions": []any{map[string]any{"region": fixtureRegion, "multipleAvailabilityZones": false, "networking": []any{map[string]any{"deploymentCIDR": "10.0.0.0/24"}}}}}}}
+			response = map[string]any{"id": 1, fixtureNameKey: fixtureProParentName, fixtureStatusKey: fixtureActive, "paymentMethodType": fixturePaymentType, "paymentMethodId": 3, "memoryStorage": "ram", "publicEndpointAccess": true, "cloudDetails": []any{map[string]any{"provider": cloud, "cloudAccountId": 1, "regions": []any{map[string]any{"region": region, "multipleAvailabilityZones": false, "networking": []any{map[string]any{"deploymentCIDR": "10.0.0.0/24"}}}}}}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureProParentPath && parent:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || (body[fixtureNameKey] != nil && body[fixtureNameKey] != fixtureProParentName) {
@@ -149,7 +162,7 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	if err := pro.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	name, parentName, region, cidr, provider, payment, paymentID, storage, by := fixtureName, fixtureProParentName, fixtureRegion, "10.0.0.0/24", fixtureGCP, fixturePaymentType, "3", "ram", fixtureThroughputBy
+	name, parentName, cidr, provider, payment, paymentID, storage, by := fixtureName, fixtureProParentName, "10.0.0.0/24", cloud, fixturePaymentType, "3", "ram", fixtureThroughputBy
 	count, memory, throughput := float64(1), float64(1), float64(1000)
 	replication := false
 	item := &pro.Subscription{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-pro-parent-uid")}}
@@ -228,6 +241,10 @@ func TestProSubscriptionManagedLifecycleLoopback(t *testing.T) { //nolint:gocycl
 	mu.Unlock()
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != "1" {
 		t.Fatal("fake parent ID missing")
+	}
+	observed := item.Status.AtProvider.CloudProvider
+	if len(observed) != 1 || observed[0].Provider == nil || *observed[0].Provider != cloud || len(observed[0].Region) != 1 || observed[0].Region[0].Region == nil || *observed[0].Region[0].Region != region {
+		t.Fatal("managed subscription observation did not retain selected cloud and region")
 	}
 	for path, status := range map[string]int{fixtureBootstrapPath: http.StatusNotFound, fixtureProParentPath: http.StatusOK} {
 		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
