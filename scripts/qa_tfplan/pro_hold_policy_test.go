@@ -23,7 +23,7 @@ import (
 // connector. In particular, nil from Delete models scheduling before dispatch;
 // it is not a claim about an actual Terraform command or Cloud task.
 func TestProductProHoldPolicyBoundaries(t *testing.T) { //nolint:gocyclo // Each policy boundary is checked independently.
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue {
 		t.Skip("hosted Actions only")
 	}
 	for _, mode := range []string{"orphan", "no_delete", "nil_before_dispatch"} {
