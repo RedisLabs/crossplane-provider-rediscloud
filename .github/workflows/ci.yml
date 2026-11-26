@@ -239,6 +239,14 @@ jobs:
           run_selected("./internal/controller/lookup", (root,) + tuple(f"{root}/{case}" for case in cases))
           PYCODE
 
+      - name: Verify Pro subscription selector recovery
+        run: |
+          python3 - <<'PYCODE'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestProSubscriptionSelectorChangeRecovery"
+          run_selected("./internal/controller/lookup", (root, root + "/initial", root + "/wrong_identity_clears", root + "/recovery"))
+          PYCODE
+
       - name: Test durable QA ownership recovery without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_recovery.py'
 
