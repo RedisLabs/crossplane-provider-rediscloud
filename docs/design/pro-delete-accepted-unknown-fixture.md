@@ -13,3 +13,8 @@ This bounds only the injected outcome in one process with an immediately
 absent fake child. It does not establish safety for delayed Cloud deletion,
 lost transport, uncertain task state, controller restart, durable fencing,
 real Cloud cleanup or live qualification.
+
+The distinct delayed-absence case exposed a duplicate fake DELETE; see the
+[alpha integration release gap](alpha-delivery-integration.md#known-release-gap)
+and [#108](https://github.com/RedisLabs/crossplane-provider-rediscloud/pull/108).
+A pass here does not close that issue.
