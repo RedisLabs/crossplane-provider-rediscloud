@@ -32,6 +32,7 @@ import (
 )
 
 const (
+	pscOperationDestroy    = "destroy"
 	pscServiceTask         = "get-service"
 	pscEndpointsTask       = "get-endpoints"
 	pscServiceTaskPath     = "/v1/tasks/get-service"
@@ -227,7 +228,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			select {
 			case err := <-callback.done:
 				kind := <-tagged.kinds
-				if (label == "create" && kind != "create") || (label == "delete" && kind != "destroy") {
+				if (label == "create" && kind != "create") || (label == "delete" && kind != pscOperationDestroy) {
 					t.Fatalf("%s callback kind=%s", label, kind)
 				}
 				if (err != nil) != wantError {
@@ -240,7 +241,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 				select {
 				case err := <-callback.done:
 					kind := <-tagged.kinds
-					if (label == "create" && kind != "create") || (label == "delete" && kind != "destroy") {
+					if (label == "create" && kind != "create") || (label == "delete" && kind != pscOperationDestroy) {
 						t.Fatalf("%s callback kind=%s", label, kind)
 					}
 					if (err != nil) != wantError {
@@ -329,7 +330,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			}
 			if !started && store.current != nil && store.current.LastOperation != nil && store.current.LastOperation.IsRunning() {
 				op := store.current.LastOperation
-				if op.Type != "destroy" {
+				if op.Type != pscOperationDestroy {
 					t.Fatal("unexpected in-flight operation")
 				}
 				startedAt = op.StartTime()
@@ -348,7 +349,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			}
 			if started {
 				op := store.current.LastOperation
-				if !op.IsRunning() || op.Type != "destroy" || !op.StartTime().Equal(startedAt) {
+				if !op.IsRunning() || op.Type != pscOperationDestroy || !op.StartTime().Equal(startedAt) {
 					t.Fatal("destroy changed before fake collection read")
 				}
 			}
@@ -365,7 +366,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 					t.Fatal("hold changed during provider collection read")
 				}
 				op := store.current.LastOperation
-				if !op.IsRunning() || op.Type != "destroy" || !op.StartTime().Equal(startedAt) {
+				if !op.IsRunning() || op.Type != pscOperationDestroy || !op.StartTime().Equal(startedAt) {
 					t.Fatal("destroy changed at fake removal")
 				}
 				mu.Lock()
@@ -546,5 +547,5 @@ func (c *pscHoldCallbacks) Update(types.NamespacedName, bool) terraform.Callback
 	return c.result("update")
 }
 func (c *pscHoldCallbacks) Destroy(types.NamespacedName, bool) terraform.CallbackFn {
-	return c.result("destroy")
+	return c.result(pscOperationDestroy)
 }
