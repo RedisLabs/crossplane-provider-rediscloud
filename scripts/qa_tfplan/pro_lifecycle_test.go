@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -37,6 +38,7 @@ const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
+	t.Run("source_cidrs", func(t *testing.T) { runProDatabaseFixture(t, "source_cidrs") })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
 }
@@ -50,8 +52,13 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	var mu sync.Mutex
 	exists, unexpected := false, false
 	createRequests, deleteRequests, childAbsentReads := 0, 0, 0
+	childPresentReads := 0
 	beforeDeleteReconcileReads := 0
 	rule := desiredEviction
+	sourceIPs := []any{}
+	if mode == "source_cidrs" {
+		sourceIPs = []any{"192.0.2.0/24"}
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -78,6 +85,11 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				http.Error(w, "bad create", http.StatusBadRequest)
 				return
 			}
+			if mode == "source_cidrs" && !reflect.DeepEqual(body["sourceIp"], sourceIPs) {
+				unexpected = true
+				http.Error(w, "incorrect source CIDRs", http.StatusBadRequest)
+				return
+			}
 			exists = true
 			if mode == "create_unknown" {
 				http.Error(w, "injected accepted create with unavailable response", http.StatusServiceUnavailable)
@@ -91,13 +103,23 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		case r.Method == http.MethodGet && r.URL.Path == fixtureCreateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureTaskResourceKey: 42}}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDatabasePath && exists:
-			response = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
+			childPresentReads++
+			response = map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: sourceIPs}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}}
 		case r.Method == http.MethodPut && r.URL.Path == fixtureProDatabasePath && exists:
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil {
 				unexpected = true
 				http.Error(w, "malformed update", http.StatusBadRequest)
 				return
+			}
+			if mode == "source_cidrs" {
+				expected := []any{"198.51.100.0/24"}
+				if !reflect.DeepEqual(body["sourceIp"], expected) {
+					unexpected = true
+					http.Error(w, "incorrect updated source CIDRs", http.StatusBadRequest)
+					return
+				}
+				sourceIPs = expected
 			}
 			if policy, present := body[fixtureEvictionKey]; present {
 				if policy != desiredEviction && policy != fixtureVolatileLRU {
@@ -132,7 +154,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProDBsPath:
 			rows := []any{}
 			if exists {
-				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: []any{}}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}})
+				rows = append(rows, map[string]any{fixtureDatabaseIDKey: 42, fixtureNameKey: fixtureProDBName, fixtureEvictionKey: rule, fixtureStatusKey: fixtureActive, fixtureProtocolKey: fixtureProtocolValue, fixturePersistenceKey: fixtureNoPersistence, fixtureReplicationKey: false, "memoryLimitInGb": 1, "throughputMeasurement": map[string]any{"by": fixtureThroughputBy, "value": 1000}, fixtureSecurityKey: map[string]any{"enableDefaultUser": true, "enableTls": false, "tlsClientAuthentication": false, fixtureSourceIPsKey: sourceIPs}, fixtureModulesKey: []any{}, fixtureAlertsKey: []any{}, "clustering": map[string]any{"regexRules": []any{}}})
 			}
 			response = map[string]any{fixtureDatabasesKey: rows}
 		default:
@@ -171,6 +193,10 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item := &pro.Database{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-pro-db-uid")}}
 	item.Spec.ForProvider.Name = &resourceName
 	item.Spec.ForProvider.DataEviction = &value
+	if mode == "source_cidrs" {
+		cidr := "192.0.2.0/24"
+		item.Spec.ForProvider.SourceIps = []*string{&cidr}
+	}
 	parent, memory, by, throughput, persistence, replication := float64(1), float64(1), fixtureThroughputBy, float64(1000), fixtureNoPersistence, false
 	item.Spec.ForProvider.SubscriptionID = &parent
 	item.Spec.ForProvider.MemoryLimitInGb = &memory
@@ -262,8 +288,18 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	if item.Status.AtProvider.ID == nil || *item.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database identity missing")
 	}
+	if mode == "source_cidrs" {
+		observed := item.Status.AtProvider.SourceIps
+		if len(observed) != 1 || observed[0] == nil || *observed[0] != "192.0.2.0/24" {
+			t.Fatal("initial source CIDR not observed")
+		}
+	}
 	updated := fixtureVolatileLRU
 	item.Spec.ForProvider.DataEviction = &updated
+	if mode == "source_cidrs" {
+		cidr := "198.51.100.0/24"
+		item.Spec.ForProvider.SourceIps = []*string{&cidr}
+	}
 	if err := kube.Update(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
@@ -280,6 +316,29 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	}
 	if current.Status.AtProvider.ID == nil || *current.Status.AtProvider.ID != fixtureProDBID {
 		t.Fatal("Pro database ID changed")
+	}
+	if mode == "source_cidrs" {
+		mu.Lock()
+		readsBeforeObservation := childPresentReads
+		mu.Unlock()
+		for i := 0; i < 5; i++ {
+			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, current); err != nil {
+				t.Fatal(err)
+			}
+			observed := current.Status.AtProvider.SourceIps
+			mu.Lock()
+			freshRead := childPresentReads > readsBeforeObservation
+			mu.Unlock()
+			if freshRead && len(observed) == 1 && observed[0] != nil && *observed[0] == "198.51.100.0/24" {
+				break
+			}
+			if i == 4 {
+				t.Fatal("updated source CIDR not observed")
+			}
+		}
 	}
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
