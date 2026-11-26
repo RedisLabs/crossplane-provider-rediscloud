@@ -32,6 +32,10 @@ import (
 )
 
 const (
+	pscFixtureProject       = "fixture-project"
+	pscFixtureVPC           = "fixture-vpc"
+	pscFixtureSubnet        = "fixture-subnet"
+	pscFixturePrefix        = "fixture-prefix"
 	pscTestEndpointExternal = "1/7/8"
 	pscTestIntentAnnotation = "rediscloud.crossplane.io/psc-endpoint-delete-intent"
 	pscTestProviderConfig   = "fixture-config"
@@ -125,7 +129,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			collectionReads++
 			endpoints := []any{}
 			if exists {
-				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: endpointStatus})
+				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": pscFixtureProject, "gcpVpcName": pscFixtureVPC, "gcpVpcSubnetName": pscFixtureSubnet, "endpointConnectionName": pscFixturePrefix, fixtureStatusKey: endpointStatus})
 			}
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"pscServiceId": 7, "endpoints": endpoints}}}
 		case r.Method == http.MethodGet && r.URL.Path == path+"/endpoints/8/creationScripts" && exists:
@@ -139,7 +143,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 				return
 			}
 			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["gcpProjectId"] != "fixture-project" || body["gcpVpcName"] != "fixture-vpc" || body["gcpVpcSubnetName"] != "fixture-subnet" || body["endpointConnectionName"] != "fixture-prefix" {
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["gcpProjectId"] != pscFixtureProject || body["gcpVpcName"] != pscFixtureVPC || body["gcpVpcSubnetName"] != pscFixtureSubnet || body["endpointConnectionName"] != pscFixturePrefix {
 				unexpected = true
 				http.Error(w, "invalid endpoint fixture create", http.StatusBadRequest)
 				return
@@ -197,7 +201,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	sub := "1"
 	item.Spec.ForProvider.SubscriptionID = &sub
 	serviceID := float64(7)
-	project, vpc, subnet, prefix := "fixture-project", "fixture-vpc", "fixture-subnet", "fixture-prefix"
+	project, vpc, subnet, prefix := pscFixtureProject, pscFixtureVPC, pscFixtureSubnet, pscFixturePrefix
 	item.Spec.ForProvider.PrivateServiceConnectServiceID = &serviceID
 	item.Spec.ForProvider.GCPProjectID, item.Spec.ForProvider.GCPVPCName = &project, &vpc
 	item.Spec.ForProvider.GCPVPCSubnetName, item.Spec.ForProvider.EndpointConnectionName = &subnet, &prefix

@@ -44,3 +44,11 @@ managed finalizer, then exercises Orphan and a management policy without Delete
 using a real API server and managed reconciler. The synthetic inner connector
 counts connections and deletions. Observing that the CR disappears without an
 inner call would demonstrate abandonment of management, not Cloud cleanup.
+
+The pending PSC reservation fixture uses the real disposable API server and
+two simultaneous stale snapshots, synchronized before their updates. It checks
+that one guarded synthetic Delete is forwarded, and separately models inner
+error, pre-write rejection and an API update committed before its response is
+lost. A committed marker blocks replay. The faults and downstream connector are
+synthetic; this is not proof of a real API outage, Cloud dispatch, durable
+multi-actor authority or safe recovery.

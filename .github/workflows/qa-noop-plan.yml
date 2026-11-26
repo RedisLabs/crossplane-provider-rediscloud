@@ -117,7 +117,7 @@ jobs:
           export KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest"
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/qa-plan/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/qa-plan/plugins"
-          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProductPSCEndpointDeleteHold TestProductPSCEndpointDeleteHold/default_off TestProductPSCEndpointDeleteHold/success_hold TestProductPSCEndpointDeleteHold/accepted_503_hold TestProductPSCEndpointDeleteHold/noninitialized_hold TestProductPSCHoldPolicyBoundaries TestProductPSCHoldPolicyBoundaries/orphan TestProductPSCHoldPolicyBoundaries/no_delete
+          python3 acceptance/go_test_receipts.py ./scripts/qa_tfplan TestProductPSCEndpointDeleteHold TestProductPSCEndpointDeleteHold/default_off TestProductPSCEndpointDeleteHold/success_hold TestProductPSCEndpointDeleteHold/accepted_503_hold TestProductPSCEndpointDeleteHold/noninitialized_hold TestProductPSCHoldPolicyBoundaries TestProductPSCHoldPolicyBoundaries/orphan TestProductPSCHoldPolicyBoundaries/no_delete TestProductPSCHoldReservationAPI TestProductPSCHoldReservationAPI/concurrent_success TestProductPSCHoldReservationAPI/inner_error TestProductPSCHoldReservationAPI/write_rejected TestProductPSCHoldReservationAPI/write_committed_response_lost
   pro-subscription-lifecycle:
     runs-on: ubuntu-24.04
     steps:
