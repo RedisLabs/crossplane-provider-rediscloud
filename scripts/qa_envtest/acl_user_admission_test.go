@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-func TestACLUserPasswordAdmission(t *testing.T) {
+func TestACLUserPasswordAdmission(t *testing.T) { //nolint:gocyclo // Every admission case and cross-version check is explicit.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("hosted Actions only")
 	}
@@ -27,8 +27,8 @@ func TestACLUserPasswordAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "users.yaml"), crd, 0o600); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(filepath.Join(dir, "users.yaml"), crd, 0o600); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	environment := &envtest.Environment{CRDDirectoryPaths: []string{dir}, ErrorIfCRDPathMissing: true}
 	cfg, err := environment.Start()
@@ -36,8 +36,8 @@ func TestACLUserPasswordAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := environment.Stop(); err != nil {
-			t.Errorf("stop API server: %v", err)
+		if stopErr := environment.Stop(); stopErr != nil {
+			t.Errorf("stop API server: %v", stopErr)
 		}
 	})
 	client, err := dynamic.NewForConfig(cfg)
