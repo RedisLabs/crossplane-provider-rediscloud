@@ -248,6 +248,16 @@ jobs:
           tar -xzf "$RUNNER_TEMP/envtest.tgz" --strip-components=2 -C "$RUNNER_TEMP/envtest" controller-tools/envtest/etcd controller-tools/envtest/kube-apiserver
           KUBEBUILDER_ASSETS="$RUNNER_TEMP/envtest" QA_TEST_KUBECTL="$RUNNER_TEMP/kubectl" go test -p 2 ./scripts/qa_envtest -run TestUIDPreconditionAgainstAPIServer -count=1 -v
 
+      - name: Verify PrivateLink lookup identity
+        run: |
+          python3 - <<'PY'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestPrivateLinkIdentityReconcile"
+          script = "TestPrivateLinkScriptParentIdentity"
+          names = (root, script) + tuple(f"{root}/pro/{case}" for case in ("initial", "wrong_subscription", "missing_optional", "recovery")) + tuple(f"{root}/active_active/{case}" for case in ("initial", "wrong_subscription", "wrong_region", "missing_optional", "recovery")) + tuple(f"{script}/{case}" for case in ("initial", "wrong_subscription", "wrong_link", "missing_optional", "recovery"))
+          run_selected("./internal/controller/lookup", names)
+          PY
+
       - name: Run Unit Tests
         run: make -j2 test
 
