@@ -263,6 +263,15 @@ jobs:
           run_selected("./internal/controller/lookup", names)
           PY
 
+      - name: Verify PSC endpoint service identity
+        run: |
+          python3 - <<'PY'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestPSCEndpointsParentIdentity"
+          names = (root,) + tuple(f"{root}/{kind}/{case}" for kind in ("pro", "active_active") for case in ("initial", "mismatch", "missing_optional_id", "recovery"))
+          run_selected("./internal/controller/lookup", names)
+          PY
+
       - name: Run Unit Tests
         run: make -j2 test
 

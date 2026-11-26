@@ -302,6 +302,9 @@ func readPrivateServiceConnectEndpoints(ctx context.Context, api *rediscloud.Cli
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get private service connect endpoints")
 	}
+	if identityErr := validatePSCServiceIdentity(got, serviceID); identityErr != nil {
+		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
+	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
 		return api.PrivateServiceConnect.GetEndpointCreationScripts(ctx, subID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
 	})
@@ -354,6 +357,9 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get active-active private service connect endpoints")
 	}
+	if identityErr := validatePSCServiceIdentity(got, serviceID); identityErr != nil {
+		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
+	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
 		return api.PrivateServiceConnect.GetActiveActiveEndpointCreationScripts(ctx, subID, regionID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
 	})
@@ -364,6 +370,13 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 		ID:        fmt.Sprintf("%d/%d", subID, serviceID),
 		Endpoints: endpoints,
 	}, nil
+}
+
+func validatePSCServiceIdentity(got *psc.PrivateServiceConnectEndpoints, requested int) error {
+	if got != nil && got.PSCServiceID != nil && *got.PSCServiceID != requested {
+		return fmt.Errorf("private service connect response identity does not match request")
+	}
+	return nil
 }
 
 func observeEndpoints(got *psc.PrivateServiceConnectEndpoints, script func(int) (*psc.CreationScript, error)) ([]lookupv1alpha1.PrivateServiceConnectEndpointObservation, error) {
