@@ -227,6 +227,18 @@ jobs:
       - name: Exercise simulated AWS and GCP region lookup
         run: python3 acceptance/crossplane_alpha_regions.py
 
+      - name: Verify partial region lookup recovery
+        run: |
+          python3 - <<'PYCODE'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestRegionPartialResponseRecovery"
+          cases = ("initial", "null_row", "after_null", "missing_provider", "after_provider", "missing_name", "after_name", "missing_id", "after_id", "known_mismatch", "zero_id", "recovery")
+          run_selected("./internal/controller/lookup", (root,) + tuple(f"{root}/{case}" for case in cases))
+          root = "TestRegionSelectedObservationFields"
+          cases = ("missing_name_unfiltered", "missing_name_provider_only", "missing_provider_unfiltered", "missing_provider_name_only", "explicit_empty_fields")
+          run_selected("./internal/controller/lookup", (root,) + tuple(f"{root}/{case}" for case in cases))
+          PYCODE
+
       - name: Test durable QA ownership recovery without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_recovery.py'
 
