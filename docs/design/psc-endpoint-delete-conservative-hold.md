@@ -31,3 +31,10 @@ reconstruction, not a process or pod restart. It does not establish Cloud task
 semantics, live GCP cleanup, trusted markers, cross-writer exclusion or recovery.
 Non-initialized endpoints, Orphan policies and concurrent actual API reservations
 need separate hosted coverage.
+
+The additional pending `noninitialized_hold` case sets the fake endpoint to
+active, requires an in-flight provider destroy and a subsequent fake collection
+read, checks no DELETE was sent, and only then removes the endpoint in the fake
+model. The case expects the marker and managed finalizer to remain after the
+operation completes and the connector is reconstructed. The model does not
+contact GCP and cannot prove real external cleanup or Cloud task behavior.

@@ -55,10 +55,10 @@ func TestPSCManagedEndpointAcceptedThen503Loopback(t *testing.T) {
 
 func TestProductPSCEndpointDeleteHold(t *testing.T) {
 	for _, tc := range []struct {
-		name             string
-		enabled, unknown bool
+		name                     string
+		enabled, unknown, active bool
 	}{
-		{"default_off", false, false}, {"success_hold", true, false}, {"accepted_503_hold", true, true},
+		{"default_off", false, false, false}, {"success_hold", true, false, false}, {"accepted_503_hold", true, true, false}, {"noninitialized_hold", true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("QA_PSC_HOLD_ENVTEST", fixtureStringTrue)
@@ -67,6 +67,9 @@ func TestProductPSCEndpointDeleteHold(t *testing.T) {
 			}
 			if tc.unknown {
 				t.Setenv("QA_PSC_HOLD_UNKNOWN", fixtureStringTrue)
+			}
+			if tc.active {
+				t.Setenv("QA_PSC_HOLD_ACTIVE", fixtureStringTrue)
 			}
 			runPSCManagedEndpoint(t, false, false)
 		})
@@ -86,7 +89,8 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	const path = parentPath + "/7"
 	var mu sync.Mutex
 	exists, created, deleted, unexpected, failCreate := false, false, false, false, injectFailure
-	createRequests, deleteRequests := 0, 0
+	createRequests, deleteRequests, collectionReads := 0, 0, 0
+	endpointStatus := pscEndpointInitialized
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -113,9 +117,10 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		case r.Method == http.MethodGet && r.URL.Path == path:
 			response = map[string]any{fixtureTaskKey: pscEndpointsTask}
 		case r.Method == http.MethodGet && r.URL.Path == pscEndpointsTaskPath:
+			collectionReads++
 			endpoints := []any{}
 			if exists {
-				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: pscEndpointInitialized})
+				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: endpointStatus})
 			}
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"pscServiceId": 7, "endpoints": endpoints}}}
 		case r.Method == http.MethodGet && r.URL.Path == path+"/endpoints/8/creationScripts" && exists:
@@ -297,9 +302,87 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	}
 	mu.Unlock()
 	t.Log("SIMULATED: managed fake PSC endpoint created and read; fake parent present")
+	active := os.Getenv("QA_PSC_HOLD_ACTIVE") == fixtureStringTrue
+	if active {
+		mu.Lock()
+		endpointStatus = fixtureActive
+		mu.Unlock()
+		verifyPSCHoldFakeReads(t, server.URL, parentPath, path, true, fixtureActive)
+	}
 	originalUID := item.UID
 	if err := kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
+	}
+	if active {
+		// Wait for a running provider destroy, then require a further collection
+		// task read by the provider before modeling external disappearance.
+		deadline := time.Now().Add(180 * time.Second)
+		started := false
+		baseline := 0
+		var startedAt time.Time
+		var intent string
+		for time.Now().Before(deadline) {
+			if !started {
+				if _, err := rec.Reconcile(context.Background(), req); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !started && store.current != nil && store.current.LastOperation != nil && store.current.LastOperation.IsRunning() {
+				op := store.current.LastOperation
+				if op.Type != "destroy" {
+					t.Fatal("unexpected in-flight operation")
+				}
+				startedAt = op.StartTime()
+				current := &api.ServiceConnectEndpoint{}
+				if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID {
+					t.Fatal("endpoint identity lost before destroy")
+				}
+				intent = current.Annotations["rediscloud.crossplane.io/psc-endpoint-delete-intent"]
+				if intent == "" || !slices.Contains(current.Finalizers, managed.FinalizerName) {
+					t.Fatal("destroy has no persisted hold and managed finalizer")
+				}
+				mu.Lock()
+				baseline = collectionReads
+				mu.Unlock()
+				started = true
+			}
+			if started {
+				op := store.current.LastOperation
+				if !op.IsRunning() || op.Type != "destroy" || !op.StartTime().Equal(startedAt) {
+					t.Fatal("destroy changed before fake collection read")
+				}
+			}
+			mu.Lock()
+			observed := started && collectionReads > baseline
+			if deleteRequests != 0 || !exists || endpointStatus != fixtureActive {
+				mu.Unlock()
+				t.Fatal("noninitialized fake endpoint was deleted or changed before external disappearance")
+			}
+			if observed {
+				mu.Unlock()
+				current := &api.ServiceConnectEndpoint{}
+				if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID || current.Annotations["rediscloud.crossplane.io/psc-endpoint-delete-intent"] != intent || !slices.Contains(current.Finalizers, managed.FinalizerName) {
+					t.Fatal("hold changed during provider collection read")
+				}
+				op := store.current.LastOperation
+				if !op.IsRunning() || op.Type != "destroy" || !op.StartTime().Equal(startedAt) {
+					t.Fatal("destroy changed at fake removal")
+				}
+				mu.Lock()
+				exists = false
+				mu.Unlock()
+				break
+			}
+			mu.Unlock()
+			time.Sleep(time.Second)
+		}
+		mu.Lock()
+		disappeared := !exists
+		mu.Unlock()
+		if !started || !disappeared {
+			t.Fatal("provider did not observe fake noninitialized endpoint before bounded timeout")
+		}
+		t.Log("SIMULATED: fixture externally removed modeled endpoint after provider read; no GCP call")
 	}
 	await("delete", os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue)
 	if os.Getenv("QA_PSC_HOLD_ENABLED") == fixtureStringTrue {
@@ -323,13 +406,17 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			}
 		}
 		mu.Lock()
-		if unexpected || deleteRequests != 1 || !created || (os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue && !exists) || (os.Getenv("QA_PSC_HOLD_UNKNOWN") != fixtureStringTrue && exists) {
+		expectedDeletes := 1
+		if active {
+			expectedDeletes = 0
+		}
+		if unexpected || deleteRequests != expectedDeletes || !created || (os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue && !exists) || (os.Getenv("QA_PSC_HOLD_UNKNOWN") != fixtureStringTrue && exists) {
 			gotDeletes, gotExists := deleteRequests, exists
 			mu.Unlock()
 			t.Fatalf("unexpected held PSC state: deletes=%d exists=%v", gotDeletes, gotExists)
 		}
 		mu.Unlock()
-		verifyPSCHoldFakeReads(t, server.URL, parentPath, path, os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue)
+		verifyPSCHoldFakeReads(t, server.URL, parentPath, path, os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue, pscEndpointInitialized)
 		return
 	}
 	mu.Lock()
@@ -382,7 +469,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	t.Fatalf("managed PSC object still exists after delete; finalizers=%v conditions=%v", current.Finalizers, current.Status.Conditions)
 }
 
-func verifyPSCHoldFakeReads(t *testing.T, origin, parentPath, path string, wantEndpoint bool) { //nolint:gocyclo // Each independent identity/read assertion matters.
+func verifyPSCHoldFakeReads(t *testing.T, origin, parentPath, path string, wantEndpoint bool, expectedStatus string) { //nolint:gocyclo // Each independent identity/read assertion matters.
 	t.Helper()
 	for _, target := range []string{fixtureProParentPath, parentPath, pscServiceTaskPath, path, pscEndpointsTaskPath} {
 		request, err := http.NewRequest(http.MethodGet, origin+target, nil)
@@ -435,7 +522,7 @@ func verifyPSCHoldFakeReads(t *testing.T, origin, parentPath, path string, wantE
 				}
 				if wantEndpoint {
 					endpoint, ok := endpoints[0].(map[string]any)
-					if !ok || endpoint["id"] != float64(8) || endpoint[fixtureStatusKey] != pscEndpointInitialized {
+					if !ok || endpoint["id"] != float64(8) || endpoint[fixtureStatusKey] != expectedStatus {
 						t.Fatal("fake endpoint identity or status mismatch")
 					}
 				}
