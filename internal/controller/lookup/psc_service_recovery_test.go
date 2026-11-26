@@ -21,6 +21,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+const fixturePSCStaleID = "stale"
+
 func TestPSCServiceLookupIdentityRecovery(t *testing.T) { //nolint:gocyclo // Keep task, identity and recovery checks together.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
@@ -42,13 +44,13 @@ func TestPSCServiceLookupIdentityRecovery(t *testing.T) { //nolint:gocyclo // Ke
 			taskCalls.Add(1)
 			switch phase.Load() {
 			case 0:
-				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"id":7,"status":"active"}}`)
+				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"resource":{"id":7,"status":"active"}}}`)
 			case 1:
-				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"status":"active"}}`)
+				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"resource":{"status":"active"}}}`)
 			case 2:
-				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"id":0,"status":"active"}}`)
+				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"resource":{"id":0,"status":"active"}}}`)
 			case 3:
-				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"id":8,"status":"active"}}`)
+				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"resource":{"id":8,"status":"active"}}}`)
 			default:
 				t.Error("unexpected task phase")
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -92,7 +94,7 @@ func TestPSCServiceLookupIdentityRecovery(t *testing.T) { //nolint:gocyclo // Ke
 }
 
 // Reproduces the pinned SDK's nil task-ID dereference; this is not recovery proof.
-func TestPSCServiceLookupMissingTaskIDPanics(t *testing.T) {
+func TestPSCServiceLookupMissingTaskIDPanics(t *testing.T) { //nolint:gocyclo // Verify panic and unchanged state with exact request guards.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
@@ -106,7 +108,7 @@ func TestPSCServiceLookupMissingTaskIDPanics(t *testing.T) {
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{}`)
-	}), &lookupv1alpha1.PrivateServiceConnect{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.PrivateServiceConnectSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}, Status: lookupv1alpha1.PrivateServiceConnectStatus{AtProvider: lookupv1alpha1.PrivateServiceConnectObservation{ID: "stale"}}})
+	}), &lookupv1alpha1.PrivateServiceConnect{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.PrivateServiceConnectSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}, Status: lookupv1alpha1.PrivateServiceConnectStatus{AtProvider: lookupv1alpha1.PrivateServiceConnectObservation{ID: fixturePSCStaleID}}})
 	var panicValue any
 	func() {
 		defer func() { panicValue = recover() }()
@@ -119,7 +121,7 @@ func TestPSCServiceLookupMissingTaskIDPanics(t *testing.T) {
 	if err := kube.Get(context.Background(), types.NamespacedName{Name: proFixtureName}, current); err != nil {
 		t.Fatal(err)
 	}
-	if current.Status.AtProvider.ID != "stale" {
+	if current.Status.AtProvider.ID != fixturePSCStaleID {
 		t.Fatal("panic unexpectedly cleared stale observation")
 	}
 }
