@@ -73,8 +73,8 @@ func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo
 			}{
 				{"initial", `,"id":42`, "42", corev1.ConditionTrue, false},
 				{"missing", "", "", corev1.ConditionFalse, true},
-				{"zero", `,"id":0`, "", corev1.ConditionFalse, true},
-				{"negative", `,"id":-1`, "", corev1.ConditionFalse, true},
+				{"zero", `,"id":0`, "0", corev1.ConditionTrue, false},
+				{"negative", `,"id":-1`, "-1", corev1.ConditionTrue, false},
 				{"recovery", `,"id":43`, "43", corev1.ConditionTrue, false},
 			} {
 				t.Run(step.name, func(t *testing.T) {

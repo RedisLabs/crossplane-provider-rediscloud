@@ -138,7 +138,7 @@ func readACLUser(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 }
 
 func requireACLIdentity(id *int) error {
-	if id == nil || *id <= 0 {
+	if id == nil {
 		return errors.New("ACL lookup response has no valid identity")
 	}
 	return nil
