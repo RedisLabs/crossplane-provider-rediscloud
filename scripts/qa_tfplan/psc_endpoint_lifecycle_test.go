@@ -31,6 +31,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	pscServiceTask         = "get-service"
+	pscEndpointsTask       = "get-endpoints"
+	pscServiceTaskPath     = "/v1/tasks/get-service"
+	pscEndpointsTaskPath   = "/v1/tasks/get-endpoints"
+	pscEndpointInitialized = "initialized"
+)
+
 // This fixture starts with an existing fake Pro parent. All writes target the
 // local fake PSC endpoint; no AWS, Cloud account or live lock is exercised.
 func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) {
@@ -99,15 +107,15 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
 			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == parentPath:
-			response = map[string]any{fixtureTaskKey: "get-service"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-service":
+			response = map[string]any{fixtureTaskKey: pscServiceTask}
+		case r.Method == http.MethodGet && r.URL.Path == pscServiceTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: fixtureActive}}}
 		case r.Method == http.MethodGet && r.URL.Path == path:
-			response = map[string]any{fixtureTaskKey: "get-endpoints"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-endpoints":
+			response = map[string]any{fixtureTaskKey: pscEndpointsTask}
+		case r.Method == http.MethodGet && r.URL.Path == pscEndpointsTaskPath:
 			endpoints := []any{}
 			if exists {
-				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: "initialized"})
+				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: pscEndpointInitialized})
 			}
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"pscServiceId": 7, "endpoints": endpoints}}}
 		case r.Method == http.MethodGet && r.URL.Path == path+"/endpoints/8/creationScripts" && exists:
@@ -315,10 +323,13 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			}
 		}
 		mu.Lock()
-		defer mu.Unlock()
 		if unexpected || deleteRequests != 1 || !created || (os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue && !exists) || (os.Getenv("QA_PSC_HOLD_UNKNOWN") != fixtureStringTrue && exists) {
-			t.Fatalf("unexpected held PSC state: deletes=%d exists=%v", deleteRequests, exists)
+			gotDeletes, gotExists := deleteRequests, exists
+			mu.Unlock()
+			t.Fatalf("unexpected held PSC state: deletes=%d exists=%v", gotDeletes, gotExists)
 		}
+		mu.Unlock()
+		verifyPSCHoldFakeReads(t, server.URL, parentPath, path, os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue)
 		return
 	}
 	mu.Lock()
@@ -369,6 +380,68 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		t.Fatal(err)
 	}
 	t.Fatalf("managed PSC object still exists after delete; finalizers=%v conditions=%v", current.Finalizers, current.Status.Conditions)
+}
+
+func verifyPSCHoldFakeReads(t *testing.T, origin, parentPath, path string, wantEndpoint bool) { //nolint:gocyclo // Each independent identity/read assertion matters.
+	t.Helper()
+	for _, target := range []string{fixtureProParentPath, parentPath, pscServiceTaskPath, path, pscEndpointsTaskPath} {
+		request, err := http.NewRequest(http.MethodGet, origin+target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-Api-Key", dummyCredential)
+		request.Header.Set("X-Api-Secret-Key", dummyCredential)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		decodeErr := json.NewDecoder(response.Body).Decode(&body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK || decodeErr != nil {
+			t.Fatalf("fake authenticated read %s failed", target)
+		}
+		if target == fixtureProParentPath && body["id"] != float64(1) {
+			t.Fatal("fake subscription identity mismatch")
+		}
+		if target == parentPath && body[fixtureTaskKey] != pscServiceTask {
+			t.Fatal("fake service task identity mismatch")
+		}
+		if target == path && body[fixtureTaskKey] != pscEndpointsTask {
+			t.Fatal("fake endpoint task identity mismatch")
+		}
+		if target == pscServiceTaskPath || target == pscEndpointsTaskPath {
+			if body[fixtureStatusKey] != fixtureTaskComplete {
+				t.Fatal("fake read task incomplete")
+			}
+			result, ok := body[fixtureResponseKey].(map[string]any)
+			if !ok {
+				t.Fatal("fake task response missing")
+			}
+			resource, ok := result[fixtureResourceKey].(map[string]any)
+			if !ok {
+				t.Fatal("fake task resource missing")
+			}
+			if target == pscServiceTaskPath && resource["id"] != float64(7) {
+				t.Fatal("fake service identity mismatch")
+			}
+			if target == pscEndpointsTaskPath {
+				if resource["pscServiceId"] != float64(7) {
+					t.Fatal("fake service collection identity mismatch")
+				}
+				endpoints, ok := resource["endpoints"].([]any)
+				if !ok || (wantEndpoint && len(endpoints) != 1) || (!wantEndpoint && len(endpoints) != 0) {
+					t.Fatal("fake endpoint collection mismatch")
+				}
+				if wantEndpoint {
+					endpoint, ok := endpoints[0].(map[string]any)
+					if !ok || endpoint["id"] != float64(8) || endpoint[fixtureStatusKey] != pscEndpointInitialized {
+						t.Fatal("fake endpoint identity or status mismatch")
+					}
+				}
+			}
+		}
+	}
 }
 
 type pscHoldCallbacks struct {
