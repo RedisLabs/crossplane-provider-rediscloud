@@ -15,7 +15,6 @@ func TestMatchRegions(t *testing.T) {
 	regions := []*account.Region{
 		region(1, "us-east-1", "AWS"),
 		region(2, "us-central1", cloudProviderGCP),
-		nil,
 	}
 	got, err := MatchRegions(regions, RegionQuery{ProviderName: cloudProviderGCP, Name: "us-central1"})
 	if err != nil {
@@ -27,6 +26,9 @@ func TestMatchRegions(t *testing.T) {
 	_, err = MatchRegions(regions, RegionQuery{ProviderName: "Azure"})
 	if !errors.Is(err, ErrNone) {
 		t.Fatalf("none: %v", err)
+	}
+	if _, err := MatchRegions(append(regions, nil), RegionQuery{}); err == nil {
+		t.Fatal("nil region must fail")
 	}
 }
 
