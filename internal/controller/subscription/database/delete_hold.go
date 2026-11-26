@@ -31,7 +31,7 @@ import (
 // rollout. See docs/design/pro-delete-conservative-hold.md.
 const deleteIntentAnnotation = "rediscloud.crossplane.io/pro-database-delete-intent"
 
-var errDeleteHeld = errors.New("pro database delete is held; administrator resolution is required")
+var errDeleteHeld = errors.New("pro database reconciliation paused because delete safety could not be confirmed; preserve the resource and any delete hold, and contact an administrator")
 
 type deleteIntent struct {
 	Version  int    `json:"version"`
