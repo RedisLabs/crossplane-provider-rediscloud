@@ -19,14 +19,14 @@ def main():
         SOURCE.write_text(text.replace(ANCHOR, ANCHOR + FILTER, 1))
         print('Applied one disposable SourceIps late-initialization filter')
         return
-    if len(sys.argv) != 7 or sys.argv[1] != 'verify' or sys.argv[2] not in {'lifecycle', 'source_cidrs'}:
+    if len(sys.argv) != 7 or sys.argv[1] != 'verify' or sys.argv[2] not in {'lifecycle', 'source_cidrs', 'policy_transition'}:
         raise SystemExit('invalid comparison arguments')
     baseline, candidate, old_payloads, new_payloads = map(Path, sys.argv[3:])
     old_phases = baseline.read_text().splitlines()
     new_phases = candidate.read_text().splitlines()
     if old_phases.count('phase after_observe nonempty') != 1:
         raise SystemExit('baseline spec was not nonempty after observe')
-    expected = 'absent' if sys.argv[2] == 'lifecycle' else 'nonempty'
+    expected = 'nonempty' if sys.argv[2] == 'source_cidrs' else 'absent'
     for phase in ('before_create', 'after_create', 'after_observe', 'after_update'):
         if new_phases.count('phase ' + phase + ' ' + expected) != 1:
             raise SystemExit('candidate spec presence changed unexpectedly')

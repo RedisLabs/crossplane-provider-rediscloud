@@ -42,6 +42,9 @@ const fixtureInitialSourceCIDR = "192.0.2.0/24"
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
 	t.Run(fixtureSourceCIDRMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRMode) })
+	if os.Getenv("QA_POLICY_TRANSITION") == "true" {
+		t.Run("policy_transition", func(t *testing.T) { runProDatabaseFixture(t, "policy_transition") })
+	}
 	t.Run(fixtureSourceCIDRDriftMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRDriftMode) })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
@@ -59,6 +62,9 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	createRequests, deleteRequests, childAbsentReads := 0, 0, 0
 	childPresentReads := 0
 	cidrUpdates := 0
+	policyUpdates := 0
+	publicParentReads := 0
+	publicAccess := mode != "policy_transition"
 	beforeDeleteReconcileReads := 0
 	rule := desiredEviction
 	sourceIPs := []any{}
@@ -77,7 +83,14 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		var response any
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
-			response = map[string]any{"id": 1, fixtureNameKey: "fixture-existing-parent", fixtureStatusKey: fixtureActive}
+			parent := map[string]any{"id": 1, fixtureNameKey: "fixture-existing-parent", fixtureStatusKey: fixtureActive}
+			if mode == "policy_transition" {
+				parent["publicEndpointAccess"] = publicAccess
+				if publicAccess {
+					publicParentReads++
+				}
+			}
+			response = parent
 		case r.Method == http.MethodPost && r.URL.Path == fixtureProDBsPath:
 			createRequests++
 			if exists {
@@ -161,6 +174,23 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				}
 				sourceIPs = expected
 				cidrUpdates++
+			}
+			if mode == "policy_transition" {
+				if publicAccess && publicParentReads == 0 {
+					unexpected = true
+					http.Error(w, "updated fake parent policy was not read", http.StatusBadRequest)
+					return
+				}
+				if value, present := body["sourceIp"]; present {
+					ips, ok := value.([]any)
+					if !ok {
+						unexpected = true
+						http.Error(w, "invalid source CIDRs", http.StatusBadRequest)
+						return
+					}
+					sourceIPs = ips
+					policyUpdates++
+				}
 			}
 			if policy, present := body[fixtureEvictionKey]; present {
 				if policy != desiredEviction && policy != fixtureVolatileLRU {
@@ -341,6 +371,27 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		}
 	}
 	markRawConfigPhase(t, "after_observe", kube, name)
+	if mode == "policy_transition" {
+		if store.current == nil || store.current.LastOperation.IsRunning() {
+			t.Fatal("initial operation must settle before the modeled policy transition")
+		}
+		select {
+		case err := <-callback.done:
+			t.Fatalf("unexpected callback before modeled policy transition: %v", err)
+		default:
+		}
+		mu.Lock()
+		seen := map[any]bool{}
+		for _, ip := range sourceIPs {
+			seen[ip] = true
+		}
+		if policyUpdates != 1 || len(sourceIPs) != 4 || !seen["10.0.0.0/8"] || !seen["172.16.0.0/12"] || !seen["192.168.0.0/16"] || !seen["100.64.0.0/10"] {
+			mu.Unlock()
+			t.Fatal("fake private default was not applied before the modeled policy transition")
+		}
+		publicAccess = true
+		mu.Unlock()
+	}
 	if mode == fixtureSourceCIDRDriftMode {
 		if store.current == nil || store.current.LastOperation.IsRunning() {
 			t.Fatal("initial asynchronous operation has not settled")
@@ -404,6 +455,10 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	if !exists || rule != updated || unexpected {
 		mu.Unlock()
 		t.Fatal("Pro database update or fixture trace invalid")
+	}
+	if mode == "policy_transition" && (policyUpdates != 2 || publicParentReads == 0 || !reflect.DeepEqual(sourceIPs, []any{"0.0.0.0/0"})) {
+		mu.Unlock()
+		t.Fatal("fake public default update was not observed after the modeled policy transition")
 	}
 	mu.Unlock()
 	current := &pro.Database{}

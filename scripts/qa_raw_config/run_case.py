@@ -6,7 +6,7 @@ import sys
 
 ROOT = 'TestProDatabaseManagedLifecycleLoopback'
 PACKAGE = 'github.com/RedisLabs/provider-rediscloud/scripts/qa_tfplan'
-CASES = {'lifecycle', 'source_cidrs'}
+CASES = {'lifecycle', 'source_cidrs', 'policy_transition'}
 
 
 def verify(output, returncode, selected):
@@ -35,10 +35,12 @@ def main():
     if os.environ.get('GITHUB_ACTIONS') != 'true' or len(sys.argv) != 2 or sys.argv[1] not in CASES:
         raise ValueError('hosted named fixture required')
     case = sys.argv[1]
+    env = os.environ.copy()
+    env['QA_POLICY_TRANSITION'] = 'true' if case == 'policy_transition' else 'false'
     result = subprocess.run(
         ['go', 'test', '-json', './scripts/qa_tfplan', '-count=1', '-timeout=20m',
          '-run', '^' + ROOT + '$/^' + case + '$'],
-        capture_output=True, text=True, timeout=1300, check=False,
+        capture_output=True, text=True, timeout=1300, check=False, env=env,
     )
     try:
         verify(result.stdout, result.returncode, case)

@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 
-if len(sys.argv) != 3 or sys.argv[1] not in {'lifecycle', 'source_cidrs'}:
+if len(sys.argv) != 3 or sys.argv[1] not in {'lifecycle', 'source_cidrs', 'policy_transition'}:
     raise SystemExit('unexpected fixture case')
 lines = Path(sys.argv[2]).read_text().splitlines()
 valid = {'root-null', 'root-unknown', 'missing-attribute', 'unknown', 'null', 'known-nonnull'}
