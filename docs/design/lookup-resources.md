@@ -120,7 +120,9 @@ logs from managed-resource clients are outside this lookup-client boundary.
 
 Credential-free controller tests should verify the authenticated GET, rejected
 identities and types, API errors, stale status clearing, and no request on
-resource deletion. Live behavior requires a separately authorized GET-only
+resource deletion. A hosted-only fake case checks a selector change, contradictory
+identity, clearing after reconciliation, and successful recovery on the same object;
+it does not claim stale status disappears before reconciliation. Live behavior requires a separately authorized GET-only
 qualification. No Redis Cloud resource is created, modified or deleted.
 
 The lookup adds a CRD and controller registration; rollback removes both. There
