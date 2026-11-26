@@ -22,7 +22,7 @@ import (
 // This uses a real API server and managed reconciler but a synthetic external
 // connector. In particular, nil from Delete models scheduling before dispatch;
 // it is not a claim about an actual Terraform command or Cloud task.
-func TestProductProHoldPolicyBoundaries(t *testing.T) {
+func TestProductProHoldPolicyBoundaries(t *testing.T) { //nolint:gocyclo // Each policy boundary is checked independently.
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("hosted Actions only")
 	}
@@ -64,6 +64,7 @@ func TestProductProHoldPolicyBoundaries(t *testing.T) {
 			inner := managed.ExternalConnectorFn(func(context.Context, xpresource.Managed) (managed.ExternalClient, error) {
 				connects++
 				return managed.ExternalClientFns{
+					DisconnectFn: func(context.Context) error { return nil },
 					ObserveFn: func(context.Context, xpresource.Managed) (managed.ExternalObservation, error) {
 						return managed.ExternalObservation{ResourceExists: true, ResourceUpToDate: true}, nil
 					},
