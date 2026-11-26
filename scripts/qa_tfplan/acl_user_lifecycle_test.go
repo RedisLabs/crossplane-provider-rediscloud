@@ -173,7 +173,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	item := &acl.User{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID("fixture-acl-user-uid")}}
 	item.Spec.ForProvider.Name = &resourceName
 	item.Spec.ForProvider.Role = &value
-	item.Spec.ForProvider.PasswordSecretRef = xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Name: "fixture-password", Namespace: fixtureName}, Key: "password"}
+	item.Spec.ForProvider.PasswordSecretRef = &xpv2.SecretKeySelector{SecretReference: xpv2.SecretReference{Name: "fixture-password", Namespace: fixtureName}, Key: "password"}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "fixture-password", Namespace: fixtureName}, Data: map[string][]byte{"password": []byte("FixtureOnly1!")}}
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
 	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item, secret).Build()
@@ -275,7 +275,8 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	readsBefore, writesBefore := reads, writes
 	mu.Unlock()
 	observed := &acl.User{ObjectMeta: metav1.ObjectMeta{Name: "observe-user", UID: types.UID("observe-user-uid")}, Spec: current.Spec}
-	verifyACLObserveOnly(t, observed, scheme, "rediscloud_acl_user", server.URL, secret.DeepCopy())
+	observed.Spec.ForProvider.PasswordSecretRef = nil
+	verifyACLObserveOnly(t, observed, scheme, "rediscloud_acl_user", server.URL)
 	mu.Lock()
 	if reads <= readsBefore || writes != writesBefore {
 		mu.Unlock()

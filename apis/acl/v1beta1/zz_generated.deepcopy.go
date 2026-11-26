@@ -9,6 +9,7 @@
 package v1beta1
 
 import (
+	"github.com/crossplane/crossplane/apis/v2/core/v2"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -590,7 +591,11 @@ func (in *UserInitParameters) DeepCopyInto(out *UserInitParameters) {
 		*out = new(string)
 		**out = **in
 	}
-	out.PasswordSecretRef = in.PasswordSecretRef
+	if in.PasswordSecretRef != nil {
+		in, out := &in.PasswordSecretRef, &out.PasswordSecretRef
+		*out = new(v2.SecretKeySelector)
+		**out = **in
+	}
 	if in.Role != nil {
 		in, out := &in.Role, &out.Role
 		*out = new(string)
@@ -678,7 +683,11 @@ func (in *UserParameters) DeepCopyInto(out *UserParameters) {
 		*out = new(string)
 		**out = **in
 	}
-	out.PasswordSecretRef = in.PasswordSecretRef
+	if in.PasswordSecretRef != nil {
+		in, out := &in.PasswordSecretRef, &out.PasswordSecretRef
+		*out = new(v2.SecretKeySelector)
+		**out = **in
+	}
 	if in.Role != nil {
 		in, out := &in.Role, &out.Role
 		*out = new(string)
