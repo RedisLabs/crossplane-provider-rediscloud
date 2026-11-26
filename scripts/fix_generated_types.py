@@ -68,12 +68,32 @@ def fix_controller_timeouts() -> int:
     return 0
 
 
+def fix_pro_delete_hold_connector() -> int:
+    path = ROOT / "internal/controller/subscription/database/zz_controller.go"
+    if not path.exists():
+        print(f"missing generated controller: {path}", file=sys.stderr)
+        return 1
+    old = ('managed.WithExternalConnecter(tjcontroller.NewConnector(mgr.GetClient(), o.WorkspaceStore, o.SetupFn, o.Provider.Resources["rediscloud_subscription_database"], tjcontroller.WithLogger(o.Logger), tjcontroller.WithConnectorEventHandler(eventHandler),\n'
+           '\t\t\ttjcontroller.WithCallbackProvider(ac),\n\t\t)),')
+    new = ('managed.WithExternalConnecter(protectProDelete(mgr, o, tjcontroller.NewConnector(mgr.GetClient(), o.WorkspaceStore, o.SetupFn, o.Provider.Resources["rediscloud_subscription_database"], tjcontroller.WithLogger(o.Logger), tjcontroller.WithConnectorEventHandler(eventHandler),\n'
+           '\t\t\ttjcontroller.WithCallbackProvider(ac),\n\t\t))),')
+    text = path.read_text()
+    if text.count(old) == 1 and new not in text:
+        path.write_text(text.replace(old, new, 1))
+    elif text.count(new) != 1 or old in text:
+        print(f"unexpected generated Pro database connector in {path}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main() -> int:
     if fix_tls_type() != 0:
         return 1
     if fix_acl_user_password() != 0:
         return 1
     if fix_controller_timeouts() != 0:
+        return 1
+    if fix_pro_delete_hold_connector() != 0:
         return 1
     return 0
 

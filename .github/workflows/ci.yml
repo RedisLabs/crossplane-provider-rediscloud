@@ -282,6 +282,15 @@ jobs:
           run_selected("./internal/controller/lookup", names)
           PY
 
+      - name: Verify Pro database delete hold connector
+        run: |
+          python3 - <<'PY'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestDeleteHoldConnector"
+          names = (root,) + tuple(f"{root}/{case}" for case in ("normal", "opt_in", "held_after_flag_off", "stale_nondeleting_snapshot", "connected_before_hold"))
+          run_selected("./internal/controller/subscription/database", names)
+          PY
+
       - name: Run Unit Tests
         run: make -j2 test
 

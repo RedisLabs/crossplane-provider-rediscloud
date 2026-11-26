@@ -15,4 +15,6 @@ const (
 	// Management Policies. See the below design for more details.
 	// https://github.com/crossplane/crossplane/pull/3531
 	EnableBetaManagementPolicies xpfeature.Flag = xpfeature.EnableBetaManagementPolicies
+	// EnableProDatabaseDeleteHold is a conservative, opt-in administrative hold.
+	EnableProDatabaseDeleteHold xpfeature.Flag = "pro-database-delete-hold"
 )
