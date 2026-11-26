@@ -48,6 +48,18 @@ func TestProDatabaseRestartPendingDelete(t *testing.T) {
 	runProDatabaseFixture(t, fixtureDeleteDelayed)
 }
 
+func TestExperimentalFencedProDeleteSuccess(t *testing.T) {
+	t.Setenv("QA_TEST_ENVTEST_RESTART", fixtureEnvEnabled)
+	t.Setenv("QA_TEST_EXPERIMENTAL_FENCE", fixtureEnvEnabled)
+	runProDatabaseFixture(t, "success")
+}
+
+func TestExperimentalFencedProDeleteUnknown(t *testing.T) {
+	t.Setenv("QA_TEST_ENVTEST_RESTART", fixtureEnvEnabled)
+	t.Setenv("QA_TEST_EXPERIMENTAL_FENCE", fixtureEnvEnabled)
+	runProDatabaseFixture(t, fixtureDeleteDelayed)
+}
+
 func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
@@ -209,7 +221,15 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
+	buildConnector := func(store *trackingNativeStore, cb *fakeCallback) managed.ExternalConnector {
+		if os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled {
+			fencedCallback := &experimentalCallback{base: cb, kube: kube}
+			inner := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(fencedCallback))
+			return &experimentalConnector{inner: inner, kube: kube, callback: fencedCallback}
+		}
+		return ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(cb))
+	}
+	connector := buildConnector(store, callback)
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	await := func(command string, expectFailure bool) {
 		t.Helper()
@@ -307,6 +327,11 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		t.Fatal(err)
 	}
 	await("terraform destroy ", mode == "delete_unknown" || mode == fixtureDeleteDelayed)
+	if os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled && mode == "success" {
+		mu.Lock()
+		beforeDeleteReconcileReads = childAbsentReads
+		mu.Unlock()
+	}
 	if mode == "delete_unknown" || mode == fixtureDeleteDelayed {
 		retained := &pro.Database{}
 		if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, retained); err != nil || len(retained.Finalizers) == 0 {
@@ -317,8 +342,67 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				store = newTrackingNativeStore()
 				spy.tracked = store
 				callback = &fakeCallback{done: make(chan error, 1)}
-				connector = ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
+				connector = buildConnector(store, callback)
 				rec = managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
+			}
+			if os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled {
+				checkFakeChild := func(want int) {
+					t.Helper()
+					req, err := http.NewRequest(http.MethodGet, server.URL+fixtureProDatabasePath, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					req.Header.Set("X-Api-Key", dummyCredential)
+					req.Header.Set("X-Api-Secret-Key", dummyCredential)
+					resp, err := http.DefaultClient.Do(req)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_ = resp.Body.Close()
+					if resp.StatusCode != want {
+						t.Fatalf("fake child read=%d want=%d", resp.StatusCode, want)
+					}
+				}
+				checkFakeChild(http.StatusOK)
+				// Check held state both while present and after fake deletion.
+				for i := 0; i < 2; i++ {
+					if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+						t.Fatal(err)
+					}
+					if store.current != nil && store.current.LastOperation.IsRunning() {
+						t.Fatal("unexpected async operation while intent is uncertain")
+					}
+					remaining := &pro.Database{}
+					if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, remaining); err != nil || len(remaining.Finalizers) == 0 {
+						t.Fatal("uncertain delete lost finalizer while child exists")
+					}
+				}
+				mu.Lock()
+				if !exists || unexpected || deleteRequests != 1 {
+					mu.Unlock()
+					t.Fatal("pending fake child was changed or delete replayed")
+				}
+				exists = false
+				mu.Unlock()
+				checkFakeChild(http.StatusNotFound)
+				for i := 0; i < 3; i++ {
+					if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+						t.Fatal(err)
+					}
+					if store.current != nil && store.current.LastOperation.IsRunning() {
+						t.Fatal("unexpected async operation after fake absence")
+					}
+					remaining := &pro.Database{}
+					if err := kube.Get(context.Background(), types.NamespacedName{Name: name}, remaining); err != nil || len(remaining.Finalizers) == 0 {
+						t.Fatal("uncertain delete lost finalizer after restart and fake 404")
+					}
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				if deleteRequests != 1 || unexpected {
+					t.Fatalf("uncertain delete replayed: %d", deleteRequests)
+				}
+				return
 			}
 			for _, path := range []string{fixtureProDatabasePath, fixtureProParentPath} {
 				req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
@@ -422,7 +506,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		time.Sleep(time.Second)
 	}
 	mu.Lock()
-	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || ((mode == "delete_unknown" || mode == fixtureDeleteDelayed) && childAbsentReads <= beforeDeleteReconcileReads) {
+	if exists || unexpected || createRequests != 1 || deleteRequests != 1 || ((mode == "delete_unknown" || mode == fixtureDeleteDelayed || (os.Getenv("QA_TEST_EXPERIMENTAL_FENCE") == fixtureEnvEnabled && mode == "success")) && childAbsentReads <= beforeDeleteReconcileReads) {
 		mu.Unlock()
 		t.Fatal("fake Pro database residue or unexpected request")
 	}
