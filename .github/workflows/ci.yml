@@ -255,6 +255,15 @@ jobs:
           run_selected("./internal/controller/lookup", (root, root + "/initial", root + "/missing_id", root + "/zero_id", root + "/recovery", "TestPSCServiceLookupMissingTaskIDPanics"))
           PYCODE
 
+      - name: Verify ACL HTTP failure recovery
+        run: |
+          python3 - <<'PYCODE'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestACLHTTPFailureRecovery"
+          names = (root,) + tuple(f"{root}/{kind}/{case}" for kind in ("role", "user") for case in ("initial", "forbidden", "after_forbidden", "unavailable", "after_unavailable"))
+          run_selected("./internal/controller/lookup", names)
+          PYCODE
+
       - name: Test durable QA ownership recovery without Cloud credentials
         run: python3 -m unittest discover -s scripts -p 'test_qa_recovery.py'
 

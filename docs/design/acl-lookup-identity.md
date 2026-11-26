@@ -16,3 +16,10 @@ A null row or a row with no name makes uniqueness unknowable and fails the looku
 ## Validation and rollout
 
 A hosted-only fake Cloud fixture runs the actual lookup reconciler for role, rule and user, with null rows and missing names mixed with a valid match, known nonmatching names, and valid, missing, zero and negative IDs followed by recovery; zero and negative values remain accepted because the API does not establish a minimum. It asserts exact GET paths, Ready state, ID clearing, sanitized failure and retry. CI requires explicit named Go test receipts. This is not live Cloud qualification or proof of list completeness. Deploy through the normal reviewed provider release; roll back the provider version if valid upstream IDs are unexpectedly rejected. The API does not establish a minimum, so this change deliberately preserves any numeric value returned by Cloud.
+
+## HTTP failure recovery coverage
+
+A hosted-only, dummy-authenticated GET fixture exercises each ACL role and user
+reconciler through success, HTTP 403, recovery, HTTP 503 and recovery on the
+same object. It requires full stale-observation clearing and sanitized status;
+it does not establish real Cloud behavior or list completeness.
