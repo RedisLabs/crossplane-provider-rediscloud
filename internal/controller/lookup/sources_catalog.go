@@ -55,6 +55,9 @@ func readACLRole(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 	if err != nil {
 		return lookupv1alpha1.ACLRoleObservation{}, err
 	}
+	if err := requireACLIdentity(matched.ID); err != nil {
+		return lookupv1alpha1.ACLRoleObservation{}, err
+	}
 	return lookup.ObserveACLRole(matched), nil
 }
 
@@ -88,6 +91,9 @@ func readACLRule(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 		return redis.StringValue(rule.Name)
 	})
 	if err != nil {
+		return lookupv1alpha1.ACLRuleObservation{}, err
+	}
+	if err := requireACLIdentity(matched.ID); err != nil {
 		return lookupv1alpha1.ACLRuleObservation{}, err
 	}
 	return lookup.ObserveACLRule(matched), nil
@@ -125,7 +131,17 @@ func readACLUser(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 	if err != nil {
 		return lookupv1alpha1.ACLUserObservation{}, err
 	}
+	if err := requireACLIdentity(matched.ID); err != nil {
+		return lookupv1alpha1.ACLUserObservation{}, err
+	}
 	return lookup.ObserveACLUser(matched), nil
+}
+
+func requireACLIdentity(id *int) error {
+	if id == nil || *id <= 0 {
+		return errors.New("ACL lookup response has no valid identity")
+	}
+	return nil
 }
 
 // CloudAccountReconciler looks up one cloud account.
