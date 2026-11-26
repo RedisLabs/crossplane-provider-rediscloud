@@ -8,12 +8,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	api "github.com/RedisLabs/provider-rediscloud/apis/private/v1beta1"
 	providerconfig "github.com/RedisLabs/provider-rediscloud/config"
+	psccontroller "github.com/RedisLabs/provider-rediscloud/internal/controller/private/serviceconnectendpoint"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	xpresource "github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	xpfake "github.com/crossplane/crossplane-runtime/v2/pkg/resource/fake"
@@ -29,6 +31,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	pscServiceTask         = "get-service"
+	pscEndpointsTask       = "get-endpoints"
+	pscServiceTaskPath     = "/v1/tasks/get-service"
+	pscEndpointsTaskPath   = "/v1/tasks/get-endpoints"
+	pscEndpointInitialized = "initialized"
+)
+
 // This fixture starts with an existing fake Pro parent. All writes target the
 // local fake PSC endpoint; no AWS, Cloud account or live lock is exercised.
 func TestPSCManagedEndpointLifecycleLoopback(t *testing.T) {
@@ -41,6 +51,26 @@ func TestPSCManagedEndpointFailureLoopback(t *testing.T) {
 
 func TestPSCManagedEndpointAcceptedThen503Loopback(t *testing.T) {
 	runPSCManagedEndpoint(t, false, true)
+}
+
+func TestProductPSCEndpointDeleteHold(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		enabled, unknown bool
+	}{
+		{"default_off", false, false}, {"success_hold", true, false}, {"accepted_503_hold", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("QA_PSC_HOLD_ENVTEST", fixtureStringTrue)
+			if tc.enabled {
+				t.Setenv("QA_PSC_HOLD_ENABLED", fixtureStringTrue)
+			}
+			if tc.unknown {
+				t.Setenv("QA_PSC_HOLD_UNKNOWN", fixtureStringTrue)
+			}
+			runPSCManagedEndpoint(t, false, false)
+		})
+	}
 }
 
 func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { //nolint:gocyclo // Keep the isolated fake API and managed lifecycle together.
@@ -77,15 +107,15 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
 			response = map[string]any{"id": 1, "name": "fixture-parent", fixtureStatusKey: fixtureActive}
 		case r.Method == http.MethodGet && r.URL.Path == parentPath:
-			response = map[string]any{fixtureTaskKey: "get-service"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-service":
+			response = map[string]any{fixtureTaskKey: pscServiceTask}
+		case r.Method == http.MethodGet && r.URL.Path == pscServiceTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"id": 7, fixtureStatusKey: fixtureActive}}}
 		case r.Method == http.MethodGet && r.URL.Path == path:
-			response = map[string]any{fixtureTaskKey: "get-endpoints"}
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/get-endpoints":
+			response = map[string]any{fixtureTaskKey: pscEndpointsTask}
+		case r.Method == http.MethodGet && r.URL.Path == pscEndpointsTaskPath:
 			endpoints := []any{}
 			if exists {
-				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: "initialized"})
+				endpoints = append(endpoints, map[string]any{"id": 8, "gcpProjectId": "fixture-project", "gcpVpcName": "fixture-vpc", "gcpVpcSubnetName": "fixture-subnet", "endpointConnectionName": "fixture-prefix", fixtureStatusKey: pscEndpointInitialized})
 			}
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{fixtureResourceKey: map[string]any{"pscServiceId": 7, "endpoints": endpoints}}}
 		case r.Method == http.MethodGet && r.URL.Path == path+"/endpoints/8/creationScripts" && exists:
@@ -113,6 +143,10 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/create-endpoint" && created:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete, fixtureResponseKey: map[string]any{"resourceId": 8}}
 		case r.Method == http.MethodDelete && r.URL.Path == path+"/endpoints/8" && exists && !deleted:
+			if os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue {
+				http.Error(w, "accepted pending deletion with unavailable response", http.StatusServiceUnavailable)
+				return
+			}
 			exists, deleted = false, true
 			response = map[string]any{fixtureTaskKey: "delete-endpoint"}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/delete-endpoint" && deleted:
@@ -158,13 +192,25 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	item.Spec.ForProvider.GCPProjectID, item.Spec.ForProvider.GCPVPCName = &project, &vpc
 	item.Spec.ForProvider.GCPVPCSubnetName, item.Spec.ForProvider.EndpointConnectionName = &subnet, &prefix
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
-	kube := cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	item.Spec.ProviderConfigReference = &xpv2.Reference{Name: "fixture-config"}
+	var kube client.Client
+	if os.Getenv("QA_PSC_HOLD_ENVTEST") == fixtureStringTrue {
+		kube = newPSCEnvtestClient(t, scheme, item)
+	} else {
+		kube = cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
+	}
 	mgr := &xpfake.Manager{Client: kube, Scheme: scheme}
 	setup := func(context.Context, client.Client, xpresource.Managed) (terraform.Setup, error) {
 		return terraform.Setup{Version: fixtureTerraformVersion, Requirement: terraform.ProviderRequirement{Source: fixtureProviderSource, Version: fixtureProviderVersion}, Configuration: terraform.ProviderConfiguration{fixtureAPIKey: dummyCredential, fixtureSecretKey: dummyCredential, fixtureURLKey: server.URL + "/v1"}}, nil
 	}
 	callback := &fakeCallback{done: make(chan error, 1)}
-	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_private_service_connect_endpoint"], ujcontroller.WithCallbackProvider(callback))
+	tagged := &pscHoldCallbacks{base: callback, kinds: make(chan string, 8)}
+	buildConnector := func(store *trackingNativeStore, callback *fakeCallback, enabled bool) managed.ExternalConnector {
+		tagged = &pscHoldCallbacks{base: callback, kinds: make(chan string, 8)}
+		inner := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_private_service_connect_endpoint"], ujcontroller.WithCallbackProvider(tagged))
+		return psccontroller.NewDeleteHoldConnector(kube, kube, inner, enabled)
+	}
+	connector := buildConnector(store, callback, os.Getenv("QA_PSC_HOLD_ENABLED") == fixtureStringTrue)
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(api.ServiceConnectEndpoint_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: item.Name}}
 	await := func(label string, wantError bool) {
@@ -175,6 +221,10 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			}
 			select {
 			case err := <-callback.done:
+				kind := <-tagged.kinds
+				if (label == "create" && kind != "create") || (label == "delete" && kind != "destroy") {
+					t.Fatalf("%s callback kind=%s", label, kind)
+				}
 				if (err != nil) != wantError {
 					t.Fatalf("%s failed: %v", label, err)
 				}
@@ -184,6 +234,10 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 			if store.current != nil && store.current.LastOperation != nil && store.current.LastOperation.IsRunning() {
 				select {
 				case err := <-callback.done:
+					kind := <-tagged.kinds
+					if (label == "create" && kind != "create") || (label == "delete" && kind != "destroy") {
+						t.Fatalf("%s callback kind=%s", label, kind)
+					}
 					if (err != nil) != wantError {
 						t.Fatalf("%s failed: %v", label, err)
 					}
@@ -243,10 +297,41 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 	}
 	mu.Unlock()
 	t.Log("SIMULATED: managed fake PSC endpoint created and read; fake parent present")
+	originalUID := item.UID
 	if err := kube.Delete(context.Background(), item); err != nil {
 		t.Fatal(err)
 	}
-	await("delete", false)
+	await("delete", os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue)
+	if os.Getenv("QA_PSC_HOLD_ENABLED") == fixtureStringTrue {
+		store = newTrackingNativeStore()
+		callback = &fakeCallback{done: make(chan error, 1)}
+		connector = buildConnector(store, callback, false)
+		rec = managed.NewReconciler(mgr, xpresource.ManagedKind(api.ServiceConnectEndpoint_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
+		for i := 0; i < 3; i++ {
+			if _, err := rec.Reconcile(context.Background(), req); err != nil {
+				t.Fatal(err)
+			}
+			current := &api.ServiceConnectEndpoint{}
+			if err := kube.Get(context.Background(), req.NamespacedName, current); err != nil || current.UID != originalUID || !slices.Contains(current.Finalizers, managed.FinalizerName) || current.GetDeletionTimestamp().IsZero() {
+				t.Fatal("held CR or finalizer lost")
+			}
+			if _, ok := current.Annotations["rediscloud.crossplane.io/psc-endpoint-delete-intent"]; !ok {
+				t.Fatal("PSC delete intent lost")
+			}
+			if store.current != nil {
+				t.Fatal("held reconcile opened upstream workspace")
+			}
+		}
+		mu.Lock()
+		if unexpected || deleteRequests != 1 || !created || (os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue && !exists) || (os.Getenv("QA_PSC_HOLD_UNKNOWN") != fixtureStringTrue && exists) {
+			gotDeletes, gotExists := deleteRequests, exists
+			mu.Unlock()
+			t.Fatalf("unexpected held PSC state: deletes=%d exists=%v", gotDeletes, gotExists)
+		}
+		mu.Unlock()
+		verifyPSCHoldFakeReads(t, server.URL, parentPath, path, os.Getenv("QA_PSC_HOLD_UNKNOWN") == fixtureStringTrue)
+		return
+	}
 	mu.Lock()
 	if exists || !deleted || unexpected {
 		mu.Unlock()
@@ -279,7 +364,7 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		}
 		err := kube.Get(context.Background(), req.NamespacedName, &api.ServiceConnectEndpoint{})
 		if apierrors.IsNotFound(err) {
-			if _, statErr := os.Stat(filepath.Join(dir, "fixture-endpoint-uid")); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(filepath.Join(dir, string(item.UID))); !os.IsNotExist(statErr) {
 				t.Fatal("fake workspace remains or cannot be checked")
 			}
 			t.Log("SIMULATED: fake PSC endpoint removed from modeled list with fake parent still present")
@@ -295,4 +380,84 @@ func runPSCManagedEndpoint(t *testing.T, injectFailure, acceptedUnknown bool) { 
 		t.Fatal(err)
 	}
 	t.Fatalf("managed PSC object still exists after delete; finalizers=%v conditions=%v", current.Finalizers, current.Status.Conditions)
+}
+
+func verifyPSCHoldFakeReads(t *testing.T, origin, parentPath, path string, wantEndpoint bool) { //nolint:gocyclo // Each independent identity/read assertion matters.
+	t.Helper()
+	for _, target := range []string{fixtureProParentPath, parentPath, pscServiceTaskPath, path, pscEndpointsTaskPath} {
+		request, err := http.NewRequest(http.MethodGet, origin+target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-Api-Key", dummyCredential)
+		request.Header.Set("X-Api-Secret-Key", dummyCredential)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		decodeErr := json.NewDecoder(response.Body).Decode(&body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK || decodeErr != nil {
+			t.Fatalf("fake authenticated read %s failed", target)
+		}
+		if target == fixtureProParentPath && body["id"] != float64(1) {
+			t.Fatal("fake subscription identity mismatch")
+		}
+		if target == parentPath && body[fixtureTaskKey] != pscServiceTask {
+			t.Fatal("fake service task identity mismatch")
+		}
+		if target == path && body[fixtureTaskKey] != pscEndpointsTask {
+			t.Fatal("fake endpoint task identity mismatch")
+		}
+		if target == pscServiceTaskPath || target == pscEndpointsTaskPath {
+			if body[fixtureStatusKey] != fixtureTaskComplete {
+				t.Fatal("fake read task incomplete")
+			}
+			result, ok := body[fixtureResponseKey].(map[string]any)
+			if !ok {
+				t.Fatal("fake task response missing")
+			}
+			resource, ok := result[fixtureResourceKey].(map[string]any)
+			if !ok {
+				t.Fatal("fake task resource missing")
+			}
+			if target == pscServiceTaskPath && resource["id"] != float64(7) {
+				t.Fatal("fake service identity mismatch")
+			}
+			if target == pscEndpointsTaskPath {
+				if resource["pscServiceId"] != float64(7) {
+					t.Fatal("fake service collection identity mismatch")
+				}
+				endpoints, ok := resource["endpoints"].([]any)
+				if !ok || (wantEndpoint && len(endpoints) != 1) || (!wantEndpoint && len(endpoints) != 0) {
+					t.Fatal("fake endpoint collection mismatch")
+				}
+				if wantEndpoint {
+					endpoint, ok := endpoints[0].(map[string]any)
+					if !ok || endpoint["id"] != float64(8) || endpoint[fixtureStatusKey] != pscEndpointInitialized {
+						t.Fatal("fake endpoint identity or status mismatch")
+					}
+				}
+			}
+		}
+	}
+}
+
+type pscHoldCallbacks struct {
+	base  *fakeCallback
+	kinds chan string
+}
+
+func (c *pscHoldCallbacks) result(kind string) terraform.CallbackFn {
+	return func(err error, ctx context.Context) error { c.kinds <- kind; return c.base.result()(err, ctx) }
+}
+func (c *pscHoldCallbacks) Create(types.NamespacedName, bool) terraform.CallbackFn {
+	return c.result("create")
+}
+func (c *pscHoldCallbacks) Update(types.NamespacedName, bool) terraform.CallbackFn {
+	return c.result("update")
+}
+func (c *pscHoldCallbacks) Destroy(types.NamespacedName, bool) terraform.CallbackFn {
+	return c.result("destroy")
 }

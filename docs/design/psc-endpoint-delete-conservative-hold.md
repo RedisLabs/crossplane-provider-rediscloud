@@ -18,3 +18,16 @@ The CR annotation is not an authorization boundary. This requires trusted CR met
 ## Verification and rollout
 
 Hosted fake-only tests must cover real managed reconciliation and API-server CAS, default-off lifecycle, initialized accepted-503, noninitialized wait, restart and concurrent reservations, stale and replaced identities, flag-off marker, orphan behavior and sanitized diagnostics. Independent security review and exact-head CI are required. No live Cloud test or deployment is authorized here. Disable the flag to prevent new reservations; this does not clear prior holds. Rolling back to an old binary may bypass them. Existing [Pro design](pro-delete-conservative-hold.md) documents the broader unresolved trust model; no business decision is made.
+## Hosted integration coverage (pending)
+
+The credential-free hosted fixture is designed to run the actual managed reconciler and pinned
+Terraform provider against a loopback Cloud model and a disposable Kubernetes
+API server. Named cases cover the flag-off normal path, opt-in successful delete,
+and opt-in accepted-then-503 with a still-visible initialized endpoint. Each
+held case reconstructs the reconciler with the feature disabled and requires
+the original API-server UID, deletion timestamp, managed finalizer and intent,
+no opened upstream workspace and one fake DELETE. This is an in-process
+reconstruction, not a process or pod restart. It does not establish Cloud task
+semantics, live GCP cleanup, trusted markers, cross-writer exclusion or recovery.
+Non-initialized endpoints, Orphan policies and concurrent actual API reservations
+need separate hosted coverage.
