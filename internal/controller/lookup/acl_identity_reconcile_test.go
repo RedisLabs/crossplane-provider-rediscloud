@@ -25,6 +25,7 @@ const (
 	fixtureLookupInitial   = "initial"
 	fixtureLookupRecovery  = "recovery"
 	fixtureLookupSafeError = "lookup failed; check provider configuration and Redis Cloud access"
+	fixtureNamedACLRow     = `{"name":"fixture","id":42}`
 )
 
 func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo // Each lookup and response transition is checked explicitly.
@@ -59,32 +60,37 @@ func TestACLLookupIdentityValidationAndRecovery(t *testing.T) { //nolint:gocyclo
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			idField := `,"id":42`
+			rows := fixtureNamedACLRow
 			calls := 0
 			kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != tc.path {
+				if r.Method != http.MethodGet || r.URL.Path != tc.path || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
 					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 					http.Error(w, "unexpected", http.StatusBadRequest)
 					return
 				}
 				calls++
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = fmt.Fprintf(w, `{"%s":[{"name":"fixture"%s}]}`, tc.list, idField)
+				_, _ = fmt.Fprintf(w, `{"%s":[%s]}`, tc.list, rows)
 			}), tc.obj)
 			run := tc.reconcile(kube)
 			for _, step := range []struct {
-				name, idField, wantID string
-				ready                 corev1.ConditionStatus
-				delay                 bool
+				name, rows, wantID string
+				ready              corev1.ConditionStatus
+				delay              bool
 			}{
-				{fixtureLookupInitial, `,"id":42`, "42", corev1.ConditionTrue, false},
-				{"missing", "", "", corev1.ConditionFalse, true},
-				{"zero", `,"id":0`, "0", corev1.ConditionTrue, false},
-				{"negative", `,"id":-1`, "-1", corev1.ConditionTrue, false},
-				{fixtureLookupRecovery, `,"id":43`, "43", corev1.ConditionTrue, false},
+				{fixtureLookupInitial, fixtureNamedACLRow, "42", corev1.ConditionTrue, false},
+				{"null_row", `{"name":"fixture","id":42},null`, "", corev1.ConditionFalse, true},
+				{"after_null", fixtureNamedACLRow, "42", corev1.ConditionTrue, false},
+				{"missing_name", `{"name":"fixture","id":42},{"id":2}`, "", corev1.ConditionFalse, true},
+				{"after_missing_name", fixtureNamedACLRow, "42", corev1.ConditionTrue, false},
+				{"known_other", `{"name":"fixture","id":42},{"name":"","id":2}`, "42", corev1.ConditionTrue, false},
+				{"missing", `{"name":"fixture"}`, "", corev1.ConditionFalse, true},
+				{"zero", `{"name":"fixture","id":0}`, "0", corev1.ConditionTrue, false},
+				{"negative", `{"name":"fixture","id":-1}`, "-1", corev1.ConditionTrue, false},
+				{fixtureLookupRecovery, `{"name":"fixture","id":43}`, "43", corev1.ConditionTrue, false},
 			} {
 				t.Run(step.name, func(t *testing.T) {
-					idField = step.idField
+					rows = step.rows
 					before := calls
 					result, err := run(context.Background(), request(name))
 					if err != nil || calls != before+1 {

@@ -64,16 +64,20 @@ func ObserveCloudAccount(item *cloud_accounts.CloudAccount) lookupv1alpha1.Cloud
 }
 
 // MatchNamed returns the single item whose name equals want.
-func MatchNamed[T any](items []*T, want string, nameOf func(*T) string) (*T, error) {
+func MatchNamed[T any](items []*T, want string, nameOf func(*T) *string) (*T, error) {
 	if want == "" {
 		return nil, fmt.Errorf("name is required")
 	}
 	matched := make([]*T, 0, 1)
 	for _, item := range items {
 		if item == nil {
-			continue
+			return nil, fmt.Errorf("named lookup entry is missing")
 		}
-		if nameOf(item) == want {
+		name := nameOf(item)
+		if name == nil {
+			return nil, fmt.Errorf("named lookup entry name is missing")
+		}
+		if *name == want {
 			matched = append(matched, item)
 		}
 	}

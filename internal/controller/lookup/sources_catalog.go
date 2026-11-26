@@ -13,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	rediscloud "github.com/RedisLabs/rediscloud-go-api"
-	"github.com/RedisLabs/rediscloud-go-api/redis"
 	"github.com/RedisLabs/rediscloud-go-api/service/access_control_lists/redis_rules"
 	"github.com/RedisLabs/rediscloud-go-api/service/access_control_lists/roles"
 	"github.com/RedisLabs/rediscloud-go-api/service/access_control_lists/users"
@@ -49,8 +48,8 @@ func readACLRole(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 	if err != nil {
 		return lookupv1alpha1.ACLRoleObservation{}, errors.Wrap(err, "cannot list ACL roles")
 	}
-	matched, err := lookup.MatchNamed(items, obj.Spec.ForProvider.Name, func(role *roles.GetRoleResponse) string {
-		return redis.StringValue(role.Name)
+	matched, err := lookup.MatchNamed(items, obj.Spec.ForProvider.Name, func(role *roles.GetRoleResponse) *string {
+		return role.Name
 	})
 	if err != nil {
 		return lookupv1alpha1.ACLRoleObservation{}, err
@@ -87,8 +86,8 @@ func readACLRule(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 	if err != nil {
 		return lookupv1alpha1.ACLRuleObservation{}, errors.Wrap(err, "cannot list ACL rules")
 	}
-	matched, err := lookup.MatchNamed(items, obj.Spec.ForProvider.Name, func(rule *redis_rules.GetRedisRuleResponse) string {
-		return redis.StringValue(rule.Name)
+	matched, err := lookup.MatchNamed(items, obj.Spec.ForProvider.Name, func(rule *redis_rules.GetRedisRuleResponse) *string {
+		return rule.Name
 	})
 	if err != nil {
 		return lookupv1alpha1.ACLRuleObservation{}, err
@@ -125,8 +124,8 @@ func readACLUser(ctx context.Context, api *rediscloud.Client, obj *lookupv1alpha
 	if err != nil {
 		return lookupv1alpha1.ACLUserObservation{}, errors.Wrap(err, "cannot list ACL users")
 	}
-	matched, err := lookup.MatchNamed(items, obj.Spec.ForProvider.Name, func(user *users.GetUserResponse) string {
-		return redis.StringValue(user.Name)
+	matched, err := lookup.MatchNamed(items, obj.Spec.ForProvider.Name, func(user *users.GetUserResponse) *string {
+		return user.Name
 	})
 	if err != nil {
 		return lookupv1alpha1.ACLUserObservation{}, err
