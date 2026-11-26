@@ -118,6 +118,28 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				http.Error(w, "malformed update", http.StatusBadRequest)
 				return
 			}
+			if tracePath := os.Getenv("QA_SOURCE_PAYLOAD_TRACE"); tracePath != "" {
+				sourceIP, present := body["sourceIp"]
+				entry, err := json.Marshal(map[string]any{"present": present, "value": sourceIP})
+				if err != nil {
+					unexpected = true
+					http.Error(w, "cannot encode fake source CIDRs", http.StatusInternalServerError)
+					return
+				}
+				f, err := os.OpenFile(tracePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+				if err != nil {
+					unexpected = true
+					http.Error(w, "cannot open fake source trace", http.StatusInternalServerError)
+					return
+				}
+				_, writeErr := f.Write(append(entry, '\n'))
+				closeErr := f.Close()
+				if writeErr != nil || closeErr != nil {
+					unexpected = true
+					http.Error(w, "cannot write fake source trace", http.StatusInternalServerError)
+					return
+				}
+			}
 			if cidrMode {
 				expected := []any{fixtureInitialSourceCIDR}
 				finalUpdate := 1

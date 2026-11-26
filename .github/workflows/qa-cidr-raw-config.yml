@@ -7,7 +7,7 @@ permissions:
 jobs:
   observe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -51,7 +51,23 @@ jobs:
           export QA_TEST_TERRAFORM="$RUNNER_TEMP/cidr/bin/terraform"
           export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/cidr/plugins"
           export QA_RAW_CONFIG_TRACE="$RUNNER_TEMP/cidr/raw-config-trace"
+          export QA_SOURCE_PAYLOAD_TRACE="$RUNNER_TEMP/cidr/baseline-payloads"
           sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
           python3 scripts/qa_raw_config/run_case.py "$FIXTURE_CASE"
           sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
           python3 scripts/qa_raw_config/report.py "$FIXTURE_CASE" "$QA_RAW_CONFIG_TRACE"
+      - name: Compare omitted-spec late-initialization behavior and fake update payloads
+        if: matrix.case == 'lifecycle'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export QA_TEST_TERRAFORM="$RUNNER_TEMP/cidr/bin/terraform"
+          export QA_TEST_PROVIDER_DIR="$RUNNER_TEMP/cidr/plugins"
+          export QA_RAW_CONFIG_TRACE="$RUNNER_TEMP/cidr/ignored-raw-config-trace"
+          export QA_SOURCE_PAYLOAD_TRACE="$RUNNER_TEMP/cidr/ignored-payloads"
+          python3 scripts/qa_raw_config/compare_late_init.py prepare
+          sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
+          python3 scripts/qa_raw_config/run_case.py lifecycle
+          sha256sum -c "$RUNNER_TEMP/cidr/provider.sha256"
+          python3 scripts/qa_raw_config/report.py lifecycle "$QA_RAW_CONFIG_TRACE"
+          python3 scripts/qa_raw_config/compare_late_init.py verify "$RUNNER_TEMP/cidr/raw-config-trace" "$QA_RAW_CONFIG_TRACE" "$RUNNER_TEMP/cidr/baseline-payloads" "$QA_SOURCE_PAYLOAD_TRACE"
