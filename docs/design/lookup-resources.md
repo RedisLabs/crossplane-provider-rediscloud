@@ -136,3 +136,14 @@ explicit contract and tests rather than being inferred here.
 A missing card-ending field is not `0000`; when a last-four filter is active, an otherwise eligible method without that field makes the lookup unavailable rather than silently hiding a potentially matching method. A uniquely matched method without an ID fails the lookup and clears stale status; explicit numeric zero retains its existing behavior. A method without card-ending data and without a last-four filter publishes an empty value rather than invented digits. Hosted fake API tests must exercise valid zero, missing digits, mixed known/unknown digits, missing ID and recovery; they are not live qualification.
 
 A null payment row is ambiguous. For a non-null row, missing type, suffix or expiry information relevant to an active filter makes the lookup unavailable unless another known filter definitively excludes it. A future expiration year does not require the month to determine non-expiration, and disabled expiry filtering does not require expiry fields. Explicit out-of-range expiration values retain inherited behavior and are not validated here; these checks do not establish full list completeness.
+
+## PSC service lookup failure boundaries
+
+The hosted-only fake service lookup fixture exercises task-based GETs on one
+object through valid ID, missing service ID, explicit zero and recovery. It also
+characterizes the pinned SDK's nil task-ID dereference on a successful task
+response without an ID: the direct reconciler call panics before clearing stale
+status. This is a fake reproduction target, not evidence Cloud emits such a
+response or that a controller process exits. Explicit zero records current
+lookup behavior, not a live API validity guarantee. The missing-task-ID case
+is an open SDK safety gap and the test does not imply recovery.
