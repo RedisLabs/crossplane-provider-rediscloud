@@ -172,7 +172,7 @@ func verifyExperimentalFakeAbsence(ctx context.Context, rawURL string) error { /
 	if err != nil {
 		return errExperimentalHold
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusNotFound {
 		return errExperimentalHold
 	}

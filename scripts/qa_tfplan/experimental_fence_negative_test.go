@@ -263,7 +263,7 @@ func TestExperimentalFencePostReservationMutation(t *testing.T) { //nolint:gocyc
 	}
 }
 
-func TestExperimentalFakeAbsenceGuard(t *testing.T) {
+func TestExperimentalFakeAbsenceGuard(t *testing.T) { //nolint:gocyclo // Exercise all invalid fake responses and origins.
 	requireHostedFixture(t)
 	var mu sync.Mutex
 	status := http.StatusNotFound
