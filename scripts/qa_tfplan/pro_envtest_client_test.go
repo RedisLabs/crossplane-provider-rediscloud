@@ -19,7 +19,7 @@ import (
 // pinned provider remain loopback-only; no Kubernetes or Cloud credentials.
 func newProEnvtestClient(t *testing.T, scheme *runtime.Scheme, item *pro.Database) client.Client { //nolint:gocyclo // Hosted setup and conflict checks are deliberately kept together.
 	t.Helper()
-	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("KUBEBUILDER_ASSETS") == "" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue || os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		t.Fatal("hosted envtest assets are required")
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {

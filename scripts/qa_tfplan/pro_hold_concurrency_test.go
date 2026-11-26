@@ -18,8 +18,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func TestProductProHoldConcurrentReservation(t *testing.T) {
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+func TestProductProHoldConcurrentReservation(t *testing.T) { //nolint:gocyclo // All API-server race preconditions are checked.
+	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue {
 		t.Skip("hosted Actions only")
 	}
 	ctx := context.Background()

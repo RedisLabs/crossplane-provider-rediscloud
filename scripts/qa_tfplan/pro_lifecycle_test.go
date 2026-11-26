@@ -37,7 +37,7 @@ import (
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
-	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
+	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, fixtureCaseSuccess) })
 	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "create_unknown") })
 	t.Run("delete_accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, "delete_unknown") })
 }
@@ -46,11 +46,11 @@ func TestProductProDeleteHold(t *testing.T) {
 	for _, tc := range []struct {
 		name, mode string
 		enabled    bool
-	}{{"default_off", "success", false}, {"success", "success", true}, {"accepted_503", "delete_delayed", true}} {
+	}{{"default_off", fixtureCaseSuccess, false}, {fixtureCaseSuccess, fixtureCaseSuccess, true}, {"accepted_503", "delete_delayed", true}} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("QA_PRODUCT_HOLD_ENVTEST", "true")
+			t.Setenv("QA_PRODUCT_HOLD_ENVTEST", fixtureStringTrue)
 			if tc.enabled {
-				t.Setenv("QA_PRODUCT_HOLD_TEST", "true")
+				t.Setenv("QA_PRODUCT_HOLD_TEST", fixtureStringTrue)
 			}
 			runProDatabaseFixture(t, tc.mode)
 		})
@@ -204,7 +204,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 	item.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
 	item.Spec.ProviderConfigReference = &xpv2.Reference{Name: "fixture-config"}
 	var kube client.Client
-	if os.Getenv("QA_PRODUCT_HOLD_ENVTEST") == "true" {
+	if os.Getenv("QA_PRODUCT_HOLD_ENVTEST") == fixtureStringTrue {
 		kube = newProEnvtestClient(t, scheme, item)
 	} else {
 		kube = cfake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(item).WithObjects(item).Build()
@@ -220,7 +220,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		inner := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
 		return procontroller.NewDeleteHoldConnector(kube, kube, inner, enabled)
 	}
-	connector := buildConnector(store, callback, os.Getenv("QA_PRODUCT_HOLD_TEST") == "true")
+	connector := buildConnector(store, callback, os.Getenv("QA_PRODUCT_HOLD_TEST") == fixtureStringTrue)
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
 	await := func(command string, expectFailure bool) {
 		t.Helper()
@@ -318,7 +318,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		t.Fatal(err)
 	}
 	await("terraform destroy ", mode == "delete_unknown" || mode == "delete_delayed")
-	if os.Getenv("QA_PRODUCT_HOLD_TEST") == "true" {
+	if os.Getenv("QA_PRODUCT_HOLD_TEST") == fixtureStringTrue {
 		// Reconstruct the managed reconciler and connector around the persisted CR.
 		// This is not a process restart and proves only this fake Cloud fixture.
 		store = newTrackingNativeStore()
@@ -342,7 +342,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 			}
 		}
 		mu.Lock()
-		if unexpected || deleteRequests != 1 || (mode == "delete_delayed" && !exists) || (mode == "success" && exists) {
+		if unexpected || deleteRequests != 1 || (mode == "delete_delayed" && !exists) || (mode == fixtureCaseSuccess && exists) {
 			mu.Unlock()
 			t.Fatal("unexpected held fake state after initial reconciles")
 		}
