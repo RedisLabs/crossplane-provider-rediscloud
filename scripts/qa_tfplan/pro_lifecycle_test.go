@@ -35,7 +35,12 @@ import (
 // against loopback fake Cloud, with a pre-existing fake parent; it never contacts Cloud.
 const fixtureProDatabasePath = "/v1/subscriptions/1/databases/42"
 
-func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
+func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
+	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, false) })
+	t.Run("accepted_then_503", func(t *testing.T) { runProDatabaseFixture(t, true) })
+}
+
+func runProDatabaseFixture(t *testing.T, acceptedUnknown bool) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
 	requireHostedFixture(t)
 	tf, plugins := os.Getenv("QA_TEST_TERRAFORM"), os.Getenv("QA_TEST_PROVIDER_DIR")
 	if tf == "" || plugins == "" {
@@ -43,6 +48,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	}
 	var mu sync.Mutex
 	exists, unexpected := false, false
+	createRequests, deleteRequests := 0, 0
 	rule := desiredEviction
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -57,7 +63,13 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fixtureProParentPath:
 			response = map[string]any{"id": 1, fixtureNameKey: "fixture-existing-parent", fixtureStatusKey: fixtureActive}
-		case r.Method == http.MethodPost && r.URL.Path == fixtureProDBsPath && !exists:
+		case r.Method == http.MethodPost && r.URL.Path == fixtureProDBsPath:
+			createRequests++
+			if exists {
+				unexpected = true
+				http.Error(w, "duplicate create", http.StatusConflict)
+				return
+			}
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil || body[fixtureNameKey] != fixtureProDBName || body[fixtureEvictionKey] != rule {
 				unexpected = true
@@ -65,6 +77,10 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				return
 			}
 			exists = true
+			if acceptedUnknown {
+				http.Error(w, "injected accepted create with unavailable response", http.StatusServiceUnavailable)
+				return
+			}
 			response = map[string]any{fixtureTaskKey: fixtureCreateTask}
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/subscriptions/1/databases/42/tags":
 			response = map[string]any{fixtureTagsKey: []any{}}
@@ -93,6 +109,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		case r.Method == http.MethodGet && r.URL.Path == fixtureUpdateTaskPath:
 			response = map[string]any{fixtureStatusKey: fixtureTaskComplete}
 		case r.Method == http.MethodDelete && r.URL.Path == fixtureProDatabasePath && exists:
+			deleteRequests++
 			exists = false
 			response = map[string]any{fixtureTaskKey: fixtureDeleteTask}
 		case r.Method == http.MethodGet && r.URL.Path == fixtureDeleteTaskPath:
@@ -160,7 +177,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	callback := &fakeCallback{done: make(chan error, 1)}
 	connector := ujcontroller.NewConnector(kube, store, setup, providerconfig.GetProvider().Resources["rediscloud_subscription_database"], ujcontroller.WithCallbackProvider(callback))
 	rec := managed.NewReconciler(mgr, xpresource.ManagedKind(pro.Database_GroupVersionKind), managed.WithExternalConnector(connector), managed.WithInitializers(), managed.WithFinalizer(terraform.NewWorkspaceFinalizer(store.inner, xpresource.NewAPIFinalizer(kube, managed.FinalizerName))))
-	await := func(command string) {
+	await := func(command string, expectFailure bool) {
 		t.Helper()
 		for i := 0; i < 8; i++ {
 			if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
@@ -168,8 +185,8 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 			}
 			select {
 			case err := <-callback.done:
-				if err != nil {
-					t.Fatal(err)
+				if (err != nil) != expectFailure {
+					t.Fatalf("unexpected operation result: %v", err)
 				}
 				return
 			case <-time.After(2 * time.Second):
@@ -178,8 +195,8 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 				if strings.Contains(actual, command) && !strings.Contains(actual, "-refresh-only") {
 					select {
 					case err := <-callback.done:
-						if err != nil {
-							t.Fatal(err)
+						if (err != nil) != expectFailure {
+							t.Fatalf("unexpected operation result: %v", err)
 						}
 						return
 					case <-time.After(90 * time.Second):
@@ -190,7 +207,33 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 		}
 		t.Fatal("callback missing")
 	}
-	await("terraform apply ")
+	await("terraform apply ", acceptedUnknown)
+	if acceptedUnknown {
+		verifyNoACLCreateReplay(t, rec, store, callback, name)
+		mu.Lock()
+		if !exists || unexpected || createRequests != 1 || deleteRequests != 0 {
+			mu.Unlock()
+			t.Fatal("uncertain Pro create was replayed, deleted or not retained")
+		}
+		mu.Unlock()
+		for _, path := range []string{fixtureProParentPath, fixtureProDatabasePath} {
+			req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("X-Api-Key", dummyCredential)
+			req.Header.Set("X-Api-Secret-Key", dummyCredential)
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = res.Body.Close()
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("fake read %s: %d", path, res.StatusCode)
+			}
+		}
+		return
+	}
 	for i := 0; i < 5; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 			t.Fatal(err)
@@ -229,7 +272,7 @@ func TestProDatabaseManagedLifecycleLoopback(t *testing.T) { //nolint:gocyclo //
 	if err := kube.Delete(context.Background(), current); err != nil {
 		t.Fatal(err)
 	}
-	await("terraform destroy ")
+	await("terraform destroy ", false)
 	for i := 0; i < 30; i++ {
 		if _, err := rec.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
 			t.Fatal(err)
