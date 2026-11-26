@@ -23,6 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const fixtureACLHTTPName = "fixture"
+
 func TestACLHTTPFailureRecovery(t *testing.T) { //nolint:gocyclo // Assert both actual reconcilers across the full sequence.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
@@ -35,13 +37,13 @@ func TestACLHTTPFailureRecovery(t *testing.T) { //nolint:gocyclo // Assert both 
 		reconcile        func(client.Client) func(context.Context, reconcile.Request) (reconcile.Result, error)
 		status           func(client.Object) (string, bool, []xpv1.Condition)
 	}{
-		{"role", "/acl/roles", "roles", &lookupv1alpha1.ACLRole{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.ACLRoleSpec{ProviderConfigRef: ref, ForProvider: lookupv1alpha1.ACLRoleParameters{Name: "fixture"}}}, func(c client.Client) func(context.Context, reconcile.Request) (reconcile.Result, error) {
+		{"role", "/acl/roles", "roles", &lookupv1alpha1.ACLRole{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.ACLRoleSpec{ProviderConfigRef: ref, ForProvider: lookupv1alpha1.ACLRoleParameters{Name: fixtureACLHTTPName}}}, func(c client.Client) func(context.Context, reconcile.Request) (reconcile.Result, error) {
 			return (&ACLRoleReconciler{Client: c}).Reconcile
 		}, func(o client.Object) (string, bool, []xpv1.Condition) {
 			v := o.(*lookupv1alpha1.ACLRole)
 			return v.Status.AtProvider.ID, reflect.DeepEqual(v.Status.AtProvider, lookupv1alpha1.ACLRoleObservation{}), v.Status.Conditions
 		}},
-		{"user", "/acl/users", "users", &lookupv1alpha1.ACLUser{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.ACLUserSpec{ProviderConfigRef: ref, ForProvider: lookupv1alpha1.ACLUserParameters{Name: "fixture"}}}, func(c client.Client) func(context.Context, reconcile.Request) (reconcile.Result, error) {
+		{"user", "/acl/users", "users", &lookupv1alpha1.ACLUser{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.ACLUserSpec{ProviderConfigRef: ref, ForProvider: lookupv1alpha1.ACLUserParameters{Name: fixtureACLHTTPName}}}, func(c client.Client) func(context.Context, reconcile.Request) (reconcile.Result, error) {
 			return (&ACLUserReconciler{Client: c}).Reconcile
 		}, func(o client.Object) (string, bool, []xpv1.Condition) {
 			v := o.(*lookupv1alpha1.ACLUser)
