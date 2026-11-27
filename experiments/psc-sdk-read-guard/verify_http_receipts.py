@@ -5,7 +5,8 @@ import sys
 
 root = "TestPSCReadTaskValidationHTTP"
 cases = ("missing", "null", "empty", "empty_body", "invalid_json", "initial_forbidden", "task_forbidden", "missing_resource", "valid")
-expected = {f"{root}/{case}" for case in cases}
+operations = ("service", "service_active_active", "endpoints", "endpoints_active_active", "creation_script", "creation_script_active_active", "deletion_script", "deletion_script_active_active")
+expected = {f"{root}/{operation}/{case}" for operation in operations for case in cases}
 events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
 passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
 failed = {e.get("Test") for e in events if e.get("Action") in {"fail", "skip"}}
