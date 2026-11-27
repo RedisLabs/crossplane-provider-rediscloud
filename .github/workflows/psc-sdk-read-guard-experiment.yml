@@ -1,0 +1,82 @@
+name: Credential-free PSC SDK read guard experiment
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sdk-read-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          repository: RedisLabs/rediscloud-go-api
+          ref: 2cb6b15f705ae2969253d6e3da7d870e7d22cc44
+          path: candidate-sdk
+          persist-credentials: false
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version-file: candidate-sdk/go.mod
+      - name: Confirm baseline panic then apply read-only guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate-sdk rev-parse HEAD)" = 2cb6b15f705ae2969253d6e3da7d870e7d22cc44
+          test -z "$(git -C candidate-sdk status --porcelain)"
+          base64 --decode experiments/psc-sdk-read-guard/tests.patch.b64 > "$RUNNER_TEMP/psc-tests.patch"
+          base64 --decode experiments/psc-sdk-read-guard/guard.patch.b64 > "$RUNNER_TEMP/psc-guard.patch"
+          echo 'bb4e49f55adb0839cdc40b24b08ac53c88269e154cb9c04a1aeafc9500ad23dc  '"$RUNNER_TEMP/psc-tests.patch" | sha256sum -c -
+          echo 'c620bf88b80affd2cd1124a0e0a558dff61ebbe270f0bc83e1e9596a395c7188  '"$RUNNER_TEMP/psc-guard.patch" | sha256sum -c -
+          git -C candidate-sdk apply "$RUNNER_TEMP/psc-tests.patch"
+          set +e
+          (cd candidate-sdk && go test ./service/psc -run '^TestPSCReadRejectsMissingTaskID/service/missing$' -count=1 -v) > "$RUNNER_TEMP/psc-baseline.log" 2>&1
+          baseline_status=$?
+          set -e
+          cat "$RUNNER_TEMP/psc-baseline.log"
+          test "$baseline_status" -ne 0
+          grep -F 'TestPSCReadRejectsMissingTaskID/service/missing' "$RUNNER_TEMP/psc-baseline.log"
+          grep -F 'panic: runtime error: invalid memory address or nil pointer dereference' "$RUNNER_TEMP/psc-baseline.log"
+          git -C candidate-sdk apply "$RUNNER_TEMP/psc-guard.patch"
+      - name: Verify every fake read operation and normal errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidate-sdk
+          go test ./service/psc -run '^TestPSCReadRejectsMissingTaskID$' -count=1 -json | tee "$RUNNER_TEMP/psc-candidate.jsonl"
+          python3 "$GITHUB_WORKSPACE/experiments/psc-sdk-read-guard/verify_receipts.py" "$RUNNER_TEMP/psc-candidate.jsonl"
+      - name: Exercise actual SDK HTTP client against loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode experiments/psc-sdk-read-guard/http-tests.patch.b64 > "$RUNNER_TEMP/psc-http-tests.patch"
+          echo '39df1f5cc3a495dd4750c8be062641bb16b9e8b826d259ec7d2bfa614b365438  '"$RUNNER_TEMP/psc-http-tests.patch" | sha256sum -c -
+          git -C candidate-sdk apply "$RUNNER_TEMP/psc-http-tests.patch"
+          cd candidate-sdk
+          go test . -run '^TestPSCReadTaskValidationHTTP$' -count=1 -json | tee "$RUNNER_TEMP/psc-http.jsonl"
+          python3 "$GITHUB_WORKSPACE/experiments/psc-sdk-read-guard/verify_http_receipts.py" "$RUNNER_TEMP/psc-http.jsonl"
+      - name: Exercise real reconciler without panic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 experiments/psc-sdk-read-guard/disable_boundary.py
+          go mod edit -replace "github.com/RedisLabs/rediscloud-go-api=$GITHUB_WORKSPACE/candidate-sdk"
+          go test -mod=mod ./internal/controller/lookup -run '^Test(PSCServiceMalformedTaskRecovery|PSCEndpointsMalformedTaskRecovery)$' -count=1 -json | tee "$RUNNER_TEMP/psc-reconciler.jsonl"
+          python3 experiments/psc-sdk-read-guard/verify_reconciler_receipts.py "$RUNNER_TEMP/psc-reconciler.jsonl"
+      - name: Format disposable SDK review files
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w candidate-sdk/service/psc/service.go candidate-sdk/service/psc/read_task_validation_test.go candidate-sdk/psc_read_task_http_test.go
+          mkdir -p "$RUNNER_TEMP/psc-formatted/service/psc"
+          cp candidate-sdk/service/psc/service.go candidate-sdk/service/psc/read_task_validation_test.go "$RUNNER_TEMP/psc-formatted/service/psc/"
+          cp candidate-sdk/psc_read_task_http_test.go "$RUNNER_TEMP/psc-formatted/"
+          sha256sum "$RUNNER_TEMP/psc-formatted/service/psc/"*.go "$RUNNER_TEMP/psc-formatted/psc_read_task_http_test.go"
+      - uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
+        with:
+          name: psc-sdk-formatted-review
+          path: ${{ runner.temp }}/psc-formatted/
+          if-no-files-found: error
