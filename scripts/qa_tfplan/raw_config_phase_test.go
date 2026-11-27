@@ -18,7 +18,7 @@ func markRawConfigPhase(t *testing.T, phase string, kube client.Client, name str
 	if path == "" {
 		return
 	}
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureTrue {
 		t.Fatal("raw config trace is hosted only")
 	}
 	item := &pro.Database{}
