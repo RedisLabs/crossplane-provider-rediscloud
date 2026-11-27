@@ -42,7 +42,7 @@ const (
 func TestACLUserManagedLifecycleLoopback(t *testing.T) {
 	t.Run("create_rejected", func(t *testing.T) { runACLUserFixture(t, "rejected") })
 	t.Run("accepted_then_503", func(t *testing.T) { runACLUserFixture(t, fixtureUncertainMode) })
-	t.Run("lifecycle", func(t *testing.T) { runACLUserFixture(t, "success") })
+	t.Run("lifecycle", func(t *testing.T) { runACLUserFixture(t, fixtureSuccess) })
 }
 
 func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixture checks the complete ordered lifecycle.
@@ -54,7 +54,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 	var mu sync.Mutex
 	reads, writes := 0, 0
 	exists, unexpected := false, false
-	rejectCreate, rejectUpdate, rejectDelete := mode != "success", true, true
+	rejectCreate, rejectUpdate, rejectDelete := mode != fixtureSuccess, true, true
 	createRequests, deleteRequests := 0, 0
 	rule := "fixture-rule-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +216,7 @@ func runACLUserFixture(t *testing.T, mode string) { //nolint:gocyclo // The fixt
 		}
 		t.Fatal("callback missing")
 	}
-	if mode != "success" {
+	if mode != fixtureSuccess {
 		await("terraform apply ", true)
 		verifyNoACLCreateReplay(t, rec, store, callback, name)
 		mu.Lock()

@@ -42,9 +42,9 @@ const fixtureSourceCIDRDriftMode = "source_cidr_drift"
 const fixtureInitialSourceCIDR = "192.0.2.0/24"
 
 func TestProDatabaseManagedLifecycleLoopback(t *testing.T) {
-	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, "success") })
+	t.Run("lifecycle", func(t *testing.T) { runProDatabaseFixture(t, fixtureSuccess) })
 	t.Run(fixtureSourceCIDRMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRMode) })
-	if os.Getenv("QA_POLICY_TRANSITION") == "true" {
+	if os.Getenv("QA_POLICY_TRANSITION") == fixtureTrue {
 		t.Run(fixturePolicyTransitionMode, func(t *testing.T) { runProDatabaseFixture(t, fixturePolicyTransitionMode) })
 	}
 	t.Run(fixtureSourceCIDRDriftMode, func(t *testing.T) { runProDatabaseFixture(t, fixtureSourceCIDRDriftMode) })
@@ -177,7 +177,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				sourceIPs = expected
 				cidrUpdates++
 			}
-			if os.Getenv("QA_WRITE_EXPERIMENT") == "true" && mode == "success" {
+			if os.Getenv("QA_WRITE_EXPERIMENT") == fixtureTrue && mode == fixtureSuccess {
 				if value, present := body["sourceIp"]; present {
 					ips, ok := value.([]any)
 					if !ok {
@@ -189,7 +189,7 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 				}
 			}
 			if mode == fixturePolicyTransitionMode {
-				if publicAccess && publicParentReads == 0 && os.Getenv("QA_WRITE_EXPERIMENT") != "true" {
+				if publicAccess && publicParentReads == 0 && os.Getenv("QA_WRITE_EXPERIMENT") != fixtureTrue {
 					unexpected = true
 					http.Error(w, "updated fake parent policy was not read", http.StatusBadRequest)
 					return
@@ -469,15 +469,15 @@ func runProDatabaseFixture(t *testing.T, mode string) { //nolint:gocyclo // The 
 		mu.Unlock()
 		t.Fatal("Pro database update or fixture trace invalid")
 	}
-	if mode == fixturePolicyTransitionMode && os.Getenv("QA_WRITE_EXPERIMENT") != "true" && (policyUpdates != 2 || publicParentReads == 0 || !reflect.DeepEqual(sourceIPs, []any{fixturePublicCIDR})) {
+	if mode == fixturePolicyTransitionMode && os.Getenv("QA_WRITE_EXPERIMENT") != fixtureTrue && (policyUpdates != 2 || publicParentReads == 0 || !reflect.DeepEqual(sourceIPs, []any{fixturePublicCIDR})) {
 		mu.Unlock()
 		t.Fatal("fake public default update was not observed after the modeled policy transition")
 	}
-	if mode == "success" && os.Getenv("QA_WRITE_EXPERIMENT") == "true" && !reflect.DeepEqual(sourceIPs, []any{fixturePublicCIDR}) {
+	if mode == fixtureSuccess && os.Getenv("QA_WRITE_EXPERIMENT") == fixtureTrue && !reflect.DeepEqual(sourceIPs, []any{fixturePublicCIDR}) {
 		mu.Unlock()
 		t.Fatal("fake source CIDR did not remain unchanged after unrelated update")
 	}
-	if mode == fixturePolicyTransitionMode && os.Getenv("QA_WRITE_EXPERIMENT") == "true" {
+	if mode == fixturePolicyTransitionMode && os.Getenv("QA_WRITE_EXPERIMENT") == fixtureTrue {
 		seen := map[any]bool{}
 		for _, ip := range sourceIPs {
 			seen[ip] = true

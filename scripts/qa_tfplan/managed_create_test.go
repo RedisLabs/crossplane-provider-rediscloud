@@ -32,6 +32,8 @@ import (
 )
 
 const (
+	fixtureTrue              = "true"
+	fixtureSuccess           = "success"
 	fixtureSubscriptionIDKey = "subscriptionId"
 	fixtureTFCLIArgsInit     = "TF_CLI_ARGS_init"
 	fixtureTFCLIArgsApply    = "TF_CLI_ARGS_apply"
@@ -95,7 +97,7 @@ const (
 
 func requireHostedFixture(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
+	if os.Getenv("GITHUB_ACTIONS") != fixtureTrue {
 		t.Skip("provider fixture requires GitHub Actions")
 	}
 }
