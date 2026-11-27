@@ -47,7 +47,7 @@ func TestPaymentMethodFilterAmbiguity(t *testing.T) { //nolint:gocyclo // Keep t
 		name, rows     string
 		exclude, ready bool
 	}{
-		{"initial", valid, true, true},
+		{fixtureLookupInitial, valid, true, true},
 		{"unknown_type", valid + `,{"id":2,"creditCardEndsWith":4242,"expirationMonth":12,"expirationYear":2099}`, true, false},
 		{"after_type", valid, true, true},
 		{"unknown_year", valid + `,{"id":2,"type":"Visa","creditCardEndsWith":4242,"expirationMonth":12}`, true, false},

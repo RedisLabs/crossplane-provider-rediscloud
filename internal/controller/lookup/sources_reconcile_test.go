@@ -110,7 +110,7 @@ func TestPrivateLinkEndpointScriptReconcileChecksSubscriptionAndLink(t *testing.
 	kube := lookupClient(t, taskRoutes(t, &calls, map[string]taskBody{
 		"/subscriptions/1001":                              {direct: `{"id":1001,"name":"example-pro"}`},
 		"/subscriptions/1001/private-link":                 {task: "link", resource: `{"status":"active","shareName":"example-share"}`},
-		"/subscriptions/1001/private-link/endpoint-script": {task: "script", resource: `{"resourceEndpointScript":"echo example"}`},
+		"/subscriptions/1001/private-link/endpoint-script": {task: fixtureTaskScript, resource: `{"resourceEndpointScript":"echo example"}`},
 	}), &lookupv1alpha1.PrivateLinkEndpointScript{
 		ObjectMeta: metav1.ObjectMeta{Name: "example-script"},
 		Spec: lookupv1alpha1.PrivateLinkEndpointScriptSpec{

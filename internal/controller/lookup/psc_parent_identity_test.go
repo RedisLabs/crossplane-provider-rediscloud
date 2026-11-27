@@ -23,6 +23,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const fixtureTaskScript = "script"
+const fixtureTaskEndpoints = "endpoints"
+
 const pscValidEndpointResponse = `{"pscServiceId":9,"endpoints":[{"id":3,"status":"active"}]}`
 
 func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both reconcilers and each transition must be exercised.
@@ -53,8 +56,8 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 		t.Run(tc.name, func(t *testing.T) {
 			calls := []string{}
 			paths := map[string]taskBody{
-				tc.path:                                  {task: "endpoints", resource: pscValidEndpointResponse},
-				tc.path + "/endpoints/3/creationScripts": {task: "script", resource: `{"script":{"terraformGcp":{"serviceAttachments":[]}}}`},
+				tc.path:                                  {task: fixtureTaskEndpoints, resource: pscValidEndpointResponse},
+				tc.path + "/endpoints/3/creationScripts": {task: fixtureTaskScript, resource: `{"script":{"terraformGcp":{"serviceAttachments":[]}}}`},
 			}
 			base := taskRoutes(t, &calls, paths)
 			kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +86,7 @@ func TestPSCEndpointsParentIdentity(t *testing.T) { //nolint:gocyclo // Both rec
 				{fixtureLookupRecovery, pscValidEndpointResponse, corev1.ConditionTrue, true},
 			} {
 				t.Run(step.name, func(t *testing.T) {
-					paths[tc.path] = taskBody{task: "endpoints", resource: step.resource}
+					paths[tc.path] = taskBody{task: fixtureTaskEndpoints, resource: step.resource}
 					before := len(calls)
 					result, err := run(context.Background(), request(name))
 					if err != nil {
@@ -154,8 +157,8 @@ func TestPSCEndpointsMalformedTaskRecovery(t *testing.T) { //nolint:gocyclo // B
 			var phase atomic.Value
 			phase.Store("")
 			paths := map[string]taskBody{
-				tc.path:                                  {task: "endpoints", resource: pscValidEndpointResponse},
-				tc.path + "/endpoints/3/creationScripts": {task: "script", resource: `{"script":{"terraformGcp":{"serviceAttachments":[]}}}`},
+				tc.path:                                  {task: fixtureTaskEndpoints, resource: pscValidEndpointResponse},
+				tc.path + "/endpoints/3/creationScripts": {task: fixtureTaskScript, resource: `{"script":{"terraformGcp":{"serviceAttachments":[]}}}`},
 			}
 			base := taskRoutes(t, &calls, paths)
 			kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +201,7 @@ func TestPSCEndpointsMalformedTaskRecovery(t *testing.T) { //nolint:gocyclo // B
 				ready          corev1.ConditionStatus
 				wantScript     bool
 			}{
-				{"initial", pscValidEndpointResponse, corev1.ConditionTrue, true},
+				{fixtureLookupInitial, pscValidEndpointResponse, corev1.ConditionTrue, true},
 				{"list_missing_task", pscValidEndpointResponse, corev1.ConditionFalse, false},
 				{"list_recovery_one", pscValidEndpointResponse, corev1.ConditionTrue, true},
 				{"list_missing_resource", pscValidEndpointResponse, corev1.ConditionFalse, false},
@@ -212,7 +215,7 @@ func TestPSCEndpointsMalformedTaskRecovery(t *testing.T) { //nolint:gocyclo // B
 			} {
 				t.Run(step.name, func(t *testing.T) {
 					phase.Store(step.name)
-					paths[tc.path] = taskBody{task: "endpoints", resource: step.resource}
+					paths[tc.path] = taskBody{task: fixtureTaskEndpoints, resource: step.resource}
 					before := len(calls)
 					result, err := run(context.Background(), request(name))
 					if err != nil {

@@ -20,8 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-const fixturePSCStaleID = "stale"
-
 func TestPSCServiceLookupIdentityRecovery(t *testing.T) { //nolint:gocyclo // Keep task, identity and recovery checks together.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
@@ -65,7 +63,7 @@ func TestPSCServiceLookupIdentityRecovery(t *testing.T) { //nolint:gocyclo // Ke
 		phase        int32
 		ready        bool
 	}{
-		{"initial", "7", 0, true}, {"missing_id", "", 1, false}, {"zero_id", "0", 2, true}, {"recovery", "8", 3, true},
+		{fixtureLookupInitial, "7", 0, true}, {"missing_id", "", 1, false}, {"zero_id", "0", 2, true}, {"recovery", "8", 3, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			phase.Store(tc.phase)
@@ -131,7 +129,7 @@ func TestPSCServiceMalformedTaskRecovery(t *testing.T) { //nolint:gocyclo // Kee
 		name  string
 		phase int32
 		ready bool
-	}{{"initial", 0, true}, {"missing_task_id", 1, false}, {"recovery_one", 2, true}, {"missing_resource", 3, false}, {"recovery_two", 4, true}} {
+	}{{fixtureLookupInitial, 0, true}, {"missing_task_id", 1, false}, {"recovery_one", 2, true}, {"missing_resource", 3, false}, {"recovery_two", 4, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			phase.Store(tc.phase)
 			beforeService, beforeTask := serviceCalls.Load(), taskCalls.Load()

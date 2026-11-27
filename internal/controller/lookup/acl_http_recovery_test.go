@@ -74,7 +74,7 @@ func TestACLHTTPFailureRecovery(t *testing.T) { //nolint:gocyclo // Assert both 
 				status int
 				ready  bool
 			}{
-				{"initial", http.StatusOK, true}, {"forbidden", http.StatusForbidden, false}, {"after_forbidden", http.StatusOK, true}, {"unavailable", http.StatusServiceUnavailable, false}, {"after_unavailable", http.StatusOK, true},
+				{fixtureLookupInitial, http.StatusOK, true}, {"forbidden", http.StatusForbidden, false}, {"after_forbidden", http.StatusOK, true}, {"unavailable", http.StatusServiceUnavailable, false}, {"after_unavailable", http.StatusOK, true},
 			} {
 				t.Run(step.name, func(t *testing.T) {
 					code.Store(int32(step.status))

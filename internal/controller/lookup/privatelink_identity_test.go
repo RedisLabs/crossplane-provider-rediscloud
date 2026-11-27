@@ -114,7 +114,7 @@ func TestPrivateLinkScriptParentIdentity(t *testing.T) { //nolint:gocyclo // Ver
 	bodies := map[string]taskBody{
 		"/subscriptions/1001":                              {direct: `{"id":1001}`},
 		"/subscriptions/1001/private-link":                 {task: identityLinkTask, resource: `{"subscriptionId":1001,"status":"active"}`},
-		"/subscriptions/1001/private-link/endpoint-script": {task: "script", resource: `{"resourceEndpointScript":"fixture-script"}`},
+		"/subscriptions/1001/private-link/endpoint-script": {task: fixtureTaskScript, resource: `{"resourceEndpointScript":"fixture-script"}`},
 	}
 	kube := lookupClient(t, onlyGET(t, taskRoutes(t, &calls, bodies)), obj)
 	rec := &PrivateLinkEndpointScriptReconciler{Client: kube}
