@@ -53,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           base64 --decode experiments/psc-sdk-read-guard/http-tests.patch.b64 > "$RUNNER_TEMP/psc-http-tests.patch"
-          echo '68581014fb1e734a1f941f9382829c708585bf323b474092bd3bed27d963db41  '"$RUNNER_TEMP/psc-http-tests.patch" | sha256sum -c -
+          echo '39df1f5cc3a495dd4750c8be062641bb16b9e8b826d259ec7d2bfa614b365438  '"$RUNNER_TEMP/psc-http-tests.patch" | sha256sum -c -
           git -C candidate-sdk apply "$RUNNER_TEMP/psc-http-tests.patch"
           cd candidate-sdk
           go test . -run '^TestPSCReadTaskValidationHTTP$' -count=1 -json | tee "$RUNNER_TEMP/psc-http.jsonl"
