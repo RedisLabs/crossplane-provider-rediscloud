@@ -58,3 +58,11 @@ jobs:
           cd candidate-sdk
           go test . -run '^TestPSCReadTaskValidationHTTP$' -count=1 -json | tee "$RUNNER_TEMP/psc-http.jsonl"
           python3 "$GITHUB_WORKSPACE/experiments/psc-sdk-read-guard/verify_http_receipts.py" "$RUNNER_TEMP/psc-http.jsonl"
+      - name: Exercise real reconciler without panic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 experiments/psc-sdk-read-guard/disable_boundary.py
+          go mod edit -replace "github.com/RedisLabs/rediscloud-go-api=$GITHUB_WORKSPACE/candidate-sdk"
+          go test -mod=mod ./internal/controller/lookup -run '^TestPSCServiceMalformedTaskRecovery$' -count=1 -json | tee "$RUNNER_TEMP/psc-reconciler.jsonl"
+          python3 experiments/psc-sdk-read-guard/verify_reconciler_receipts.py "$RUNNER_TEMP/psc-reconciler.jsonl"
