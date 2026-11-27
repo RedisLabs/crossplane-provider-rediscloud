@@ -66,3 +66,17 @@ jobs:
           go mod edit -replace "github.com/RedisLabs/rediscloud-go-api=$GITHUB_WORKSPACE/candidate-sdk"
           go test -mod=mod ./internal/controller/lookup -run '^Test(PSCServiceMalformedTaskRecovery|PSCEndpointsMalformedTaskRecovery)$' -count=1 -json | tee "$RUNNER_TEMP/psc-reconciler.jsonl"
           python3 experiments/psc-sdk-read-guard/verify_reconciler_receipts.py "$RUNNER_TEMP/psc-reconciler.jsonl"
+      - name: Format disposable SDK review files
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w candidate-sdk/service/psc/service.go candidate-sdk/service/psc/read_task_validation_test.go candidate-sdk/psc_read_task_http_test.go
+          mkdir -p "$RUNNER_TEMP/psc-formatted/service/psc"
+          cp candidate-sdk/service/psc/service.go candidate-sdk/service/psc/read_task_validation_test.go "$RUNNER_TEMP/psc-formatted/service/psc/"
+          cp candidate-sdk/psc_read_task_http_test.go "$RUNNER_TEMP/psc-formatted/"
+          sha256sum "$RUNNER_TEMP/psc-formatted/service/psc/"*.go "$RUNNER_TEMP/psc-formatted/psc_read_task_http_test.go"
+      - uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
+        with:
+          name: psc-sdk-formatted-review
+          path: ${{ runner.temp }}/psc-formatted/
+          if-no-files-found: error
