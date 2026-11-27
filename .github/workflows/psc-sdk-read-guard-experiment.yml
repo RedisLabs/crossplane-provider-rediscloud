@@ -1,0 +1,50 @@
+name: Credential-free PSC SDK read guard experiment
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sdk-read-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          repository: RedisLabs/rediscloud-go-api
+          ref: 2cb6b15f705ae2969253d6e3da7d870e7d22cc44
+          path: candidate-sdk
+          persist-credentials: false
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version-file: candidate-sdk/go.mod
+      - name: Confirm baseline panic then apply read-only guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate-sdk rev-parse HEAD)" = 2cb6b15f705ae2969253d6e3da7d870e7d22cc44
+          test -z "$(git -C candidate-sdk status --porcelain)"
+          base64 --decode experiments/psc-sdk-read-guard/tests.patch.b64 > "$RUNNER_TEMP/psc-tests.patch"
+          base64 --decode experiments/psc-sdk-read-guard/guard.patch.b64 > "$RUNNER_TEMP/psc-guard.patch"
+          echo 'bb4e49f55adb0839cdc40b24b08ac53c88269e154cb9c04a1aeafc9500ad23dc  '"$RUNNER_TEMP/psc-tests.patch" | sha256sum -c -
+          echo 'c620bf88b80affd2cd1124a0e0a558dff61ebbe270f0bc83e1e9596a395c7188  '"$RUNNER_TEMP/psc-guard.patch" | sha256sum -c -
+          git -C candidate-sdk apply "$RUNNER_TEMP/psc-tests.patch"
+          set +e
+          (cd candidate-sdk && go test ./service/psc -run '^TestPSCReadRejectsMissingTaskID/service/missing$' -count=1 -v) > "$RUNNER_TEMP/psc-baseline.log" 2>&1
+          baseline_status=$?
+          set -e
+          cat "$RUNNER_TEMP/psc-baseline.log"
+          test "$baseline_status" -ne 0
+          grep -F 'TestPSCReadRejectsMissingTaskID/service/missing' "$RUNNER_TEMP/psc-baseline.log"
+          grep -F 'panic: runtime error: invalid memory address or nil pointer dereference' "$RUNNER_TEMP/psc-baseline.log"
+          git -C candidate-sdk apply "$RUNNER_TEMP/psc-guard.patch"
+      - name: Verify every fake read operation and normal errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidate-sdk
+          go test ./service/psc -run '^TestPSCReadRejectsMissingTaskID$' -count=1 -json | tee "$RUNNER_TEMP/psc-candidate.jsonl"
+          python3 "$GITHUB_WORKSPACE/experiments/psc-sdk-read-guard/verify_receipts.py" "$RUNNER_TEMP/psc-candidate.jsonl"

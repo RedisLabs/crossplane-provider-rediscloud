@@ -1,0 +1,9 @@
+# Disposable PSC SDK read-task validation experiment
+
+This draft applies two patches to SDK commit `2cb6b15f705ae2969253d6e3da7d870e7d22cc44` only inside a credential-free GitHub Actions runner. The first test proves that the simulated missing-task-ID case panics on the pinned base; the second validates a candidate guard on four PSC read implementations, including their Active-Active entry points. Tests use a stub client and waiter, not Cloud or the Crossplane reconciler. The baseline must fail with the named panic; a compilation failure does not count.
+
+The candidate also rejects an empty ID, which changes existing behavior. Normal transport errors must survive unchanged, malformed responses must not reach the task waiter, and a valid ID must be passed to it. These hypothetical response shapes are not evidence of deployed Cloud behavior. Empty-body, malformed JSON, HTTP-status handling through the actual SDK client, task-poll errors, cancellation, and Crossplane behavior without its panic boundary are not established by this experiment.
+
+This is not an upstream SDK pull request, approved fix, release, live qualification or evidence that a write is safe to retry. Mutating PSC calls, accepted-but-unknown recovery, crash fencing, durable operation state and replay protection are out of scope and remain unresolved. Any SDK change requires upstream review and separate provider integration. The SDK repository is read-only for the current identity.
+
+The associated design brief was independently reviewed with Claude Fable. The review highlighted potential incorrect not-found mapping, fixed retry behavior, empty-ID compatibility, diagnostics, false-positive test design, and upstream delivery. Crossplane lookup failure currently sets an unavailable condition and clears status; the experiment does not establish that other consumers behave similarly. Review claims about actual Cloud responses and other consumers remain unverified.
