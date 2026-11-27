@@ -44,7 +44,7 @@ func TestRegionPartialResponseRecovery(t *testing.T) { //nolint:gocyclo // Each 
 		name, body, id string
 		ok             bool
 	}{
-		{"initial", good, "11", true},
+		{fixtureLookupInitial, good, "11", true},
 		{"null_row", good + `,null`, "", false},
 		{"after_null", good, "11", true},
 		{"missing_provider", good + `,{"id":12,"name":"us-east-1"}`, "", false},

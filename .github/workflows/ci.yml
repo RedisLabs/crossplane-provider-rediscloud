@@ -252,7 +252,20 @@ jobs:
           python3 - <<'PYCODE'
           from acceptance.go_test_receipts import run_selected
           root = "TestPSCServiceLookupIdentityRecovery"
-          run_selected("./internal/controller/lookup", (root, root + "/initial", root + "/missing_id", root + "/zero_id", root + "/recovery", "TestPSCServiceLookupMissingTaskIDPanics"))
+          run_selected("./internal/controller/lookup", (root, root + "/initial", root + "/missing_id", root + "/zero_id", root + "/recovery", "TestPSCServiceMalformedTaskRecovery", "TestPSCServiceMalformedTaskRecovery/initial", "TestPSCServiceMalformedTaskRecovery/missing_task_id", "TestPSCServiceMalformedTaskRecovery/recovery_one", "TestPSCServiceMalformedTaskRecovery/missing_resource", "TestPSCServiceMalformedTaskRecovery/recovery_two", "TestSafePSCReadDiscardsPanic", "TestSafePSCReadPreservesError"))
+          PYCODE
+
+      - name: Verify PSC endpoint malformed task recovery
+        run: |
+          python3 - <<'PYCODE'
+          from acceptance.go_test_receipts import run_selected
+          root = "TestPSCEndpointsMalformedTaskRecovery"
+          steps = ("initial", "list_missing_task", "list_recovery_one", "list_missing_resource", "list_recovery_two", "script_missing_task", "script_recovery_one", "script_missing_resource", "script_recovery_two", "list_http_error", "http_recovery")
+          names = [root]
+          for scope in ("pro", "active_active"):
+              names.append(root + "/" + scope)
+              names.extend(root + "/" + scope + "/" + step for step in steps)
+          run_selected("./internal/controller/lookup", tuple(names))
           PYCODE
 
       - name: Verify ACL HTTP failure recovery
