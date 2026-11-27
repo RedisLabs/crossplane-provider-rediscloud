@@ -37,6 +37,69 @@ func TestProductPSCHoldReservationAPI(t *testing.T) {
 	}
 }
 
+// This is an intentionally unsafe characterization, not a protection test:
+// two separately persisted CRs targeting the same endpoint each reserve once.
+func TestPSCHoldSameTargetTwoCRsCharacterization(t *testing.T) { //nolint:gocyclo // Each fixture precondition and persisted outcome is checked explicitly.
+	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue {
+		t.Skip("hosted Actions only")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	scheme := runtime.NewScheme()
+	if err := psc.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	first := &psc.ServiceConnectEndpoint{ObjectMeta: metav1.ObjectMeta{Name: "psc-first", Finalizers: []string{managed.FinalizerName}}}
+	sub, service := "1", float64(7)
+	project, vpc, subnet, prefix := pscFixtureProject, pscFixtureVPC, pscFixtureSubnet, pscFixturePrefix
+	first.Spec.ForProvider.SubscriptionID, first.Spec.ForProvider.PrivateServiceConnectServiceID = &sub, &service
+	first.Spec.ForProvider.GCPProjectID, first.Spec.ForProvider.GCPVPCName = &project, &vpc
+	first.Spec.ForProvider.GCPVPCSubnetName, first.Spec.ForProvider.EndpointConnectionName = &subnet, &prefix
+	first.Spec.ProviderConfigReference = &xpv2.Reference{Name: pscTestProviderConfig}
+	first.SetManagementPolicies(xpv2.ManagementPolicies{xpv2.ManagementActionAll})
+	meta.SetExternalName(first, pscTestEndpointExternal)
+	second := first.DeepCopy()
+	second.Name = "psc-second"
+	kube := newPSCEnvtestClient(t, scheme, first)
+	if err := kube.Create(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if first.UID == second.UID || first.UID == "" || second.UID == "" {
+		t.Fatal("fixture requires two distinct API-server identities")
+	}
+	var calls atomic.Int32
+	inner := managed.ExternalConnectorFn(func(context.Context, xpresource.Managed) (managed.ExternalClient, error) {
+		return managed.ExternalClientFns{DeleteFn: func(context.Context, xpresource.Managed) (managed.ExternalDelete, error) {
+			calls.Add(1)
+			return managed.ExternalDelete{}, errPSCFixtureDelete
+		}}, nil
+	})
+	connector := psccontroller.NewDeleteHoldConnector(kube, kube, inner, true)
+	for _, item := range []*psc.ServiceConnectEndpoint{first, second} {
+		if err := kube.Delete(ctx, item); err != nil {
+			t.Fatal(err)
+		}
+		current := &psc.ServiceConnectEndpoint{}
+		if err := kube.Get(ctx, client.ObjectKeyFromObject(item), current); err != nil {
+			t.Fatal(err)
+		}
+		external, err := connector.Connect(ctx, current)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = external.Delete(ctx, current.DeepCopy()); !errors.Is(err, errPSCFixtureDelete) {
+			t.Fatalf("expected synthetic uncertain outcome, got %v", err)
+		}
+		if err := kube.Get(ctx, client.ObjectKeyFromObject(item), current); err != nil || current.Annotations[pscTestIntentAnnotation] == "" || !slices.Contains(current.Finalizers, managed.FinalizerName) {
+			t.Fatal("expected each CR to retain an intent and finalizer")
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("characterization changed: expected two same-target synthetic dispatches, got %d", calls.Load())
+	}
+	t.Log("UNSAFE CHARACTERIZATION: two CR-local reservations dispatched twice for the same PSC target; no Cloud call occurred")
+}
+
 func runPSCHoldReservation(t *testing.T, mode string) { //nolint:gocyclo // Every persisted outcome is checked independently.
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
