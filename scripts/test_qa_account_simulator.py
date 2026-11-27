@@ -28,6 +28,54 @@ def uncommitted_writer(path, ready, release):
     db.close()
 
 
+class PausingConnection:
+    """Pause a real simulator transaction while it holds its SQLite write lock."""
+    def __init__(self, db, pause_prefix, paused, resume):
+        self.db, self.pause_prefix, self.paused, self.resume = db, pause_prefix, paused, resume
+
+    def execute(self, sql, *args):
+        result = self.db.execute(sql, *args)
+        if sql.startswith(self.pause_prefix):
+            self.paused.set()
+            if not self.resume.wait(20):
+                raise TimeoutError('test did not resume the transaction')
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self.db, name)
+
+
+def paused_operation(path, kind, paused, resume, results):
+    original = sim.connect
+    prefix = 'SELECT owner,attempt' if kind == 'admit' else "UPDATE account SET phase='DRAINING'"
+    sim.connect = lambda name: PausingConnection(original(name), prefix, paused, resume)
+    result = sim.admit(path, 'run', 1, 1, 'racing') if kind == 'admit' else sim.drain(path, 'run', 1, 1)
+    results.put((kind, result))
+
+
+class AttemptingConnection:
+    def __init__(self, db, starting):
+        self.db, self.starting = db, starting
+
+    def execute(self, sql, *args):
+        if sql == 'BEGIN IMMEDIATE':
+            self.starting.set()
+        return self.db.execute(sql, *args)
+
+    def __getattr__(self, name):
+        return getattr(self.db, name)
+
+
+def competing_operation(path, kind, starting, finished, results):
+    original = sim.connect
+    sim.connect = lambda name: AttemptingConnection(original(name), starting)
+    try:
+        result = sim.admit(path, 'run', 1, 1, 'racing') if kind == 'admit' else sim.drain(path, 'run', 1, 1)
+        results.put((kind, result))
+    finally:
+        finished.set()
+
+
 class CoordinatorExperiment(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -104,6 +152,38 @@ class CoordinatorExperiment(unittest.TestCase):
         self.assertFalse(sim.acquire(self.db, 'other', 1))
         with sqlite3.connect(self.db) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM intents WHERE request_id='uncommitted'").fetchone(), (0,))
+
+    def test_drain_and_admission_interleavings(self):
+        # Exercise both orders using actual SQLite transactions and processes.
+        # No external Cloud or production store is involved.
+        for first in ('admit', 'drain'):
+            with self.subTest(first=first), tempfile.TemporaryDirectory() as temp:
+                path = str(Path(temp) / 'state.db')
+                sim.initialize(path)
+                self.assertTrue(sim.acquire(path, 'run', 1))
+                ctx = multiprocessing.get_context('spawn')
+                paused, resume, starting, finished = ctx.Event(), ctx.Event(), ctx.Event(), ctx.Event()
+                results = ctx.Queue()
+                first_job = ctx.Process(target=paused_operation, args=(path, first, paused, resume, results))
+                first_job.start()
+                self.addCleanup(self.cleanup_process, first_job)
+                self.assertTrue(paused.wait(20))
+                second = 'drain' if first == 'admit' else 'admit'
+                second_job = ctx.Process(target=competing_operation, args=(path, second, starting, finished, results))
+                second_job.start()
+                self.addCleanup(self.cleanup_process, second_job)
+                self.assertTrue(starting.wait(20))
+                self.assertFalse(finished.wait(0.5), "contender completed while the first write transaction was paused")
+                resume.set()
+                outcomes = dict(results.get(timeout=20) for _ in range(2))
+                for job in (first_job, second_job):
+                    job.join(20)
+                    self.assertEqual(job.exitcode, 0)
+                self.assertTrue(outcomes['drain'])
+                self.assertEqual(outcomes['admit'], first == 'admit')
+                self.assertFalse(sim.admit(path, 'run', 1, 1, 'after-drain'))
+                with sqlite3.connect(path) as db:
+                    self.assertEqual(db.execute("SELECT count(*) FROM intents WHERE request_id='racing'").fetchone()[0], int(first == 'admit'))
 
     def test_wrong_identity_cannot_drain_or_mark_unknown(self):
         self.assertTrue(sim.acquire(self.db, 'run', 1))
