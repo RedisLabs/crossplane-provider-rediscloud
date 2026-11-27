@@ -64,5 +64,5 @@ jobs:
           set -euo pipefail
           python3 experiments/psc-sdk-read-guard/disable_boundary.py
           go mod edit -replace "github.com/RedisLabs/rediscloud-go-api=$GITHUB_WORKSPACE/candidate-sdk"
-          go test -mod=mod ./internal/controller/lookup -run '^TestPSCServiceMalformedTaskRecovery$' -count=1 -json | tee "$RUNNER_TEMP/psc-reconciler.jsonl"
+          go test -mod=mod ./internal/controller/lookup -run '^Test(PSCServiceMalformedTaskRecovery|PSCEndpointsMalformedTaskRecovery)$' -count=1 -json | tee "$RUNNER_TEMP/psc-reconciler.jsonl"
           python3 experiments/psc-sdk-read-guard/verify_reconciler_receipts.py "$RUNNER_TEMP/psc-reconciler.jsonl"
