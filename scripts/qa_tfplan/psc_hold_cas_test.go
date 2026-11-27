@@ -39,7 +39,7 @@ func TestProductPSCHoldReservationAPI(t *testing.T) {
 
 // This is an intentionally unsafe characterization, not a protection test:
 // two separately persisted CRs targeting the same endpoint each reserve once.
-func TestPSCHoldSameTargetTwoCRsCharacterization(t *testing.T) {
+func TestPSCHoldSameTargetTwoCRsCharacterization(t *testing.T) { //nolint:gocyclo // Each fixture precondition and persisted outcome is checked explicitly.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureStringTrue {
 		t.Skip("hosted Actions only")
 	}
