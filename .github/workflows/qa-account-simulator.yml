@@ -1,0 +1,20 @@
+name: Credential-free account coordinator experiment
+on:
+  pull_request:
+    paths:
+      - 'scripts/qa_account_simulator.py'
+      - 'scripts/test_qa_account_simulator.py'
+      - '.github/workflows/qa-account-simulator.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          persist-credentials: false
+      - name: Exercise local-only concurrency and fail-closed holds
+        run: python3 -m unittest discover -s scripts -p test_qa_account_simulator.py -v
