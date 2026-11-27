@@ -246,7 +246,9 @@ func readPrivateServiceConnect(ctx context.Context, api *rediscloud.Client, obj 
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectObservation{}, err
 	}
-	item, err := api.PrivateServiceConnect.GetService(ctx, id)
+	item, err := safePSCRead(func() (*psc.PrivateServiceConnectService, error) {
+		return api.PrivateServiceConnect.GetService(ctx, id)
+	})
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectObservation{}, errors.Wrap(err, "cannot get private service connect")
 	}
@@ -281,7 +283,9 @@ func readActiveActivePrivateServiceConnect(ctx context.Context, api *rediscloud.
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectObservation{}, err
 	}
-	item, err := api.PrivateServiceConnect.GetActiveActiveService(ctx, subID, regionID)
+	item, err := safePSCRead(func() (*psc.PrivateServiceConnectService, error) {
+		return api.PrivateServiceConnect.GetActiveActiveService(ctx, subID, regionID)
+	})
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectObservation{}, errors.Wrap(err, "cannot get active-active private service connect")
 	}
@@ -320,7 +324,9 @@ func readPrivateServiceConnectEndpoints(ctx context.Context, api *rediscloud.Cli
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, err
 	}
-	got, err := api.PrivateServiceConnect.GetEndpoints(ctx, subID, serviceID)
+	got, err := safePSCRead(func() (*psc.PrivateServiceConnectEndpoints, error) {
+		return api.PrivateServiceConnect.GetEndpoints(ctx, subID, serviceID)
+	})
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get private service connect endpoints")
 	}
@@ -328,7 +334,9 @@ func readPrivateServiceConnectEndpoints(ctx context.Context, api *rediscloud.Cli
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
 	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
-		return api.PrivateServiceConnect.GetEndpointCreationScripts(ctx, subID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
+		return safePSCRead(func() (*psc.CreationScript, error) {
+			return api.PrivateServiceConnect.GetEndpointCreationScripts(ctx, subID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
+		})
 	})
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, err
@@ -375,7 +383,9 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, err
 	}
-	got, err := api.PrivateServiceConnect.GetActiveActiveEndpoints(ctx, subID, regionID, serviceID)
+	got, err := safePSCRead(func() (*psc.PrivateServiceConnectEndpoints, error) {
+		return api.PrivateServiceConnect.GetActiveActiveEndpoints(ctx, subID, regionID, serviceID)
+	})
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, errors.Wrap(err, "cannot get active-active private service connect endpoints")
 	}
@@ -383,7 +393,9 @@ func readActiveActivePrivateServiceConnectEndpoints(ctx context.Context, api *re
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, identityErr
 	}
 	endpoints, err := observeEndpoints(got, func(endpointID int) (*psc.CreationScript, error) {
-		return api.PrivateServiceConnect.GetActiveActiveEndpointCreationScripts(ctx, subID, regionID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
+		return safePSCRead(func() (*psc.CreationScript, error) {
+			return api.PrivateServiceConnect.GetActiveActiveEndpointCreationScripts(ctx, subID, regionID, serviceID, endpointID, lookup.IncludeTerraformGCPScript)
+		})
 	})
 	if err != nil {
 		return lookupv1alpha1.PrivateServiceConnectEndpointsObservation{}, err
@@ -500,4 +512,20 @@ func subscriptionRegion(spec lookupv1alpha1.SubscriptionRegionParameters) (int, 
 		return 0, 0, err
 	}
 	return subID, regionID, nil
+}
+
+// safePSCRead confines synchronous panics in the SDK's read-only PSC methods.
+// Panic details may contain response data and must never reach status or logs.
+func safePSCRead[T any](read func() (*T, error)) (result *T, err error) {
+	completed := false
+	defer func() {
+		if !completed {
+			_ = recover()
+			result = nil
+			err = fmt.Errorf("private service connect lookup failed")
+		}
+	}()
+	result, err = read()
+	completed = true
+	return result, err
 }

@@ -6,11 +6,10 @@ package lookup
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -93,35 +92,86 @@ func TestPSCServiceLookupIdentityRecovery(t *testing.T) { //nolint:gocyclo // Ke
 	}
 }
 
-// Reproduces the pinned SDK's nil task-ID dereference; this is not recovery proof.
-func TestPSCServiceLookupMissingTaskIDPanics(t *testing.T) { //nolint:gocyclo // Verify panic and unchanged state with exact request guards.
+// Exercise the actual reconciler and pinned SDK using malformed fake task responses.
+func TestPSCServiceMalformedTaskRecovery(t *testing.T) { //nolint:gocyclo // Keep both malformed shapes, redaction and recovery together.
 	if os.Getenv("GITHUB_ACTIONS") != fixtureActionsEnabled {
 		t.Skip("hosted Actions only")
 	}
-	var calls atomic.Int32
+	var phase atomic.Int32
+	var serviceCalls, taskCalls atomic.Int32
 	kube := lookupClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/subscriptions/123/private-service-connect" || r.URL.RawQuery != "" || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
-			t.Error("unexpected or unauthenticated fake request")
+		if r.Method != http.MethodGet || r.URL.RawQuery != "" || r.Header.Get("X-Api-Key") != exampleAPIKey || r.Header.Get("X-Api-Secret-Key") != exampleAPISecret {
+			t.Error("unexpected fake request")
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{}`)
-	}), &lookupv1alpha1.PrivateServiceConnect{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.PrivateServiceConnectSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}, Status: lookupv1alpha1.PrivateServiceConnectStatus{AtProvider: lookupv1alpha1.PrivateServiceConnectObservation{ID: fixturePSCStaleID}}})
-	var panicValue any
-	func() {
-		defer func() { panicValue = recover() }()
-		_, _ = (&PrivateServiceConnectReconciler{Client: kube}).Reconcile(context.Background(), request(proFixtureName))
-	}()
-	if panicValue == nil || !strings.Contains(fmt.Sprint(panicValue), "invalid memory address or nil pointer dereference") || calls.Load() != 1 {
-		t.Fatalf("missing task ID did not reproduce panic: calls=%d", calls.Load())
+		switch r.URL.Path {
+		case "/subscriptions/123/private-service-connect":
+			serviceCalls.Add(1)
+			if phase.Load() == 1 {
+				_, _ = io.WriteString(w, `{"sensitive":"sentinel-secret"}`)
+			} else {
+				_, _ = io.WriteString(w, `{"taskId":"fixture-task"}`)
+			}
+		case "/tasks/fixture-task":
+			taskCalls.Add(1)
+			if phase.Load() == 3 {
+				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"sensitive":"sentinel-secret"}}`)
+			} else {
+				_, _ = io.WriteString(w, `{"status":"processing-completed","response":{"resource":{"id":7,"status":"active"}}}`)
+			}
+		default:
+			t.Error("unexpected fake path")
+			http.Error(w, "forbidden", http.StatusForbidden)
+		}
+	}), &lookupv1alpha1.PrivateServiceConnect{ObjectMeta: metav1.ObjectMeta{Name: proFixtureName}, Spec: lookupv1alpha1.PrivateServiceConnectSpec{ProviderConfigRef: xpv1.Reference{Name: exampleProviderConfig}, ForProvider: lookupv1alpha1.SubscriptionIDParameters{SubscriptionID: "123"}}})
+	rec := &PrivateServiceConnectReconciler{Client: kube}
+	for _, tc := range []struct {
+		name  string
+		phase int32
+		ready bool
+	}{{"initial", 0, true}, {"missing_task_id", 1, false}, {"recovery_one", 2, true}, {"missing_resource", 3, false}, {"recovery_two", 4, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			phase.Store(tc.phase)
+			beforeService, beforeTask := serviceCalls.Load(), taskCalls.Load()
+			result, err := rec.Reconcile(context.Background(), request(proFixtureName))
+			taskDelta := int32(1)
+			if tc.phase == 1 {
+				taskDelta = 0
+			}
+			if err != nil || serviceCalls.Load() != beforeService+1 || taskCalls.Load() != beforeTask+taskDelta {
+				t.Fatalf("unexpected reconciliation or request counts: %v", err)
+			}
+			got := &lookupv1alpha1.PrivateServiceConnect{}
+			if err := kube.Get(context.Background(), types.NamespacedName{Name: proFixtureName}, got); err != nil {
+				t.Fatal(err)
+			}
+			cond := got.Status.GetCondition(xpv1.TypeReady)
+			if !tc.ready {
+				if result.RequeueAfter != requeueFailed || cond.Status != corev1.ConditionFalse || cond.Message != fixtureLookupSafeError || got.Status.AtProvider != (lookupv1alpha1.PrivateServiceConnectObservation{}) {
+					t.Fatalf("unsafe failed status: %#v", got.Status)
+				}
+				return
+			}
+			if result.RequeueAfter != requeue || cond.Status != corev1.ConditionTrue || got.Status.AtProvider.PrivateServiceConnectServiceID != "7" {
+				t.Fatalf("unexpected recovered status: %#v", got.Status)
+			}
+		})
 	}
-	current := &lookupv1alpha1.PrivateServiceConnect{}
-	if err := kube.Get(context.Background(), types.NamespacedName{Name: proFixtureName}, current); err != nil {
-		t.Fatal(err)
+}
+
+func TestSafePSCReadDiscardsPanic(t *testing.T) {
+	result, err := safePSCRead(func() (*string, error) { panic("sentinel-secret") })
+	if result != nil || err == nil || err.Error() != "private service connect lookup failed" {
+		t.Fatal("panic was not sanitized")
 	}
-	if current.Status.AtProvider.ID != fixturePSCStaleID {
-		t.Fatal("panic unexpectedly cleared stale observation")
+}
+
+func TestSafePSCReadPreservesError(t *testing.T) {
+	original := errors.New("ordinary error")
+	result, err := safePSCRead(func() (*string, error) { return nil, original })
+	if result != nil || err != original {
+		t.Fatal("ordinary error changed")
 	}
 }
